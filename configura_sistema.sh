@@ -19,4 +19,4 @@ sudo systemctl start ssh
 sudo systemctl enable ssh
 echo ######################################################################################################################
 echo Instalado os pacotes OpenVPN
-sudo apt install openvpn
+sudo apt install sudo apt install openvpn easy-rsa
