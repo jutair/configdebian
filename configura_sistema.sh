@@ -3,20 +3,19 @@ echo Iniciando a configiguração
 echo ######################################################################################################################
 echo Inslatando o comando sudo
 echo ######################################################################################################################
-apt install sudo
+apt install sudo -y
 echo ######################################################################################################################
 echo Atualizando o sistema...
 echo ######################################################################################################################
-sudo apt update
-sudo apt upgrade
+sudo apt update && sudo apt upgrade -y
 echo ######################################################################################################################
 echo Instalando os pacote basicos de rede
-sudo apt install net-tools
+sudo apt install net-tools -y
 echo ######################################################################################################################
 echo Instalando os pacotes para SSH
-sudo apt install openssh-server
+sudo apt install openssh-server -y
 sudo systemctl start ssh
 sudo systemctl enable ssh
 echo ######################################################################################################################
 echo Instalado os pacotes OpenVPN
-sudo apt install sudo apt install openvpn easy-rsa
+sudo apt install openvpn -y && sudo apt install easy-rsa -y
