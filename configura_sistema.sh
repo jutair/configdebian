@@ -9,7 +9,7 @@ echo Criando os usuários
 echo sudo useradd -G sudo sudo -m jutair -s /bin/bash //Apenas em servidor VPS
 echo sudo passwd jutair //Apenas em servidor VPS
 sudo usermod aG jutair
-sudo useradd -G sudo sudo -m guest -s /bin/bash
+sudo adduser -G sudo sudo -m guest -s /bin/bash
 sudo passwd guest
 echo ######################################################################################################################
 echo Atualizando o sistema...
@@ -18,7 +18,7 @@ sudo apt update && sudo apt upgrade -y
 echo ######################################################################################################################
 echo Instalando os pacote basicos de rede
 sudo apt install net-tools -y
-sudo apt install samba - y
+sudo apt install samba -y
 echo ######################################################################################################################
 echo Instalando os pacotes para SSH
 sudo apt install openssh-server -y
