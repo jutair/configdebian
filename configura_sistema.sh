@@ -17,7 +17,7 @@ echo -e "${VERDE}Criando os usuários${NC}"
 sudo useradd -G sudo -m guest -s /bin/bash
 sudo passwd guest
 echo **********************************************************************************************************************
-echo -e "${Amarelo}Atualizando o sistema${NC}"
+echo -e "${AMARELO}Atualizando o sistema${NC}"
 echo **********************************************************************************************************************
 sudo apt update && sudo apt upgrade -y
 echo **********************************************************************************************************************
@@ -42,7 +42,7 @@ cp /etc/ssh/sshd_config /home/jutair/Backup
 cp /etc/samba/smb.conf /home/jutair/Backup
 cd
 echo **********************************************************************************************************************
-echo -e "${Amarelo}Baixano as configurações do OpenVPN..${NC}"
+echo -e "${AMARELO}Baixano as configurações do OpenVPN..${NC}"
 wget https://raw.githubusercontent.com/Nyr/openvpn-install/master/openvpn-install.sh
 chmod +x openvpn-install.sh
 echo **********************************************************************************************************************
@@ -89,9 +89,9 @@ echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
 echo Baixando os scripts de backup
 echo **********************************************************************************************************************
-echo -e "${Amarelo}Saindo...${NC}"
-echo -e "${Amarelo}Logue com o seu usuário${NC}"
-echo -e "${Vermelho}Scriptfinalizado${NC}"
+echo -e "${AMARELO}Saindo...${NC}"
+echo -e "${AMARELO}Logue com o seu usuário${NC}"
+echo -e "${VERMELHO}Scriptfinalizado${NC}"
 cd
 exit
 exit
