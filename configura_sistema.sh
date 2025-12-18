@@ -45,7 +45,8 @@ sudo apt install net-tools -y
 echo -e "${VERDE}Instalando o Samba${NC}"
 echo -e "${VERDE}Instalando o IfTops${NC}"
 sudo apt install samba -y
-sudo apt update && sudo apt install nload iftop -y
+sudo apt install nload -y
+sudo apt install iftop -y
 echo **********************************************************************************************************************
 echo -e "${VERDE}Instalando os pacotes para SSH${NC}"
 sudo apt install openssh-server -y
