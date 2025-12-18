@@ -31,9 +31,11 @@ sudo apt install openvpn -y
 sudo apt install easy-rsa -y
 echo ######################################################################################################################
 echo Fazendo backup das configurações básicas do sistema
-cd /home/jutair/Backup
+cd /home/jutair
+mkdir Backup
 cp /etc/ssh/sshd_config /home/jutair/Backup
 cp /etc/samba/smb.conf /home/jutair/Backup
+cd
 echo ######################################################################################################################
 echo Baixando as configurações do OpenVPN
 wget https://raw.githubusercontent.com/Nyr/openvpn-install/master/openvpn-install.sh
