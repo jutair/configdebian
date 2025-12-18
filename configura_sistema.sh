@@ -86,9 +86,9 @@ echo Baixando as confiurações do Samba
 echo Baixando os scripts de backup
 echo **********************************************************************************************************************
 echo -e "${Amarelo}Saindo...${NC}"
-cd
 echo -e "${Amarelo}Logue com o seu usuário${NC}"
 echo -e "${Vermelho}Scriptfinalizado${NC}"
+cd
 exit
 exit
 
