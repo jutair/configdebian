@@ -26,7 +26,8 @@ sudo systemctl start ssh
 sudo systemctl enable ssh
 echo ######################################################################################################################
 echo Instalado os pacotes OpenVPN
-sudo apt install openvpn -y && sudo apt install easy-rsa -y
+sudo apt install openvpn -y
+sudo apt install easy-rsa -y
 echo ######################################################################################################################
 echo Fazendo backup das configurações básicas do sistema
 cd /home/jutair/Backup
