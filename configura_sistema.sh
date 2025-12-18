@@ -43,6 +43,7 @@ cp /etc/samba/smb.conf /home/jutair/Backup
 cd
 echo **********************************************************************************************************************
 echo -e "${AMARELO}Baixano as configurações do OpenVPN..${NC}"
+cd /home/jutair
 wget https://raw.githubusercontent.com/Nyr/openvpn-install/master/openvpn-install.sh
 chmod +x openvpn-install.sh
 echo **********************************************************************************************************************
