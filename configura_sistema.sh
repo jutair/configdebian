@@ -34,7 +34,7 @@ cp /etc/ssh/sshd_config /home/jutair/Backup
 cp /etc/samba/smb.conf /home/jutair/Backup
 echo ######################################################################################################################
 echo Baixando as configurações do OpenVPN
-wget https://raw.githubusercontent.com/Nyr/openvpn-install/master/openvpn-install.sh -O
+wget https://raw.githubusercontent.com/Nyr/openvpn-install/master/openvpn-install.sh
 chmod +x openvpn-install.sh
 echo ######################################################################################################################
 echo Baixando as confiurações do SSH
