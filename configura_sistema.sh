@@ -54,7 +54,7 @@ mkdir ~/easy-rsa
 ln -s /usr/share/easy-rsa/* ~/easy-rsa/
 cd ~/easy-rsa
 echo **********************************************************************************************************************
-echo -e "${VERDE}echo Criando o PKI${NC}"
+echo -e "${VERDE}Criando o PKI${NC}"
 ./easyrsa init-pki
 echo **********************************************************************************************************************
 echo -e "${VERDE}Criando a autoridade certificadora${NC}"
@@ -77,9 +77,13 @@ sudo apt install ufw -y
 echo **********************************************************************************************************************
 echo -e "${VERDE}Configurando o Firewall${NC}"
 sudo ufw allow ssh
+echo -e "${VERDE}Permitindo UDP na porta 1194${NC}"
 sudo ufw allow 1194/udp
+echo -e "${VERDE}Permitindo UDP na porta 443${NC}"
 sudo ufw allow 443/udp
+echo -e "${Amarelo}Iniciando Firewalll...${NC}"
 sudo ufw enable
+echo -e "${VERDE}Firewall Iniciado!${NC}"
 echo **********************************************************************************************************************
 echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
