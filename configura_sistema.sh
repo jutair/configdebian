@@ -12,7 +12,7 @@ apt install sudo -y
 echo **********************************************************************************************************************
 echo -e "${VERDE}Criando os usuários${NC}"
 #sudo useradd -G sudo sudo -m jutair -s /bin/bash //Apenas em servidor VPS
-echo sudo passwd jutair //Apenas em servidor VPS
+#sudo passwd jutair //Apenas em servidor VPS
 #sudo usermod -aG sudo jutair
 sudo useradd -G sudo -m guest -s /bin/bash
 sudo passwd guest
