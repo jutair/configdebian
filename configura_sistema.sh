@@ -9,7 +9,7 @@ echo Criando os usuários
 echo sudo useradd -G sudo sudo -m jutair -s /bin/bash //Apenas em servidor VPS
 echo sudo passwd jutair //Apenas em servidor VPS
 sudo usermod aG jutair
-sudo useradd -G sudo sudo -m guest -s /bin/bash
+sudo useradd -G sudo -m guest -s /bin/bash
 sudo passwd guest
 echo ######################################################################################################################
 echo Atualizando o sistema...
