@@ -18,6 +18,7 @@ sudo apt update && sudo apt upgrade -y
 echo ######################################################################################################################
 echo Instalando os pacote basicos de rede
 sudo apt install net-tools -y
+echo Instalando o Samba
 sudo apt install samba -y
 echo ######################################################################################################################
 echo Instalando os pacotes para SSH
