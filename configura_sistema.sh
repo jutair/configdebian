@@ -79,8 +79,8 @@ echo -e "${VERDE}Configurando o Firewall${NC}"
 sudo ufw allow ssh
 echo -e "${VERDE}Permitindo UDP na porta 1194${NC}"
 sudo ufw allow 1194/udp
-echo -e "${VERDE}Permitindo UDP na porta 443${NC}"
-sudo ufw allow 443/udp
+echo -e "${VERDE}Permitindo UDP na porta 4004${NC}"
+sudo ufw allow 4004/tcp
 echo -e "${Amarelo}Iniciando Firewalll...${NC}"
 sudo ufw enable
 echo -e "${VERDE}Firewall Iniciado!${NC}"
