@@ -1,82 +1,81 @@
-# Define as variáveis de cor
+# Variáveis de cores
 VERDE='\033[0;32m'
 VERMELHO='\033[0;31m'
 AMARELO='\033[1;33m' # Negrito e Amarelo
 NC='\033[0m' # No Color / Reset
-echo -e "${VERDE}Isso é uma mensagem de sucesso em verde.${NC}"
 echo **********************************************************************************************************************
-echo Iniciando a configiguração
+echo -e "${VERDE}Iniciando a configuração${NC}"
 echo **********************************************************************************************************************
-echo Inslatando o comando sudo
+echo -e "${VERDE}Inslatando o comando sudo${NC}"
 echo **********************************************************************************************************************
 apt install sudo -y
 echo **********************************************************************************************************************
-echo Criando os usuários
+echo -e "${VERDE}Criando os usuários${NC}"
 #sudo useradd -G sudo sudo -m jutair -s /bin/bash //Apenas em servidor VPS
 echo sudo passwd jutair //Apenas em servidor VPS
 #sudo usermod -aG sudo jutair
 sudo useradd -G sudo -m guest -s /bin/bash
 sudo passwd guest
 echo **********************************************************************************************************************
-echo Atualizando o sistema...
+echo -e "${Amarelo}Atualizando o sistema${NC}"
 echo **********************************************************************************************************************
 sudo apt update && sudo apt upgrade -y
 echo **********************************************************************************************************************
-echo Instalando os pacote basicos de rede
+echo -e "${VERDE}Instalando os pacotes básicos de rede${NC}"
 sudo apt install net-tools -y
-echo Instalando o Samba
+echo -e "${VERDE}Instalando o Samba${NC}"
 sudo apt install samba -y
 echo **********************************************************************************************************************
-echo Instalando os pacotes para SSH
+echo -e "${VERDE}Instalando os pacotes para SSH${NC}"
 sudo apt install openssh-server -y
 sudo systemctl start ssh
 sudo systemctl enable ssh
 echo **********************************************************************************************************************
-echo Instalado os pacotes OpenVPN
+echo -e "${VERDE}Instalando os pacotes para o OpenVPN${NC}"
 sudo apt install openvpn -y
 sudo apt install easy-rsa -y
 echo **********************************************************************************************************************
-echo Fazendo backup das configurações básicas do sistema
+echo -e "${VERDE}Fazendo BACKUP das configurações${NC}"
 cd /home/jutair
 mkdir Backup
 cp /etc/ssh/sshd_config /home/jutair/Backup
 cp /etc/samba/smb.conf /home/jutair/Backup
 cd
 echo **********************************************************************************************************************
-echo Baixando as configurações do OpenVPN
+echo -e "${Amarelo}Baixano as configurações do OpenVPN..${NC}"
 wget https://raw.githubusercontent.com/Nyr/openvpn-install/master/openvpn-install.sh
 chmod +x openvpn-install.sh
 echo **********************************************************************************************************************
-echo Configurando o SSH
+echo -e "${VERDE}Confiurando o SSH${NC}"
 echo **********************************************************************************************************************
-echo Criando Popule o Diretório do Easy-RSA
+echo -e "${VERDE}Criando Popule o Diretório do Easy-RSA${NC}"
 cd
 mkdir ~/easy-rsa
 ln -s /usr/share/easy-rsa/* ~/easy-rsa/
 cd ~/easy-rsa
 echo **********************************************************************************************************************
-echo Criando o PKI
+echo -e "${VERDE}echo Criando o PKI${NC}"
 ./easyrsa init-pki
 echo **********************************************************************************************************************
-echo Criando a autoridade certificadora
+echo -e "${VERDE}Criando a autoridade certificadora${NC}"
 ./easyrsa build-ca nopass
 echo **********************************************************************************************************************
-echo Assinando o Certificado do Servidor
+echo -e "${VERDE}Assinando o Certificado do Servidor${NC}"
 ./easyrsa gen-req server nopass
 ./easyrsa gen-dh
 echo **********************************************************************************************************************
-echo Enviando o certificado para OpenVPN
+echo -e "${VERDE}Enviando o certificado para OpenVPN${NC}"
 sudo cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
 echo **********************************************************************************************************************
-echo Configurando o SSH
+echo -e "${VERDE}Configurando o SSH${NC}"
 sudo cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
 echo **********************************************************************************************************************
-echo Configurando SSH Finalizada
+echo -e "${VERDE}Configurando SSH Finalizada${NC}"
 echo **********************************************************************************************************************
-echo Instalado o Firewall
+echo -e "${VERDE}Instalado o Firewall${NC}"
 sudo apt install ufw -y
 echo **********************************************************************************************************************
-echo Configurando o Firewall
+echo -e "${VERDE}Configurando o Firewall${NC}"
 sudo ufw allow ssh
 sudo ufw allow 1194/udp
 sudo ufw allow 443/udp
@@ -86,10 +85,10 @@ echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
 echo Baixando os scripts de backup
 echo **********************************************************************************************************************
-echo Saindo...
+echo -e "${Amarelo}Saindo...${NC}"
 cd
-echo Logue com o seu usuário
-echo -e "${VERMELHO}Isso é um erro em vermelho!${NC}"
+echo -e "${Amarelo}Logue com o seu usuário${NC}"
+echo -e "${Vermelho}Scriptfinalizado${NC}"
 exit
 exit
 
