@@ -8,7 +8,7 @@ echo ###########################################################################
 echo Criando os usuários
 echo sudo useradd -G sudo sudo -m jutair -s /bin/bash //Apenas em servidor VPS
 echo sudo passwd jutair //Apenas em servidor VPS
-sudo usermod aG jutair
+sudo usermod -aG sudo jutair
 sudo useradd -G sudo -m guest -s /bin/bash
 sudo passwd guest
 echo ######################################################################################################################
@@ -41,6 +41,47 @@ echo Baixando as configurações do OpenVPN
 wget https://raw.githubusercontent.com/Nyr/openvpn-install/master/openvpn-install.sh
 chmod +x openvpn-install.sh
 echo ######################################################################################################################
-echo Baixando as confiurações do SSH
+echo Configurando o SSH
+echo ######################################################################################################################
+echo Criando Popule o Diretório do Easy-RSA
+cd
+mkdir ~/easy-rsa
+ln -s /usr/share/easy-rsa/* ~/easy-rsa/
+cd ~/easy-rsa
+echo ######################################################################################################################
+echo Criando o PKI
+./easyrsa init-pki
+echo ######################################################################################################################
+echo Criando a autoridade certificadora
+./easyrsa build-ca nopass
+echo ######################################################################################################################
+echo Assinando o Certificado do Servidor
+./easyrsa gen-req server nopass
+./easyrsa gen-dh
+echo ######################################################################################################################
+echo Enviando o certificado para OpenVPN
+sudo cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
+echo ######################################################################################################################
+echo Configurando o SSH
+sudo cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
+echo ######################################################################################################################
+echo Configurando SSH Finalizada
+echo ######################################################################################################################
+echo Instalado o Firewall
+sudo apt install ufw -y
+echo ######################################################################################################################
+echo Configurando o Firewall
+sudo ufw allow ssh
+sudo ufw allow 1194/udp
+sudo ufw allow 443/udp
+sudo ufw enable
+echo ######################################################################################################################
+echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
 echo Baixando os scripts de backup
+echo ######################################################################################################################
+echo Saindo...
+cd
+echo Logue com o seu usuário
+exit
+exit
