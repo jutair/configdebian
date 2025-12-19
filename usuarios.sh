@@ -226,6 +226,7 @@ case $OPCAO in
             echo "Você digitou a opção [5]"
             echo "Saindo..."
             sleep 1
+            clear
             exit
             ;;
         *)
@@ -238,5 +239,6 @@ case $OPCAO in
 done
 
 echo "Processo concluído para o usuário $NOME_USUARIO!"
+clear
 }
 gerencia_user ###Chama a função principal!
