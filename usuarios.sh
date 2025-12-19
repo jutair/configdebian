@@ -13,6 +13,7 @@ sudo mkdir -p "/home/$NOME_USUARIO/.ssh"
 sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "/home/$NOME_USUARIO/.ssh"
 sudo chmod 700 "/home/$NOME_USUARIO/.ssh"
 sudo chmod 600 "/home/$NOME_USUARIO/.ssh/authorized_keys"
+sudo passwd $NOME_USUARIO
 # 2. Solicita o toque de alguma tecla
 read -n 1 -p "Deseja promover a usurário root? [s/n]: " USEROOT
 echo ""
