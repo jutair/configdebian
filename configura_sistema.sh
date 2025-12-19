@@ -14,13 +14,19 @@ echo -e "${AMARELO}Atualizando o sistema${NC}"
 echo **********************************************************************************************************************
 sudo apt update && sudo apt upgrade -y
 echo **********************************************************************************************************************
+echo -e "${VERDE}Instalando as ferramentas basicas do sistema${NC}"
+sudo apt install htop -y
+echo **********************************************************************************************************************
 echo -e "${VERDE}Instalando os pacotes básicos de rede${NC}"
 sudo apt install net-tools -y
 echo -e "${VERDE}Instalando o Samba${NC}"
-echo -e "${VERDE}Instalando o IfTops${NC}"
 sudo apt install samba -y
+echo -e "${VERDE}Instalando o Nload${NC}"
 sudo apt install nload -y
+echo -e "${VERDE}Instalando o IF-top${NC}"
 sudo apt install iftop -y
+echo -e "${VERDE}Instalando o Speedtest${NC}"
+sudo apt install speedtest-cli -y
 echo **********************************************************************************************************************
 echo -e "${VERDE}Instalando os pacotes para SSH${NC}"
 sudo apt install openssh-server -y
@@ -32,13 +38,6 @@ sudo apt install openvpn -y
 sudo apt install easy-rsa -y
 echo -e "${VERDE}Instalando NetData${NC}"
 wget -O /tmp/netdata-kickstart.sh https://get.netdata.cloud/kickstart.sh && sh /tmp/netdata-kickstart.sh
-echo **********************************************************************************************************************
-echo -e "${VERDE}Fazendo BACKUP das configurações${NC}"
-cd /home/jutair
-mkdir Backup
-cp /etc/ssh/sshd_config /home/jutair/Backup
-cp /etc/samba/smb.conf /home/jutair/Backup
-cd
 echo **********************************************************************************************************************
 echo -e "${AMARELO}Baixano as configurações do OpenVPN..${NC}"
 cd /home/jutair
@@ -111,6 +110,13 @@ cp /root/.ssh/authorized_keys /home/jutair/.ssh/
 chown -R root:guest /home/guest/.ssh
 chmod 700 /home/guest/.ssh
 chmod 600 /home/guest/.ssh/authorized_keys
+echo **********************************************************************************************************************
+echo -e "${VERDE}Fazendo BACKUP das configurações${NC}"
+cd /home/jutair
+mkdir Backup
+cp /etc/ssh/sshd_config /home/jutair/Backup
+cp /etc/samba/smb.conf /home/jutair/Backup
+cd
 echo **********************************************************************************************************************
 echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
