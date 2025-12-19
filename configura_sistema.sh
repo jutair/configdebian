@@ -10,32 +10,6 @@ echo -e "${VERDE}Inslatando o comando sudo${NC}"
 echo **********************************************************************************************************************
 apt install sudo -y
 echo **********************************************************************************************************************
-echo -e "${VERDE}Criando os usuários${NC}"
-####################################Apenas em servidor VPS#################################################################
-sudo useradd -G sudo -m jutair -s /bin/bash ##Apenas em servidor VPS
-sudo passwd jutair
-sudo usermod -aG sudo jutair
-# Cria a pasta .ssh no novo usuário
-mkdir -p /home/jutair/.ssh
-# Copia as chaves autorizadas do root para o usuário
-cp /root/.ssh/authorized_keys /home/jutair/.ssh/
-# Ajusta as permissões
-chown -R jutair:jutair /home/jutair/.ssh
-chmod 700 /home/jutair/.ssh
-chmod 600 /home/jutair/.ssh/authorized_keys
-###########################################################################################################################
-sudo useradd -G sudo -m guest -s /bin/bash
-sudo passwd guest
-# Cria a pasta .ssh no novo usuário
-mkdir -p /home/guest/.ssh
-# Copia as chaves autorizadas do root para o usuário
-cp /root/.ssh/authorized_keys /home/jutair/.ssh/
-# Ajusta as permissões (MUITO IMPORTANTE)
-# O SSH não funciona se as permissões estiverem abertas demais
-chown -R jutair:guest /home/guest/.ssh
-chmod 700 /home/guest/.ssh
-chmod 600 /home/guest/.ssh/authorized_keys
-echo **********************************************************************************************************************
 echo -e "${AMARELO}Atualizando o sistema${NC}"
 echo **********************************************************************************************************************
 sudo apt update && sudo apt upgrade -y
@@ -111,6 +85,32 @@ sudo ufw allow 22/tcp
 echo -e "${Amarelo}Iniciando Firewalll...${NC}"
 sudo ufw enable
 echo -e "${VERDE}Firewall Iniciado!${NC}"
+echo **********************************************************************************************************************
+echo -e "${VERDE}Criando os usuários${NC}"
+####################################Apenas em servidor VPS#################################################################
+sudo useradd -G sudo -m jutair -s /bin/bash ##Apenas em servidor VPS
+sudo passwd jutair
+sudo usermod -aG sudo jutair
+# Cria a pasta .ssh no novo usuário
+mkdir -p /home/jutair/.ssh
+# Copia as chaves autorizadas do root para o usuário
+cp /root/.ssh/authorized_keys /home/jutair/.ssh/
+# Ajusta as permissões
+chown -R root:jutair /home/jutair/.ssh
+chmod 700 /home/jutair/.ssh
+chmod 600 /home/jutair/.ssh/authorized_keys
+###########################################################################################################################
+sudo useradd -G sudo -m guest -s /bin/bash
+sudo passwd guest
+# Cria a pasta .ssh no novo usuário
+mkdir -p /home/guest/.ssh
+# Copia as chaves autorizadas do root para o usuário
+cp /root/.ssh/authorized_keys /home/jutair/.ssh/
+# Ajusta as permissões
+# O SSH não funciona se as permissões estiverem abertas demais
+chown -R root:guest /home/guest/.ssh
+chmod 700 /home/guest/.ssh
+chmod 600 /home/guest/.ssh/authorized_keys
 echo **********************************************************************************************************************
 echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
