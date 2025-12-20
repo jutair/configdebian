@@ -227,7 +227,8 @@ case $OPCAO in
             echo "Saindo..."
             sleep 1
             clear
-            exit
+            ./menu.sh
+            #exit
             ;;
         *)
             # Se digitar qualquer outra coisa (e, r, 5, etc)
