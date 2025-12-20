@@ -298,18 +298,11 @@ case $OPCAO in
             echo "Saindo..."
             sleep 1
             clear
-            exit
+            exit 1
             ;;
         [8])
 	    #user_gerencia
             ;;            
-        [9])
-            echo ""
-            echo "Saindo..."
-            sleep 1
-            clear
-            exit
-            ;;
         *)
             # Se digitar qualquer outra coisa (e, r, 5, etc)
             clear
