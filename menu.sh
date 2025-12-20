@@ -147,10 +147,10 @@ echo "    Menu principal:              "
 echo "======================================"
 echo "Seu usuário: $CURRENRT"
 echo ""
-echo "[1] Ver desempenho		[7] Gerenciar usuários"
-echo "[2] Gerenciar rede 		[8] Atualizar o sistema"
-echo "[3] Ver logs do sistema		[9] Gerenciar OpenVpn"
-echo "[5] Fazer Backup					
+echo "[1] Ver desempenho		[6] Gerenciar usuários"
+echo "[2] Gerenciar rede 		[7] Atualizar o sistema"
+echo "[3] Ver logs do sistema		[8] Gerenciar OpenVpn"
+echo "[5] Fazer Backup"					
 echo ""
 read -n 1 -p "Digite a opção desejada: " OPCAO
 echo ""
@@ -178,16 +178,15 @@ case $OPCAO in
             #sleep 1
             ;;
         [6])
-            echo ""
+            ./usuarios.sh
             #sleep 1
             ;;
         [7])
             echo ""
-            ./gerenciar.sh
             #sleep 1
             ;;
         [8])
-            echo ""
+            ./open_vpn_conf.sh
             #sleep 1
             ;;            
         [9])
