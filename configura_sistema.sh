@@ -39,6 +39,8 @@ echo -e "${VERDE}Instalando o Vnstat${NC}"
 sudo apt install vnstat -y
 echo -e "${VERDE}Instalando o Syssat${NC}"
 sudo apt install sysstat -y
+echo -e "${VERDE}Instalando o TCPdump${NC}"
+sudo apt install tcpdump -y
 echo **********************************************************************************************************************
 echo -e "${VERDE}Instalando os pacotes para SSH${NC}"
 sudo apt install openssh-server -y
@@ -92,9 +94,6 @@ mkdir -p Backup
 cp /etc/ssh/sshd_config /home/jutair/Backup
 cp /etc/samba/smb.conf /home/jutair/Backup
 cd
-echo **********************************************************************************************************************
-echo -e "${VERDE}Baixando o OpenVPN${NC}"
-wget -P /home/jutair/configdebian-main https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
 echo **********************************************************************************************************************
 echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
