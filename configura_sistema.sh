@@ -1,3 +1,11 @@
+# Verifica se o script foi executado como root
+if [ "$EUID" -ne 0 ]; then
+  echo -e "\033[31mPor favor execute esse script como sudo!"
+  echo -e "\033[31msudo ./configura_sistema.sh"
+  echo -e "\033[0m"
+  exit 1
+fi
+echo -e "\033[0m" #Reseta as cores ao padão
 # Variáveis de cores
 VERDE='\033[0;32m'
 VERMELHO='\033[0;31m'
@@ -27,48 +35,15 @@ echo -e "${VERDE}Instalando o IF-top${NC}"
 sudo apt install iftop -y
 echo -e "${VERDE}Instalando o Speedtest${NC}"
 sudo apt install speedtest-cli -y
+echo -e "${VERDE}Instalando o Vnstat${NC}"
+sudo apt install vnstat -y
+echo -e "${VERDE}Instalando o Syssat${NC}"
+sudo apt install sysstat -y
 echo **********************************************************************************************************************
 echo -e "${VERDE}Instalando os pacotes para SSH${NC}"
 sudo apt install openssh-server -y
 sudo systemctl start ssh
 sudo systemctl enable ssh
-echo **********************************************************************************************************************
-echo -e "${VERDE}Instalando os pacotes para o OpenVPN${NC}"
-sudo apt install openvpn -y
-sudo apt install easy-rsa -y
-echo -e "${VERDE}Instalando NetData${NC}"
-wget -O /tmp/netdata-kickstart.sh https://get.netdata.cloud/kickstart.sh && sh /tmp/netdata-kickstart.sh
-echo **********************************************************************************************************************
-echo -e "${AMARELO}Baixano as configurações do OpenVPN..${NC}"
-cd /home/jutair
-wget https://raw.githubusercontent.com/Nyr/openvpn-install/master/openvpn-install.sh
-chmod +x openvpn-install.sh
-echo **********************************************************************************************************************
-echo -e "${VERDE}Confiurando o SSH${NC}"
-echo **********************************************************************************************************************
-echo -e "${VERDE}Criando Popule o Diretório do Easy-RSA${NC}"
-cd
-mkdir ~/easy-rsa
-ln -s /usr/share/easy-rsa/* ~/easy-rsa/
-cd ~/easy-rsa
-echo **********************************************************************************************************************
-echo -e "${VERDE}Criando o PKI${NC}"
-./easyrsa init-pki
-echo **********************************************************************************************************************
-echo -e "${VERDE}Criando a autoridade certificadora${NC}"
-./easyrsa build-ca nopass
-echo **********************************************************************************************************************
-echo -e "${VERDE}Assinando o Certificado do Servidor${NC}"
-./easyrsa gen-req server nopass
-./easyrsa gen-dh
-echo **********************************************************************************************************************
-echo -e "${VERDE}Enviando o certificado para OpenVPN${NC}"
-sudo cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
-echo **********************************************************************************************************************
-echo -e "${VERDE}Configurando o SSH${NC}"
-sudo cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
-echo **********************************************************************************************************************
-echo -e "${VERDE}Configurando SSH Finalizada${NC}"
 echo **********************************************************************************************************************
 echo -e "${VERDE}Instalado o Firewall${NC}"
 sudo apt install ufw -y
@@ -113,10 +88,13 @@ chmod 600 /home/guest/.ssh/authorized_keys
 echo **********************************************************************************************************************
 echo -e "${VERDE}Fazendo BACKUP das configurações${NC}"
 cd /home/jutair
-mkdir Backup
+mkdir -p Backup
 cp /etc/ssh/sshd_config /home/jutair/Backup
 cp /etc/samba/smb.conf /home/jutair/Backup
 cd
+echo **********************************************************************************************************************
+echo -e "${VERDE}Baixando o OpenVPN${NC}"
+wget -P /home/jutair/configdebian-main https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
 echo **********************************************************************************************************************
 echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
