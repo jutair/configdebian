@@ -125,4 +125,60 @@ function relatorio_consumo {
         read -n 1 -p "Opção: " OPCAO
         echo ""
         case $OPCAO in
-            1) vnstat -y -i "$INTERFACE
+            1) vnstat -y -i "$INTERFACE" ;;
+            2) vnstat -m -i "$INTERFACE" ;;
+            3) vnstat -d -i "$INTERFACE" ;;
+            4) break ;;
+        esac
+    done
+}
+
+function velocidade_tun0 {
+    clear
+    IP_TUN0=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d'/' -f1)
+    if [ -z "$IP_TUN0" ]; then
+        echo "❌ Erro: Interface tun0 offline."
+        return
+    fi
+    echo "================================================================="
+    echo "           TESTE DE VELOCIDADE - IP: $IP_TUN0"
+    echo "================================================================="
+    speedtest-cli --source "$IP_TUN0" --simple
+    echo "================================================================="
+}
+
+function tun0_monitor {
+    clear
+    echo "Monitorando interface tun0... (Ctrl+C para parar)"
+    vnstat -l -i tun0
+}
+
+function menu_ovp {
+    while true; do
+        echo "================================================================="
+        echo "                         Menu Open VPN:                          "
+        echo "================================================================="
+        echo "[1] Testar velocidade      [5] Monitorar tun0"
+        echo "[2] Usuários online        [6] Gerenciar usuário (Instalador)"
+        echo "[3] Relatório de consumo   [7] Sair"
+        echo "[4] Consumo por usuário"
+        echo "================================================================="
+        read -n 1 -p "Digite a opção: " OPCAO
+        echo ""
+        case $OPCAO in
+            1) velocidade_tun0 ;;
+            2) user_online ;;
+            3) relatorio_consumo ;;
+            4) user_consumo ;;
+            5) tun0_monitor ;;
+            6) sudo ./openvpn-install.sh ;;
+            7) exit 0 ;;
+            *) clear; echo -e "${VERMELHO}Opção inválida!${SEM_COR}" ;;
+        esac
+    done
+}
+
+# --- INÍCIO DO SCRIPT ---
+clear
+veri_openvpn  # Primeiro valida o sistema
+menu_ovp      # Depois chama o menu principal
