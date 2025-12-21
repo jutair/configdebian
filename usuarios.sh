@@ -180,7 +180,7 @@ fi
 function gerencia_user {
 clear
 while true; do
-CURRENRT=$(whoami)
+CURRENRT=(basename "$HOME")
 LIST=$(ls /home)
 echo "======================================"
 echo "    GERENCIAR USUÁRIOS:              "
