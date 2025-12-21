@@ -181,11 +181,11 @@ monitora_tun() {
     clear
     echo "==============================================================="
     echo "          MONITORANDO TUN0 EM TEMPO REAL (Live)"
-    echo "      Pressione CTRL+C para parar e voltar ao menu"
+    echo "      Pressione CTRL+C para parar e ver o resumo"
     echo "==============================================================="
     echo ""
     
-    # Verifica se a interface tun0 existe antes de iniciar
+    # Verifica se a interface tun0 existe
     if ! ip link show tun0 > /dev/null 2>&1; then
         echo -e "\033[31mErro: Interface tun0 não está ativa no momento.\033[0m"
         echo "Pressione ENTER para voltar..."
@@ -193,14 +193,21 @@ monitora_tun() {
         return
     fi
 
-    # O comando vnstat -l (live) mostra o tráfego em tempo real
-    # Ele continuará rodando até que o usuário pressione CTRL+C
+    # TRAP: Captura o CTRL+C (SIGINT) para que ele não feche o script inteiro
+    # O ':' significa "não faça nada/ignore", permitindo que o script continue após o comando ser interrompido
+    trap ':' INT
+
+    # Roda o vnstat em tempo real
     vnstat -l -i tun0
+
+    # LIMPEZA DO TRAP: Remove a captura para que o CTRL+C volte ao normal depois
+    trap - INT
 
     echo ""
     echo "---------------------------------------------------------------"
-    echo "Monitoramento encerrado."
+    echo "Monitoramento encerrado com sucesso."
     echo "Pressione ENTER para voltar ao menu..."
+    # Agora o script vai esperar o ENTER corretamente
     read dummy
 }
 ###############Função lista ovpns################################################
