@@ -22,7 +22,7 @@ STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
 [ ! -f "$STATUS_FILE" ] && STATUS_FILE="/var/log/openvpn/openvpn-status.log"
 
 # --- FUNÇÕES ---
-function veri_openvpn (){
+veri_openvpn () {
     if ! command -v openvpn >/dev/null 2>&1; then
         echo -e "${AMARELO}[AVISO] OpenVPN não instalado.${SEM_COR}"
         mkdir -p "/home/jutair/configdebian-main"
