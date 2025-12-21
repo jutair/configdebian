@@ -216,6 +216,64 @@ listar_ovpns() {
     read dummy
 }
 ####################Fim da função lista ovpns####################################
+####################Função baixa ovpn############################################
+baixa() {
+    IP_WAN=$(curl -s ifconfig.me)
+    USER_ATUAL=$(whoami)
+    clear
+    INDEX_FILE="/etc/openvpn/server/easy-rsa/pki/index.txt"
+
+    echo "==============================================================="
+    echo "              RELATÓRIO DE USUÁRIOS E DOWNLOAD"
+    echo "==============================================================="
+
+    if [ ! -f "$INDEX_FILE" ]; then
+        echo "Erro: Banco de dados de usuários não encontrado."
+        read dummy; return
+    fi
+
+    # --- Listagem de Ativos ---
+    echo -e "\033[32m[ ATIVOS / VÁLIDOS ]\033[0m"
+    printf "%-20s %-25s\n" "NOME" "DATA CRIACAO"
+    echo "---------------------------------------------------------------"
+    grep "^V" "$INDEX_FILE" | while read -r line; do
+        USER=$(echo "$line" | awk -F'=' '{print $2}')
+        DATA_RAW=$(echo "$line" | awk '{print $2}')
+        # Formatação universal (Funciona em Bash e Dash)
+        DATA_BR="20$(echo "$DATA_RAW" | cut -c 1-2)-$(echo "$DATA_RAW" | cut -c 3-4)-$(echo "$DATA_RAW" | cut -c 5-6)"
+        printf "%-20s %-10s\n" "$USER" "$DATA_BR"
+    done
+
+    echo ""
+    read -p "Digite o nome do usuário para localizar o .ovpn: " NOME
+    [ -z "$NOME" ] && return
+
+    echo -e "\nBuscando arquivo... Aguarde."
+
+    # BUSCA AUTOMÁTICA: Procura em /home e /root pelo arquivo .ovpn exato
+    ARQUIVO_ORIGEM=$(find /home /root -name "${NOME}.ovpn" 2>/dev/null | head -n 1)
+
+    if [ -n "$ARQUIVO_ORIGEM" ] && [ -f "$ARQUIVO_ORIGEM" ]; then
+        echo -e "---------------------------------------------------------------"
+        echo -e "\033[32m✅ ARQUIVO LOCALIZADO!\033[0m"
+        echo -e "Caminho no Servidor: $ARQUIVO_ORIGEM"
+        echo -e "---------------------------------------------------------------"
+        echo -e "Para baixar no seu Windows, abra o CMD ou PowerShell e cole:"
+        echo ""
+        echo -e "\033[33mscp ${USER_ATUAL}@${IP_WAN}:${ARQUIVO_ORIGEM} ./\033[0m"
+        echo -e "---------------------------------------------------------------"
+        echo -e "O arquivo será salvo na pasta onde seu terminal estiver aberto."
+    else
+        echo -e "---------------------------------------------------------------"
+        echo -e "\033[31m❌ ERRO: O arquivo ${NOME}.ovpn não foi encontrado no servidor.\033[0m"
+        echo -e "Certifique-se de que o usuário foi criado corretamente."
+    fi
+
+    echo ""
+    echo "Pressione ENTER para voltar ao menu..."
+    read dummy
+}
+####################Fim da função baixa ovpn###################################
 ####################Função listar usuários######################################
 listar_usuarios() {
     clear
@@ -349,7 +407,7 @@ while true; do
         1) add_user ;;
         2) remove_user ;;
         3) listar_usuarios ;;
-        4) listar_ovpns ;;
+        4) baixa ;;
         5) exit 0 ;;
         *) echo "Opção inválida"; sleep 1 ;;
     esac
