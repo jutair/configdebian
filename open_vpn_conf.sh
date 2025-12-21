@@ -85,7 +85,6 @@ function veri_openvpn (){
 }
 #########################Fim da função verifica open_vpn###################
 function ver_consumo {
-#!/bin/bash
 STATUS_FILE="/var/log/openvpn/openvpn-status.log"
 
 # Verifica se o ficheiro de log existe
@@ -159,8 +158,6 @@ function user_online {
 }
 #################Fim da função usuários online###################
 function user_cosumo {
-#!/bin/bash
-
 STATUS_FILE="/var/log/openvpn/openvpn-status.log"
 
 # Verifica se o ficheiro de log existe
@@ -311,7 +308,6 @@ done
 #########Fim da função relatório de consumo##########
 ############Função que mede a velocidade tun0###############
 function velocidade_tun0 {
-#!/bin/bash
 clear
 # 1. Identifica o IP interno da interface tun0
 IP_TUN0=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d'/' -f1)
@@ -383,7 +379,7 @@ case $OPCAO in
             #sleep 1
             ;;
         [6])
-           sudo ./openvpn-install.sh
+            veri_openvpn
             #sleep 1
             ;;
         [7])
@@ -404,8 +400,7 @@ case $OPCAO in
             ;;
     esac
 done
-###menu_ovp testar o porque
 clear
 }
 clear
-veri_openvpn
+menu_ovp
