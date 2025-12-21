@@ -48,32 +48,31 @@ function veri_openvpn (){
 }
 
 function user_online {
-    clear
-    echo "==============================================================="
-    echo "                USUÁRIOS CONECTADOS AGORA"
-    echo "==============================================================="
-    printf "%-15s %-20s %-15s %-10s\n" "USUÁRIO" "IP REAL" "IP VPN" "DESDE"
-    echo "---------------------------------------------------------------"
+#!/bin/bash
+STATUS_FILE="/var/log/openvpn/openvpn-status.log"
+echo "==============================================================="
+echo "                USUÁRIOS CONECTADOS AGORA"
+echo "==============================================================="
+printf "%-15s %-20s %-15s %-10s\n" "USUÁRIO" "IP REAL" "IP VPN" "DESDE"
+echo "---------------------------------------------------------------"
 
-    if [ ! -f "$STATUS_FILE" ]; then
-        echo -e "${VERMELHO}Erro: Arquivo de log não encontrado em $STATUS_FILE${SEM_COR}"
-        echo "Dica: Verifique se 'status' está habilitado no seu server.conf"
-        return
-    fi
+# O grep busca linhas que começam com CLIENT_LIST
+# O grep -v ignora o cabeçalho
+grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
+    
+    # Extraindo colunas (ajustado para separador de vírgula)
+    USER=$(echo "$line" | cut -d',' -f2)
+    IP_REAL=$(echo "$line" | cut -d',' -f3 | cut -d':' -f1) # Remove a porta
+    IP_VPN=$(echo "$line" | cut -d',' -f4)
+    DESDE=$(echo "$line" | cut -d',' -f8 | cut -d' ' -f2,3) # Pega apenas hora/data
 
-    grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
-        USER=$(echo "$line" | cut -d',' -f2)
-        IP_REAL=$(echo "$line" | cut -d',' -f3 | cut -d':' -f1)
-        IP_VPN=$(echo "$line" | cut -d',' -f4)
-        DESDE=$(echo "$line" | cut -d',' -f8 | awk '{print $2" "$3}')
-        printf "%-15s %-20s %-15s %-10s\n" "$USER" "$IP_REAL" "$IP_VPN" "$DESDE"
-    done
-    TOTAL=$(grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | wc -l)
-    echo "---------------------------------------------------------------"
-    echo "Total de conexões: $TOTAL"
-    read -n 1 -s -p "Pressione qualquer tecla para voltar..."
+    # Formata a saída em colunas alinhadas
+    printf "%-15s %-20s %-15s %-10s\n" "$USER" "$IP_REAL" "$IP_VPN" "$DESDE"
+done
+echo "---------------------------------------------------------------"
+echo "Total de conexões: $(grep -c "^CLIENT_LIST" "$STATUS_FILE" | awk '{print $1-1}')"
 }
-
+#################Fim da função usuários online###################
 function user_consumo {
     clear
     if [ ! -f "$STATUS_FILE" ]; then
