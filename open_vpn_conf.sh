@@ -155,9 +155,9 @@ testa_velocidade() {
         echo "Ping     : $PING ms"
         echo "==============================================================="
     fi
-
     echo "Pressione ENTER para voltar ao menu..."
-    menu_ovp
+    read dummy
+    exit
 }
 function menu_ovp {
     while true; do
