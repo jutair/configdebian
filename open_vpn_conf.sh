@@ -94,16 +94,9 @@ user_online() {
 #################Fim da função usuários online###################
 user_consumo() {
     clear
-    # Garante que o caminho do log seja detectado
-    [ -z "$STATUS_FILE" ] && STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
+    # Detecta o log corretamente
+    STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
     [ ! -f "$STATUS_FILE" ] && STATUS_FILE="/var/log/openvpn/openvpn-status.log"
-
-    if [ ! -f "$STATUS_FILE" ]; then
-        echo "Erro: Arquivo de log não encontrado em $STATUS_FILE"
-        echo "Pressione ENTER para voltar..."
-        read dummy
-        return
-    fi
 
     echo "==============================================================="
     echo "             CONSUMO DE DADOS (Sessão Atual)"
@@ -111,25 +104,28 @@ user_consumo() {
     printf "%-15s %-12s %-12s %-12s\n" "USUÁRIO" "RECEBIDO" "ENVIADO" "TOTAL"
     echo "---------------------------------------------------------------"
 
-    # Processa apenas se houver linhas de CLIENT_LIST
-    LISTA=$(grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name")
-
-    if [ -z "$LISTA" ]; then
-        echo "Nenhum dado de tráfego disponível no momento."
-    else
-        echo "$LISTA" | while read -r line; do
-            USER=$(echo "$line" | cut -d',' -f2)
-            RECV_B=$(echo "$line" | cut -d',' -f5)
-            SENT_B=$(echo "$line" | cut -d',' -f6)
-
-            # Cálculo usando bc (Garante que bc esteja instalado)
-            RECV_MB=$(echo "scale=2; $RECV_B/1024/1024" | bc)
-            SENT_MB=$(echo "scale=2; $SENT_B/1024/1024" | bc)
-            TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc)
-
-            printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
-        done
+    if [ ! -f "$STATUS_FILE" ]; then
+        echo "Erro: Arquivo de log não encontrado."
+        read dummy
+        return
     fi
+
+    # Filtra apenas as linhas de clientes e processa
+    grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
+        
+        USER=$(echo "$line" | cut -d',' -f2)
+        
+        # Captura os bytes e garante que se estiver vazio, vire 0 para não travar o 'bc'
+        RECV_B=$(echo "$line" | cut -d',' -f5 | tr -d '\r' | awk '{print ($1 == "" ? 0 : $1)}')
+        SENT_B=$(echo "$line" | cut -d',' -f6 | tr -d '\r' | awk '{print ($1 == "" ? 0 : $1)}')
+
+        # Realiza os cálculos apenas se RECV_B e SENT_B forem números
+        RECV_MB=$(echo "scale=2; $RECV_B/1024/1024" | bc 2>/dev/null || echo "0.00")
+        SENT_MB=$(echo "scale=2; $SENT_B/1024/1024" | bc 2>/dev/null || echo "0.00")
+        TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc 2>/dev/null || echo "0.00")
+
+        printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
+    done
 
     echo "---------------------------------------------------------------"
     echo "Pressione ENTER para voltar ao menu..."
