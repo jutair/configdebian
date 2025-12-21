@@ -92,29 +92,50 @@ user_online() {
     read dummy
 }
 #################Fim da função usuários online###################
-function user_consumo {
+user_consumo() {
     clear
+    # Garante que o caminho do log seja detectado
+    [ -z "$STATUS_FILE" ] && STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
+    [ ! -f "$STATUS_FILE" ] && STATUS_FILE="/var/log/openvpn/openvpn-status.log"
+
     if [ ! -f "$STATUS_FILE" ]; then
-        echo "Erro: Log não encontrado."
+        echo "Erro: Arquivo de log não encontrado em $STATUS_FILE"
+        echo "Pressione ENTER para voltar..."
+        read dummy
         return
     fi
+
     echo "==============================================================="
     echo "             CONSUMO DE DADOS (Sessão Atual)"
     echo "==============================================================="
     printf "%-15s %-12s %-12s %-12s\n" "USUÁRIO" "RECEBIDO" "ENVIADO" "TOTAL"
     echo "---------------------------------------------------------------"
-    grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
-        USER=$(echo "$line" | cut -d',' -f2)
-        RECV_B=$(echo "$line" | cut -d',' -f5)
-        SENT_B=$(echo "$line" | cut -d',' -f6)
-        RECV_MB=$(echo "scale=2; $RECV_B/1024/1024" | bc)
-        SENT_MB=$(echo "scale=2; $SENT_B/1024/1024" | bc)
-        TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc)
-        printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
-    done
+
+    # Processa apenas se houver linhas de CLIENT_LIST
+    LISTA=$(grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name")
+
+    if [ -z "$LISTA" ]; then
+        echo "Nenhum dado de tráfego disponível no momento."
+    else
+        echo "$LISTA" | while read -r line; do
+            USER=$(echo "$line" | cut -d',' -f2)
+            RECV_B=$(echo "$line" | cut -d',' -f5)
+            SENT_B=$(echo "$line" | cut -d',' -f6)
+
+            # Cálculo usando bc (Garante que bc esteja instalado)
+            RECV_MB=$(echo "scale=2; $RECV_B/1024/1024" | bc)
+            SENT_MB=$(echo "scale=2; $SENT_B/1024/1024" | bc)
+            TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc)
+
+            printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
+        done
+    fi
+
+    echo "---------------------------------------------------------------"
     echo "Pressione ENTER para voltar ao menu..."
     read dummy
 }
+#############################Fim da função ver consumo de usuários##########################
 testa_velocidade() {
     clear
     echo "==============================================================="
@@ -159,13 +180,35 @@ testa_velocidade() {
     echo "Pressione ENTER para voltar ao menu..."
     read dummy
 }
-function monitora_tun (){
-    vnstat -d -i tun0; read -n 1
+########################Função monitora tun0#########################
+monitora_tun() {
+    clear
+    echo "==============================================================="
+    echo "          MONITORANDO TUN0 EM TEMPO REAL (Live)"
+    echo "      Pressione CTRL+C para parar e voltar ao menu"
+    echo "==============================================================="
+    echo ""
+    
+    # Verifica se a interface tun0 existe antes de iniciar
+    if ! ip link show tun0 > /dev/null 2>&1; then
+        echo -e "\033[31mErro: Interface tun0 não está ativa no momento.\033[0m"
+        echo "Pressione ENTER para voltar..."
+        read dummy
+        return
+    fi
+
+    # O comando vnstat -l (live) mostra o tráfego em tempo real
+    # Ele continuará rodando até que o usuário pressione CTRL+C
+    vnstat -l -i tun0
+
+    echo ""
+    echo "---------------------------------------------------------------"
+    echo "Monitoramento encerrado."
     echo "Pressione ENTER para voltar ao menu..."
     read dummy
-    menu_ovp
 }
-function menu_ovp {
+##################################################################################
+menu_ovp() {
     while true; do
         clear
         echo "================================================================="
