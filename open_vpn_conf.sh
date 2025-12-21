@@ -22,7 +22,6 @@ STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
 [ ! -f "$STATUS_FILE" ] && STATUS_FILE="/var/log/openvpn/openvpn-status.log"
 
 # --- FUNÇÕES ---
-
 function veri_openvpn (){
     if ! command -v openvpn >/dev/null 2>&1; then
         echo -e "${AMARELO}[AVISO] OpenVPN não instalado.${SEM_COR}"
@@ -45,6 +44,8 @@ function veri_openvpn (){
         chmod 644 "$INDEX_FILE"
     fi
     echo -e "${VERDE}[OK] Sistema validado.${SEM_COR}\n"
+    sleep 2
+    menu_ovp
 }
 #################Função para ver usuários online#################
 user_online() {
@@ -113,7 +114,6 @@ function user_consumo {
     done
     read -n 1 -s -p "Pressione qualquer tecla para voltar..."
 }
-
 function menu_ovp {
     while true; do
         clear
@@ -149,4 +149,3 @@ function menu_ovp {
 # --- INÍCIO ---
 clear
 veri_openvpn
-menu_ovp
