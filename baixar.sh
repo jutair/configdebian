@@ -7,7 +7,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 wget https://github.com/jutair/configdebian/archive/refs/heads/main.zip
-unzip configdebian-main
+unzip main.zip
 cd /home/$USER/configdebian-main
 chmod +x configura_sistema.sh
 chmod +x menu.sh
