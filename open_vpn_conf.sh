@@ -81,7 +81,7 @@ function veri_openvpn (){
     fi
     
     echo -e "[${VERDE}PRONTO${SEM_COR}] Sistema validado.\n"
-	sudo ./openvpn-install.sh
+	menu_ovp
 }
 #########################Fim da função verifica open_vpn###################
 function ver_consumo {
@@ -379,7 +379,7 @@ case $OPCAO in
             #sleep 1
             ;;
         [6])
-            veri_openvpn
+            sudo ./openvpn-install.sh
             #sleep 1
             ;;
         [7])
@@ -403,4 +403,3 @@ done
 clear
 }
 clear
-menu_ovp
