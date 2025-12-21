@@ -159,6 +159,12 @@ testa_velocidade() {
     echo "Pressione ENTER para voltar ao menu..."
     read dummy
 }
+function monitora_tun (){
+vnstat -d -i tun0; read -n 1 ;;
+    echo "Pressione ENTER para voltar ao menu..."
+    read dummy
+    menu_ovp
+}
 function menu_ovp {
     while true; do
         clear
