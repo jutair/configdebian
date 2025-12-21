@@ -404,8 +404,8 @@ case $OPCAO in
             ;;
     esac
 done
+###menu_ovp testar o porque
 clear
 }
 clear
 veri_openvpn
-menu_ovp
