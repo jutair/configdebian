@@ -44,7 +44,7 @@ function veri_openvpn (){
         chmod 644 "$INDEX_FILE"
     fi
     echo -e "${VERDE}[OK] Sistema validado.${SEM_COR}\n"
-    sleep 2
+    sleep 1
     menu_ovp
 }
 #################Função para ver usuários online#################
@@ -112,9 +112,8 @@ function user_consumo {
         TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc)
         printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
     done
-    read -n 1 -s -p "Pressione qualquer tecla para voltar..."
-    ready dummy
-    exit
+    echo "Pressione ENTER para voltar ao menu..."
+    read dummy
 }
 testa_velocidade() {
     clear
@@ -159,7 +158,6 @@ testa_velocidade() {
     fi
     echo "Pressione ENTER para voltar ao menu..."
     read dummy
-    exit
 }
 function menu_ovp {
     while true; do
