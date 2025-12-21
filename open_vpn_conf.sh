@@ -159,7 +159,7 @@ function menu_ovp {
         echo "                         Menu Open VPN:                          "
         echo "================================================================="
         echo "[1] Testar velocidade      [5] Monitorar tun0"
-        echo "[2] Usuários online        [6] Gerenciar usuário (Instalador)"
+        echo "[2] Usuários online        [6] Gerenciar usuário (Adicionar/Remover)"
         echo "[3] Relatório de consumo   [7] Sair"
         echo "[4] Consumo por usuário"
         echo "================================================================="
@@ -171,7 +171,18 @@ function menu_ovp {
             3) relatorio_consumo ;;
             4) user_consumo ;;
             5) tun0_monitor ;;
-            6) sudo ./openvpn-install.sh ;;
+            6) 
+                # Verifica se o script existe no local esperado ou no diretório atual
+                IF_PATH="/home/jutair/configdebian-main/openvpn-install.sh"
+                if [ -f "$IF_PATH" ]; then
+                    sudo "$IF_PATH" interactive
+                elif [ -f "./openvpn-install.sh" ]; then
+                    sudo ./openvpn-install.sh interactive
+                else
+                    echo -e "${VERMELHO}Erro: Script openvpn-install.sh não encontrado!${SEM_COR}"
+                    sleep 2
+                fi
+                ;;
             7) exit 0 ;;
             *) clear; echo -e "${VERMELHO}Opção inválida!${SEM_COR}" ;;
         esac
