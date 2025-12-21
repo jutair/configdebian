@@ -1,77 +1,67 @@
 #!/bin/bash
-function veri_openvpn {
-#!/bin/bash
+function veri_openvpn (){
+echo -e "${AMARELO}--- Verificando Integridade do Sistema ---${SEM_COR}"
 
-# Cores para o terminal
-VERDE='\033[0;32m'
-VERMELHO='\033[0;31m'
-AMARELO='\033[1;33m'
-SEM_COR='\033[0m'
-echo -e "${AMARELO}--- Verificador e Instalador Automático OpenVPN ---${SEM_COR}"
-
-# 1. Verificar Binário e Instalar se necessário
-if ! command -v openvpn >/dev/null 2>&1; then
-    echo -e "[${VERMELHO}FALHA${SEM_COR}] OpenVPN não detectado."
-    echo -e "[${AMARELO}AÇÃO${SEM_COR}] Baixando instalador automático (Angristan)..."
-    
-    # Baixa o instalador oficial
-    curl -O https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-    chmod +x openvpn-install.sh
-    
-    echo -e "${AMARELO}Siga as instruções na tela para a primeira instalação.${SEM_COR}"
-    echo -e "Aperte ENTER para começar..."
-    read
-    
-    sudo ./openvpn-install.sh
-    
-    # Verifica se instalou com sucesso
-    if ! command -v openvpn >/dev/null 2>&1; then
-        echo -e "[${VERMELHO}ERRO${SEM_COR}] A instalação falhou."
-        exit 1
+    # 1. AUTO-DETECÇÃO: Tenta encontrar onde o Easy-RSA está instalado
+    if [ -d "/etc/openvpn/easy-rsa" ]; then
+        EASYRSA_DIR="/etc/openvpn/easy-rsa"
+    elif [ -d "/etc/openvpn/server/easy-rsa" ]; then
+        EASYRSA_DIR="/etc/openvpn/server/easy-rsa"
+    else
+        # Se não achar nenhum, define o padrão da nova instalação
+        EASYRSA_DIR="/etc/openvpn/easy-rsa"
     fi
-else
-    echo -e "[${VERDE}OK${SEM_COR}] Binário do OpenVPN já está presente."
-fi
 
-# 2. Corrigir o Banco de Dados (index.txt)
-INDEX_FILE="/etc/openvpn/server/easy-rsa/pki/index.txt"
-if [ ! -f "$INDEX_FILE" ]; then
-    echo -e "[${AMARELO}CORRIGINDO${SEM_COR}] Banco de dados (index.txt) faltando."
-    sudo mkdir -p "/etc/openvpn/server/easy-rsa/pki"
-    sudo touch "$INDEX_FILE"
-    sudo chmod 644 "$INDEX_FILE"
-    echo -e "      -> index.txt recriado."
-fi
+    # Define o caminho do index.txt baseado no diretório encontrado
+    INDEX_FILE="$EASYRSA_DIR/pki/index.txt"
+    SERVER_CONF="/etc/openvpn/server/server.conf"
+    CRL_FILE="/etc/openvpn/server/crl.pem"
 
-# 3. Corrigir Configuração de Banimento (crl-verify)
-SERVER_CONF="/etc/openvpn/server/server.conf"
-CRL_FILE="/etc/openvpn/server/crl.pem"
-
-if [ -f "$SERVER_CONF" ]; then
-    if ! grep -q "crl-verify" "$SERVER_CONF"; then
-        echo -e "[${AMARELO}CORRIGINDO${SEM_COR}] Adicionando 'crl-verify' ao server.conf..."
+    # 2. Corrigir index.txt com validação real
+    if [ ! -f "$INDEX_FILE" ]; then
+        echo -e "[${AMARELO}CORRIGINDO${SEM_COR}] Criando banco de dados em: $INDEX_FILE"
         
-        # Garante que o arquivo CRL existe para o serviço não crashar
+        sudo mkdir -p "$(dirname "$INDEX_FILE")"
+        sudo touch "$INDEX_FILE"
+        sudo chmod 644 "$INDEX_FILE"
+
+        if [ -f "$INDEX_FILE" ]; then
+            echo -e "[${VERDE}SUCESSO${SEM_COR}] index.txt criado corretamente."
+        else
+            echo -e "[${VERMELHO}ERRO CRÍTICO${SEM_COR}] Não foi possível criar o arquivo no caminho: $INDEX_FILE"
+            echo "Dica: Verifique se a pasta /etc/openvpn/ existe."
+            exit 1
+        fi
+    else
+        echo -e "[${VERDE}OK${SEM_COR}] Banco de dados (index.txt) verificado."
+    fi
+
+    # 3. Corrigir crl-verify no server.conf
+    if [ -f "$SERVER_CONF" ] && ! grep -q "crl-verify" "$SERVER_CONF"; then
+        echo -e "[${AMARELO}CORRIGINDO${SEM_COR}] Ativando sistema de banimento..."
+        
+        # Garante que o CRL existe para o OpenVPN não crashar
         if [ ! -f "$CRL_FILE" ]; then
-            cd /etc/openvpn/server/easy-rsa/ || exit
-            sudo ./easyrsa gen-crl
-            sudo cp pki/crl.pem "$CRL_FILE"
-            sudo chmod 644 "$CRL_FILE"
+             # Tenta gerar o CRL se o easyrsa estiver lá
+             if [ -f "$EASYRSA_DIR/easyrsa" ]; then
+                cd "$EASYRSA_DIR"
+                sudo ./easyrsa gen-crl
+                sudo cp "$EASYRSA_DIR/pki/crl.pem" "$CRL_FILE"
+                sudo chmod 644 "$CRL_FILE"
+             else
+                # Se não tem easyrsa, cria um CRL dummy para o server iniciar
+                sudo touch "$CRL_FILE"
+                sudo chmod 644 "$CRL_FILE"
+             fi
         fi
         
         echo "crl-verify $CRL_FILE" | sudo tee -a "$SERVER_CONF"
         sudo systemctl restart openvpn-server@server
-        echo -e "      -> Configuração de banimento ativada."
+        echo -e "[${VERDE}SUCESSO${SEM_COR}] Linha crl-verify adicionada."
     fi
-fi
-
-# 4. Status Final
-if systemctl is-active --quiet openvpn-server@server; then
-    echo -e "\n${VERDE}✅ TUDO CERTO COM O OPENVPN!${SEM_COR}"
-	menu_ovp
-else
-    echo -e "\n${VERMELHO}⚠️ O serviço está instalado, mas não iniciou. Verifique os logs.${SEM_COR}"
-fi
+    
+    echo -e "[${VERDE}PRONTO${SEM_COR}] Sistema validado.\n"
+}
 }
 
 function ver_consumo {
