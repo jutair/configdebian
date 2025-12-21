@@ -203,9 +203,73 @@ monitora_tun() {
     echo "Pressione ENTER para voltar ao menu..."
     read dummy
 }
-###############Função para gerenciar usuários####################################
-#!/bin/bash
+###############Função lista ovpns################################################
+listar_ovpns() {
+    clear
+    echo "======================================"
+    echo "      ARQUIVOS DE CONFIGURAÇÃO        "
+    echo "======================================"
+    find /home -name "*.ovpn" 2>/dev/null
+    find /root -name "*.ovpn" 2>/dev/null
+    echo "--------------------------------------"
+    echo "Pressione ENTER para voltar..."
+    read dummy
+}
+####################Fim da função lista ovpns####################################
+####################Função listar usuários######################################
+listar_usuarios() {
+    clear
+    # Caminho do arquivo de índices do Easy-RSA
+    INDEX_FILE="/etc/openvpn/server/easy-rsa/pki/index.txt"
 
+    echo "==============================================================="
+    echo "              RELATÓRIO DE USUÁRIOS DO SISTEMA"
+    echo "==============================================================="
+
+    if [ ! -f "$INDEX_FILE" ]; then
+        echo -e "\033[31mErro: Banco de dados de usuários não encontrado.\033[0m"
+        echo "Caminho esperado: $INDEX_FILE"
+        read dummy; return
+    fi
+
+    # --- Seção de Ativos ---
+    echo -e "\033[32m[ ATIVOS / VÁLIDOS ]\033[0m"
+    printf "%-20s %-25s\n" "NOME DO USUÁRIO" "DATA DE CRIAÇÃO"
+    echo "---------------------------------------------------------------"
+    
+    grep "^V" "$INDEX_FILE" | while read -r line; do
+        # Extrai o nome do usuário (Common Name)
+        USER=$(echo "$line" | awk -F'=' '{print $2}')
+        # Extrai e formata a data de criação
+        DATA_RAW=$(echo "$line" | awk '{print $2}')
+        DATA_BR=$(echo "20${DATA_RAW:0:2}-${DATA_RAW:2:2}-${DATA_RAW:4:2}")
+        
+        printf "%-20s %-25s\n" "$USER" "$DATA_BR"
+    done
+
+    echo ""
+
+    # --- Seção de Banidos ---
+    echo -e "\033[31m[ BANIDOS / REVOGADOS ]\033[0m"
+    printf "%-20s %-25s\n" "NOME DO USUÁRIO" "DATA DA REVOGAÇÃO"
+    echo "---------------------------------------------------------------"
+    
+    grep "^R" "$INDEX_FILE" | while read -r line; do
+        USER=$(echo "$line" | awk -F'=' '{print $2}')
+        # No caso de revogados, a data de revogação é o terceiro campo
+        DATA_RAW=$(echo "$line" | awk '{print $3}')
+        DATA_BR=$(echo "20${DATA_RAW:0:2}-${DATA_RAW:2:2}-${DATA_RAW:4:2}")
+        
+        printf "%-20s %-25s\n" "$USER" "$DATA_BR"
+    done
+
+    echo "==============================================================="
+    echo "Pressione ENTER para voltar ao menu..."
+    read dummy
+}
+####################Fim da função listar usuários################################
+###############Função para gerenciar usuários####################################
+user_gerencia() {
 # Caminho para o instalador do Angristan
 INSTALLER="/home/jutair/configdebian-main/openvpn-install.sh"
 
@@ -215,7 +279,6 @@ VERMELHO='\033[0;31m'
 SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
-user_gerencia() {
 add_user() {
     clear
     echo "======================================"
@@ -229,18 +292,15 @@ add_user() {
         return
     fi
 
-    # Executa o instalador em modo não-interativo para adicionar o cliente
-    # MENU_OPTION=1 (Add), CLIENT=nome, PASS=1 (No password)
-    export MENU_OPTION="1"
-    export CLIENT="$CLIENT"
-    export PASS="1"
-    sudo -E "$INSTALLER"
+    # Nova sintaxe do Angristan: client add <nome>
+    # Usamos --batch ou apenas os comandos diretos
+    sudo "$INSTALLER" client add "$CLIENT"
     
-    echo -e "\n${VERDE}Usuário $CLIENT criado com sucesso!${SEM_COR}"
-    echo "O arquivo .ovpn está na sua pasta Home."
+    echo -e "\n${VERDE}Processo finalizado para: $CLIENT${SEM_COR}"
     echo "Pressione ENTER para voltar..."
     read dummy
 }
+
 # Função para Remover Usuário
 remove_user() {
     clear
@@ -248,26 +308,25 @@ remove_user() {
     echo "      REMOVER USUÁRIO EXISTENTE       "
     echo "======================================"
     
-    # Lista os usuários existentes no Easy-RSA para facilitar
+    # Lista os usuários existentes (PKI do Easy-RSA)
     if [ -f /etc/openvpn/server/easy-rsa/pki/index.txt ]; then
         echo "Usuários encontrados:"
-        grep "^V" /etc/openvpn/server/easy-rsa/pki/index.txt | cut -d'=' -f2
+        grep "^V" /etc/openvpn/server/easy-rsa/pki/index.txt | awk -F'=' '{print $2}'
         echo "--------------------------------------"
+    else
+        echo "Nenhum usuário listado no sistema."
     fi
 
-    read -p "Digite o nome do usuário para REMOVER: " CLIENT
+    read -p "Digite o nome exato do usuário para REMOVER: " CLIENT
     
     if [ -z "$CLIENT" ]; then
         return
     fi
 
-    # Executa o instalador em modo não-interativo para revogar o cliente
-    # MENU_OPTION=2 (Revoke), CLIENT=nome
-    export MENU_OPTION="2"
-    export CLIENT="$CLIENT"
-    sudo -E "$INSTALLER"
+    # Nova sintaxe do Angristan: client revoke <nome>
+    sudo "$INSTALLER" client revoke "$CLIENT"
     
-    echo -e "\n${VERMELHO}Usuário $CLIENT removido!${SEM_COR}"
+    echo -e "\n${VERMELHO}Processo de revogação finalizado: $CLIENT${SEM_COR}"
     echo "Pressione ENTER para voltar..."
     read dummy
 }
@@ -280,14 +339,18 @@ while true; do
     echo "======================================"
     echo "[1] Adicionar Usuário"
     echo "[2] Remover Usuário"
-    echo "[3] Voltar ao Menu Principal"
+    echo "[3] Listar Usuários do OpenVPN"
+    echo "[4] Baixar arquivo via SSH"
+    echo "[5] Voltar ao Menu Principal"
     echo "======================================"
     read -p "Opção: " OP
     
     case $OP in
         1) add_user ;;
         2) remove_user ;;
-        3) exit 0 ;;
+        3) listar_usuarios ;;
+        4) listar_ovpns ;;
+        5) exit 0 ;;
         *) echo "Opção inválida"; sleep 1 ;;
     esac
 done
@@ -301,9 +364,9 @@ menu_ovp() {
         echo "                         Menu Open VPN:                          "
         echo "================================================================="
         echo "[1] Testar velocidade      [5] Monitorar tun0 (vnstat)"
-        echo "[2] Usuários online        [6] Gerenciar usuário (Novo/Remover)"
-        echo "[3] Relatório de consumo   [7] Sair"
-        echo "[4] Consumo por usuário"
+        echo "[2] Usuários Online        [6] Gerenciar Usuários"
+        echo "[3] Relatório da VPN       [7] Sair"
+        echo "[4] Consumo dos Usuários"
         echo "================================================================="
         read -n 1 -p "Digite a opção: " OPCAO
         echo ""
