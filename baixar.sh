@@ -15,4 +15,4 @@ chmod +x configura_sistema.sh
 chmod +x menu.sh
 chmod +x open_vpn_conf.sh
 chmod +x usuarios.sh
-sudo ./menu.sh
+sudo ./configura_sistema.sh
