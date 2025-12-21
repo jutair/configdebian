@@ -141,7 +141,7 @@ done
 function menu {
 clear
 while true; do
-CURRENRT=(basename "$HOME")
+CURRENRT=$(basename "$HOME")
 echo "======================================"
 echo "    Menu principal:              "
 echo "======================================"
