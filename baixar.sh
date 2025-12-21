@@ -6,8 +6,10 @@ if [ "$EUID" -ne 0 ]; then
   echo -e "\033[0m"
   exit 1
 fi
+sudo apt install unzip -y
 wget https://github.com/jutair/configdebian/archive/refs/heads/main.zip
 unzip main.zip
+sudo rm main.zip
 cd /home/$USER/configdebian-main
 chmod +x configura_sistema.sh
 chmod +x menu.sh
