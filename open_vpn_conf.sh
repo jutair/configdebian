@@ -113,6 +113,8 @@ function user_consumo {
         printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
     done
     read -n 1 -s -p "Pressione qualquer tecla para voltar..."
+    ready dummy
+    exit
 }
 testa_velocidade() {
     clear
