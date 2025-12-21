@@ -114,6 +114,51 @@ function user_consumo {
     done
     read -n 1 -s -p "Pressione qualquer tecla para voltar..."
 }
+testa_velocidade() {
+    clear
+    echo "==============================================================="
+    echo "           TESTE DE VELOCIDADE - INTERFACE TUN0"
+    echo "==============================================================="
+    
+    # 1. Identifica o IP interno da interface tun0
+    IP_TUN0=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d'/' -f1)
+
+    # 2. Verifica se a interface tun0 existe/está ativa
+    if [ -z "$IP_TUN0" ]; then
+        echo -e "\033[31mErro: Interface tun0 não encontrada ou VPN está offline.\033[0m"
+        echo "Pressione ENTER para voltar..."
+        read dummy
+        return
+    fi
+
+    echo "IP da Interface: $IP_TUN0"
+    echo "Aguarde, testando a conexão via túnel VPN..."
+    echo "Isto pode levar até 1 minuto..."
+
+    # 3. Executa o teste usando o parâmetro --source para forçar a tun0
+    # Armazenamos em uma variável para processar os dados de uma vez só
+    RESULTADO=$(speedtest-cli --source "$IP_TUN0" --simple 2>/dev/null)
+
+    if [ -z "$RESULTADO" ]; then
+        echo -e "\033[31mErro ao realizar o teste. Verifique se o speedtest-cli está instalado.\033[0m"
+    else
+        PING=$(echo "$RESULTADO" | grep "Ping" | awk '{print $2}')
+        DOWNLOAD=$(echo "$RESULTADO" | grep "Download" | awk '{print $2}')
+        UPLOAD=$(echo "$RESULTADO" | grep "Upload" | awk '{print $2}')
+
+        clear
+        echo "==============================================================="
+        echo "           RESULTADO DA VELOCIDADE (TUN0)"
+        echo "==============================================================="
+        echo "Download : $DOWNLOAD Mbps"
+        echo "Upload   : $UPLOAD Mbps"
+        echo "Ping     : $PING ms"
+        echo "==============================================================="
+    fi
+
+    echo "Pressione ENTER para voltar ao menu..."
+    menu_ovp
+}
 function menu_ovp {
     while true; do
         clear
@@ -128,7 +173,7 @@ function menu_ovp {
         read -n 1 -p "Digite a opção: " OPCAO
         echo ""
         case $OPCAO in
-            1) speedtest-cli --simple ;;
+            1) testa_velocidade ;;
             2) user_online ;;
             3) vnstat -d -i tun0; read -n 1 ;;
             4) user_consumo ;;
