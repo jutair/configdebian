@@ -203,6 +203,96 @@ monitora_tun() {
     echo "Pressione ENTER para voltar ao menu..."
     read dummy
 }
+###############Função para gerenciar usuários####################################
+#!/bin/bash
+
+# Caminho para o instalador do Angristan
+INSTALLER="/home/jutair/configdebian-main/openvpn-install.sh"
+
+# Cores para o terminal
+VERDE='\033[0;32m'
+VERMELHO='\033[0;31m'
+SEM_COR='\033[0m'
+
+# Função para Adicionar Usuário
+user_gerencia() {
+add_user() {
+    clear
+    echo "======================================"
+    echo "      ADICIONAR NOVO USUÁRIO          "
+    echo "======================================"
+    read -p "Digite o nome do usuário: " CLIENT
+    
+    if [ -z "$CLIENT" ]; then
+        echo -e "${VERMELHO}Nome não pode ser vazio!${SEM_COR}"
+        sleep 2
+        return
+    fi
+
+    # Executa o instalador em modo não-interativo para adicionar o cliente
+    # MENU_OPTION=1 (Add), CLIENT=nome, PASS=1 (No password)
+    export MENU_OPTION="1"
+    export CLIENT="$CLIENT"
+    export PASS="1"
+    sudo -E "$INSTALLER"
+    
+    echo -e "\n${VERDE}Usuário $CLIENT criado com sucesso!${SEM_COR}"
+    echo "O arquivo .ovpn está na sua pasta Home."
+    echo "Pressione ENTER para voltar..."
+    read dummy
+}
+# Função para Remover Usuário
+remove_user() {
+    clear
+    echo "======================================"
+    echo "      REMOVER USUÁRIO EXISTENTE       "
+    echo "======================================"
+    
+    # Lista os usuários existentes no Easy-RSA para facilitar
+    if [ -f /etc/openvpn/server/easy-rsa/pki/index.txt ]; then
+        echo "Usuários encontrados:"
+        grep "^V" /etc/openvpn/server/easy-rsa/pki/index.txt | cut -d'=' -f2
+        echo "--------------------------------------"
+    fi
+
+    read -p "Digite o nome do usuário para REMOVER: " CLIENT
+    
+    if [ -z "$CLIENT" ]; then
+        return
+    fi
+
+    # Executa o instalador em modo não-interativo para revogar o cliente
+    # MENU_OPTION=2 (Revoke), CLIENT=nome
+    export MENU_OPTION="2"
+    export CLIENT="$CLIENT"
+    sudo -E "$INSTALLER"
+    
+    echo -e "\n${VERMELHO}Usuário $CLIENT removido!${SEM_COR}"
+    echo "Pressione ENTER para voltar..."
+    read dummy
+}
+
+# Menu de Gerenciamento
+while true; do
+    clear
+    echo "======================================"
+    echo "     GERENCIAMENTO DE USUÁRIOS        "
+    echo "======================================"
+    echo "[1] Adicionar Usuário"
+    echo "[2] Remover Usuário"
+    echo "[3] Voltar ao Menu Principal"
+    echo "======================================"
+    read -p "Opção: " OP
+    
+    case $OP in
+        1) add_user ;;
+        2) remove_user ;;
+        3) exit 0 ;;
+        *) echo "Opção inválida"; sleep 1 ;;
+    esac
+done
+}
+###########################Fim da função gerenciar usuários####################
 ##################################################################################
 menu_ovp() {
     while true; do
@@ -223,14 +313,7 @@ menu_ovp() {
             3) vnstat -d -i tun0; read -n 1 ;;
             4) user_consumo ;;
             5) vnstat -l -i tun0 ;;
-            6) 
-                if [ -f "$INSTALLER_PATH" ]; then
-                    sudo "$INSTALLER_PATH" interactive
-                else
-                    echo "Instalador não encontrado em $INSTALLER_PATH"
-                    sleep 2
-                fi
-                ;;
+            6) user_gerencia ;;
             7) exit 0 ;;
         esac
     done
