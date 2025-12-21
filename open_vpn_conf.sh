@@ -45,7 +45,7 @@ veri_openvpn () {
     fi
     echo -e "${VERDE}[OK] Sistema validado.${SEM_COR}\n"
     sleep 1
-    menu_ovp
+    mover_ovp
 }
 #################Função para ver usuários online#################
 user_online() {
@@ -219,7 +219,7 @@ listar_ovpns() {
 ####################Função baixa ovpn############################################
 baixa() {
     IP_WAN=$(curl -s ifconfig.me)
-    USER_ATUAL=$(whoami)
+    USER_ATUAL=${SUDO_USER:-$(whoami)}
     clear
     INDEX_FILE="/etc/openvpn/server/easy-rsa/pki/index.txt"
 
@@ -414,6 +414,52 @@ while true; do
 done
 }
 ###########################Fim da função gerenciar usuários####################
+###########################Função move ovp#####################################
+mover_ovp() {
+    ORIGEM="/root"
+    NOME_USUARIO=${SUDO_USER:-$(whoami)}
+    
+    # CORREÇÃO: Caminho absoluto começando com / e dentro da home do usuário
+    DESTINO="/home/$NOME_USUARIO/clientes_ovp"
+
+    # 1. Cria a pasta de destino se ela não existir
+    if [ ! -d "$DESTINO" ]; then
+        echo "Criando diretório $DESTINO..."
+        mkdir -p "$DESTINO"
+        # CORREÇÃO: Usa a variável informada pelo usuário
+        chown "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
+    fi
+
+    # 2. Verifica se existem arquivos .ovpn na root
+    ARQUIVOS_NA_ROOT=$(ls $ORIGEM/*.ovpn 2>/dev/null)
+
+    if [ -z "$ARQUIVOS_NA_ROOT" ]; then
+        echo -e "\033[33mNenhum novo arquivo .ovpn encontrado em $ORIGEM.\033[0m"
+    else
+        echo "Arquivos encontrados! Iniciando transferência..."
+        
+        for arq in $ARQUIVOS_NA_ROOT; do
+            NOME_ARQ=$(basename "$arq")
+            
+            # Move o arquivo para o destino
+            mv "$arq" "$DESTINO/"
+            
+            # CORREÇÃO: Ajusta permissões usando a variável correta
+            chown "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO/$NOME_ARQ"
+            chmod 644 "$DESTINO/$NOME_ARQ"
+            
+            echo -e "\033[32m[OK]\033[0m $NOME_ARQ -> $DESTINO"
+        done
+        echo -e "\n\033[32mTransferência concluída com sucesso!\033[0m"
+    fi
+
+    echo "==============================================================="
+    echo "Arquivos dos clientes OpenVPN estão em: $DESTINO"
+    echo "Aguarde 1 segundo..."
+    sleep 1
+    menu_ovp
+}
+##############################Fim da função move ovp#########################
 ##################################################################################
 menu_ovp() {
     while true; do
