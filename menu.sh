@@ -34,7 +34,7 @@ function relatorio_consumo {
 clear
 while true; do
 INTERFACE=$(ip route | grep default | awk '{print $5}')
-CURRENRT=$(whoami)
+CURRENRT=$(basename "$HOME")
 echo "======================================"
 echo "   Relatório de consumo de rede:      "
 echo "======================================"
@@ -93,7 +93,7 @@ done
 #####################################################
 clear
 while true; do
-CURRENRT=$(whoami)
+CURRENRT=(basename "$HOME")
 echo "======================================"
 echo "    Gerenciar rede:              "
 echo "======================================"
@@ -141,7 +141,7 @@ done
 function menu {
 clear
 while true; do
-CURRENRT=$(whoami)
+CURRENRT=(basename "$HOME")
 echo "======================================"
 echo "    Menu principal:              "
 echo "======================================"
