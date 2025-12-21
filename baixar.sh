@@ -1,3 +1,4 @@
+CURRENRT=${SUDO_USER:-$(whoami)}USER=
 # Verifica se o script foi executado como root
 if [ "$EUID" -ne 0 ]; then
   echo -e "\033[31mPor favor execute esse script como sudo!"
@@ -7,6 +8,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 wget https://github.com/jutair/configdebian/archive/refs/heads/main.zip
 unzip configdebian-main
+cd /home/configdebian-main
 chmod +x configura_sistema.sh
 chmod +x menu.sh
 chmod +x open_vpn_conf.sh
