@@ -7,27 +7,6 @@ if [ "$EUID" -ne 0 ]; then
   echo -e "\033[31mPor favor execute esse script como sudo!\033[0m"
   exit 1
 fi
-
-############ Verifica se já existe o script update_sistema.sh na pasta home ############
-ARQUIVOS=$(find "/home/${NOME_USUARIO}/update_sistema.sh" ! -path "$DESTINO/*" 2>/dev/null)
-
-if [ -z "$ARQUIVOS" ]; then
-    echo -e "Não foi encontrado script de atualização na pasta home!"
-    echo -e "Baixando um novo script..."
-else
-    echo "Removendo o script antigo da pasta home."
-    sudo rm "/home/${NOME_USUARIO}/update_sistema.sh"
-fi
-
-#################################################################################
-sudo wget -P "/home/${NOME_USUARIO}" "https://raw.githubusercontent.com/jutair/configdebian/refs/heads/main/update_sistema.sh"
-sudo chmod +x "/home/${NOME_USUARIO}/update_sistema.sh"
-
-sudo "/home/${NOME_USUARIO}/update_sistema.sh"
-
-# Remove a pasta antiga se existir
-[ -d "$DESTINO" ] && rm -rf "$DESTINO"
-
 echo "=========================================================================="
 echo "Buscando por atualização dos pacotes no repositório do debian..."
 echo "=========================================================================="
