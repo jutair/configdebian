@@ -121,11 +121,11 @@ function gerencia_rede {
 
 #########################################################
 function menu {
+IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
+IP_INTERNO=$(hostname -I | awk '{print $1}')
 CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
     while true; do
         #CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
-        IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
-        IP_INTERNO=$(ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
         clear
         echo "========================================================="
         echo "                Menu principal:                          "
