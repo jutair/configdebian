@@ -97,7 +97,7 @@ CURRENRT=${SUDO_USER:-$(whoami)}
 IP_EXTERNO=$(curl -s ifconfig.me)
 echo "======================================"
 echo "         Gerenciar rede:              "
-echo "IP externo da rede: $IP_EXTERNO
+echo "IP externo da rede: $IP_EXTERNO"
 echo "======================================"
 echo "Seu usuário: $CURRENRT"
 echo ""
