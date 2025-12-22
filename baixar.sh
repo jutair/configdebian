@@ -6,6 +6,8 @@ if [ "$EUID" -ne 0 ]; then
   echo -e "\033[0m"
   exit 1
 fi
+su
+apt update && apt upgrade -y
 apt install sudo -y
 sudo apt install unzip -y
 wget https://github.com/jutair/configdebian/archive/refs/heads/main.zip
