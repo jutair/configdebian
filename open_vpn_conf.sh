@@ -511,10 +511,13 @@ atualiza_ovp() {
 ###########################Fim da função atualiza ovp##############################
 ##################################################################################
 menu_ovp() {
+        IP_INT=$(hostname -I | awk '{print $1}')
+        IP_EXT=$(curl -4 -s ifconfig.me)
     while true; do
         clear
         echo "================================================================="
         echo "                         Menu Open VPN:                          "
+        echo "IP Interno: $IP_INT | IP Externo: $IP_EXT"
         echo "================================================================="
         echo "[1] Testar velocidade      [5] Monitorar tun0 (vnstat)"
         echo "[2] Usuários Online        [6] Gerenciar Usuários"
