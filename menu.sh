@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################Função de redes########################
 update_sistema() {
-NOME_USUARIO=${SUDO_USER:-$(whoami)}
+NOME_USUARIO=$(logname)
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
 # Verifica se o script foi executado como root
@@ -65,7 +65,7 @@ function gerencia_rede {
     function relatorio_consumo {
         while true; do
             INTERFACE=$(ip route | grep default | awk '{print $5}')
-            CURRENRT=${SUDO_USER:-$(whoami)}
+            CURRENRT=$(logname)
             clear
             echo "======================================"
             echo "   Relatório de consumo de rede:      "
@@ -91,7 +91,7 @@ function gerencia_rede {
 
     # Loop principal da gerencia_rede
     while true; do
-        CURRENRT=${SUDO_USER:-$(whoami)}
+        CURRENRT=$(logname)
         IP_EXTERNO=$(curl -s ifconfig.me)
         clear
         echo "======================================"
@@ -120,16 +120,16 @@ function gerencia_rede {
 
 #########################################################
 function menu {
-CURRENRT=${SUDO_USER:-$(whoami)}
+CURRENRT=$(logname)
     while true; do
-        #CURRENRT=${SUDO_USER:-$(whoami)}
+        #CURRENRT=$(logname)
         IP_EXTERNO=$(curl -s ifconfig.me)
         clear
         echo "========================================================="
         echo "                Menu principal:                          "
         echo "Ip externo da rede: $IP_EXTERNO"
         echo "Seu usuário: $CURRENRT"
-        echo "Versão do script: 22/12/2025"
+        echo "Versão do script: 22/12/2025-1"
         echo "========================================================="
         echo ""
         echo "[1] Gerenciar Sistema        [6] Gerenciar usuários"
