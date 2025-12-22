@@ -193,7 +193,7 @@ fi
 function gerencia_user {
 clear
 while true; do
-CURRENRT=$(logname)
+CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
 LIST=$(ls /home)
 echo "======================================"
 echo "    GERENCIAR USUÁRIOS:              "
