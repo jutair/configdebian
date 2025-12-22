@@ -129,7 +129,7 @@ CURRENRT=$(logname)
         echo "                Menu principal:                          "
         echo "Ip externo da rede: $IP_EXTERNO"
         echo "Seu usuário: $CURRENRT"
-        echo "Versão do script: 22/12/2025-1"
+        echo "Versão do script: 22/12/2025-2:18:05"
         echo "========================================================="
         echo ""
         echo "[1] Gerenciar Sistema        [6] Gerenciar usuários"
