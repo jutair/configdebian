@@ -133,9 +133,12 @@ echo -e "${VERDE}Copiando os scripts para a pasta do usuário Jutair${NC}"
 cp -r $HOME_HUMANA/configdebian-main /home/jutair
 echo -e "${VERDE}Copiando os scripts para a pasta do usuário Guest${NC}"
 cp -r $HOME_HUMANA/configdebian-main /home/guest
-echo Baixando os parâmetros do Servidor SSH
-echo Baixando as confiurações do Samba
-echo Baixando os scripts de backup
+echo "Baixando os parâmetros do Servidor SSH"
+echo "Baixando as confiurações do Samba"
+echo "Baixando os scripts de backup"
+echo **********************************************************************************************************************
+echo "Configurando para o fuso horário de Manaus-BR"
+sudo timedatectl set-timezone America/Manaus
 echo **********************************************************************************************************************
 echo -e "${AMARELO}Saindo...${NC}"
 echo -e "${AMARELO}Logue com o seu usuário${NC}"
