@@ -17,7 +17,7 @@ wget https://github.com/jutair/configdebian/archive/refs/heads/main.zip
 unzip main.zip
 sudo rm main.zip
 USER=${SUDO_USER:-$(whoami)}
-cd /home/$HOME_HUMANA/configdebian-main
+cd $HOME_HUMANA/configdebian-main
 chmod +x configura_sistema.sh
 chmod +x menu.sh
 chmod +x open_vpn_conf.sh
