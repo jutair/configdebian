@@ -1,5 +1,5 @@
 #!/bin/bash
-
+USER_ATUAL=${SUDO_USER:-$(whoami)}
 # Cores
 VERDE='\033[0;32m'
 VERMELHO='\033[31m'
@@ -14,7 +14,7 @@ fi
 
 # --- CONFIGURAÇÃO DE CAMINHOS ---
 # O Angristan usa geralmente estes caminhos:
-INSTALLER_PATH="/home/jutair/configdebian-main/openvpn-install.sh"
+INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
 [ ! -f "$INSTALLER_PATH" ] && INSTALLER_PATH="./openvpn-install.sh"
 
 # Caminho do LOG (Tenta os dois mais comuns)
@@ -23,11 +23,12 @@ STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
 
 # --- FUNÇÕES ---
 veri_openvpn () {
+USER_ATUAL=${SUDO_USER:-$(whoami)}
     if ! command -v openvpn >/dev/null 2>&1; then
         echo -e "${AMARELO}[AVISO] OpenVPN não instalado.${SEM_COR}"
-        mkdir -p "/home/jutair/configdebian-main"
-        wget -P "/home/jutair/configdebian-main" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-        chmod +x "$INSTALLER_PATH"
+        sudo mkdir -p "/home/$USER_ATUAL/configdebian-main"
+        sudo wget -P "/home/$USER_ATUAL/configdebian-main" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+        sudo chmod +x "$INSTALLER_PATH"
         sudo "$INSTALLER_PATH" install
     fi
 
@@ -39,9 +40,9 @@ veri_openvpn () {
     
     # Garante o index.txt para evitar erros no menu
     if [ ! -f "$INDEX_FILE" ]; then
-        mkdir -p "$(dirname "$INDEX_FILE")"
-        touch "$INDEX_FILE"
-        chmod 644 "$INDEX_FILE"
+        sudo mkdir -p "$(dirname "$INDEX_FILE")"
+        sudo touch "$INDEX_FILE"
+        sudo chmod 644 "$INDEX_FILE"
     fi
     echo -e "${VERDE}[OK] Sistema validado.${SEM_COR}\n"
     mover_ovp
@@ -334,8 +335,9 @@ listar_usuarios() {
 ####################Fim da função listar usuários################################
 ###############Função para gerenciar usuários####################################
 user_gerencia() {
+USER_ATUAL=${SUDO_USER:-$(whoami)}
 # Caminho para o instalador do Angristan
-INSTALLER="/home/jutair/configdebian-main/openvpn-install.sh"
+INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
 
 # Cores para o terminal
 VERDE='\033[0;32m'
