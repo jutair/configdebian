@@ -192,23 +192,17 @@ monitora_tun() {
         read dummy
         return
     fi
-
     # TRAP: Captura o CTRL+C (SIGINT) para que ele não feche o script inteiro
     # O ':' significa "não faça nada/ignore", permitindo que o script continue após o comando ser interrompido
     trap ':' INT
-
     # Roda o vnstat em tempo real
     vnstat -l -i tun0
-
     # LIMPEZA DO TRAP: Remove a captura para que o CTRL+C volte ao normal depois
     trap - INT
-
-    echo ""
     echo "---------------------------------------------------------------"
     echo "Monitoramento encerrado com sucesso."
-    echo "Pressione ENTER para voltar ao menu..."
+    read -p "Pressione ENTER para voltar..." dummy
     # Agora o script vai esperar o ENTER corretamente
-    read dummy
 }
 ###############Função lista ovpns################################################
 listar_ovpns() {
