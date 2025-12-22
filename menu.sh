@@ -93,7 +93,7 @@ function gerencia_rede {
     # Loop principal da gerencia_rede
     while true; do
         CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
-        IP_EXTERNO=$(curl -s ifconfig.me)
+        IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
         clear
         echo "======================================"
         echo "           Gerenciar rede:            "
@@ -124,7 +124,7 @@ function menu {
 CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
     while true; do
         #CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
-        IP_EXTERNO=$(curl -s ifconfig.me)
+        IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
         clear
         echo "========================================================="
         echo "                Menu principal:                          "
