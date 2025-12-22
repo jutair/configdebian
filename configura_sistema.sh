@@ -1,4 +1,7 @@
-# Verifica se o script foi executado como root
+# Pega o nome do primeiro usuário humano criado no sistema
+USUARIO_HUMANO=$(awk -F: '$3 >= 1000 && $3 != 65534 {print $1; exit}' /etc/passwd)
+# Pega a home desse usuário
+HOME_HUMANA=$(getent passwd "$USUARIO_HUMANO" | cut -d: -f6)
 if [ "$EUID" -ne 0 ]; then
   echo -e "\033[31mPor favor execute esse script como sudo!"
   echo -e "\033[31msudo ./configura_sistema.sh"
@@ -64,6 +67,10 @@ echo -e "${VERDE}Firewall Iniciado!${NC}"
 echo **********************************************************************************************************************
 echo -e "${VERDE}Criando os usuários${NC}"
 ####################################Apenas em servidor VPS#################################################################
+echo **********************************************************************************************************************
+echo -e "${VERDE}Usuário Jutair criado!${NC}"
+echo -e "${VERDE}Crie uma senha para o usuário Jutair!${NC}"
+sleep 1
 sudo useradd -G sudo -m jutair -s /bin/bash ##Apenas em servidor VPS
 sudo passwd jutair
 sudo usermod -aG sudo jutair
@@ -77,6 +84,8 @@ chmod 700 /home/jutair/.ssh
 chmod 600 /home/jutair/.ssh/authorized_keys
 ###########################################################################################################################
 sudo useradd -G sudo -m guest -s /bin/bash
+echo -e "${VERDE}Usuário Guest criado!${NC}"
+echo -e "${VERDE}Crie uma senha para o usuário Guest!${NC}"
 sudo passwd guest
 # Cria a pasta .ssh no novo usuário
 mkdir -p /home/guest/.ssh
@@ -95,6 +104,10 @@ cp /etc/ssh/sshd_config /home/jutair/Backup
 cp /etc/samba/smb.conf /home/jutair/Backup
 cd
 echo **********************************************************************************************************************
+echo -e "${VERDE}Copiando os scripts para a pasta do usuário Jutair${NC}"
+cp -r $HOME_HUMANA/configdebian-main /home/jutair
+echo -e "${VERDE}Copiando os scripts para a pasta do usuário Guest${NC}"
+cp -r $HOME_HUMANA/configdebian-main /home/guest
 echo Baixando os parâmetros do Servidor SSH
 echo Baixando as confiurações do Samba
 echo Baixando os scripts de backup
