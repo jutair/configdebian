@@ -89,6 +89,7 @@ fi
 sudo chown -R jutair:jutair /home/jutair/.ssh
 sudo chmod 700 /home/jutair/.ssh
 sudo chmod 600 /home/jutair/.ssh/authorized_keys
+sudo mkdir -p "/home/jutair/transfer"
 echo "-------------------------------------------------------"
 echo "✅ Usuário 'Jutair' configurado com sucesso."
 echo "-------------------------------------------------------"
@@ -102,7 +103,6 @@ echo "guest:SENHA_AQUI"
 sudo passwd guest
 # 2. Configura o diretório SSH
 sudo mkdir -p /home/guest/.ssh
-
 # 3. Verifica e copia a chave autorizada do root
 if [ -f /root/.ssh/authorized_keys ]; then
     sudo cp /root/.ssh/authorized_keys /home/guest/.ssh/
@@ -111,13 +111,12 @@ else
     echo "⚠️  Aviso: Nenhuma chave encontrada em /root. Criando arquivo vazio."
     sudo touch /home/guest/.ssh/authorized_keys
 fi
-
 # 4. Ajuste CRÍTICO de permissões
 # O dono DEVE ser o guest para o SSH permitir o login
 sudo chown -R guest:guest /home/guest/.ssh
 sudo chmod 700 /home/guest/.ssh
 sudo chmod 600 /home/guest/.ssh/authorized_keys
-
+sudo mkdir -p "/home/guest/transfer"
 # 5. Confirmação de restrição
 echo "-------------------------------------------------------"
 echo "✅ Usuário 'guest' configurado com sucesso."
