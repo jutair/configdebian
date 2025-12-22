@@ -1,5 +1,5 @@
 #!/bin/bash
-USER_ATUAL=$(logname)
+USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
 # Cores
 VERDE='\033[0;32m'
 VERMELHO='\033[31m'
@@ -23,7 +23,7 @@ STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
 
 # --- FUNÇÕES ---
 veri_openvpn () {
-USER_ATUAL=$(logname)
+USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     if ! command -v openvpn >/dev/null 2>&1; then
         echo -e "${AMARELO}[AVISO] OpenVPN não instalado.${SEM_COR}"
         sudo mkdir -p "/home/$USER_ATUAL/configdebian-main"
@@ -226,7 +226,7 @@ listar_ovpns() {
 ####################Função baixa ovpn############################################
 baixa() {
     IP_WAN=$(curl -s ifconfig.me)
-    USER_ATUAL=$(logname)
+    USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     clear
     INDEX_FILE="/etc/openvpn/server/easy-rsa/pki/index.txt"
 
@@ -335,7 +335,7 @@ listar_usuarios() {
 ####################Fim da função listar usuários################################
 ###############Função para gerenciar usuários####################################
 user_gerencia() {
-USER_ATUAL=$(logname)
+USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
 # Caminho para o instalador do Angristan
 INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
 
@@ -370,7 +370,7 @@ add_user() {
 
 # Função para Remover Usuário
 remove_user() {
-USER_ATUAL=$(logname)
+USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     clear
     echo "======================================"
     echo "      REMOVER USUÁRIO EXISTENTE       "
@@ -429,7 +429,7 @@ done
 mover_ovp() {
     clear
     # Identifica o usuário real (mesmo usando sudo)
-    NOME_USUARIO=$(logname)
+    NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
     DESTINO="/home/$NOME_USUARIO/clientes_ovp"
     # 1. Cria o destino e ajusta permissões da pasta
     if [ ! -d "$DESTINO" ]; then
@@ -474,7 +474,7 @@ mover_ovp() {
 atualiza_ovp() {
     clear
     # Identifica o usuário real (mesmo usando sudo)
-    NOME_USUARIO=$(logname)
+    NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
     DESTINO="/home/$NOME_USUARIO/clientes_ovp"
     # 1. Cria o destino e ajusta permissões da pasta
     if [ ! -d "$DESTINO" ]; then
