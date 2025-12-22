@@ -183,33 +183,26 @@ monitora_tun() {
     echo "          MONITORANDO TUN0 EM TEMPO REAL (Live)"
     echo "      Pressione CTRL+C para parar e ver o resumo"
     echo "==============================================================="
-    echo ""
     
     if ! ip link show tun0 > /dev/null 2>&1; then
-        echo -e "\033[31mErro: Interface tun0 não está ativa no momento.\033[0m"
-        read -p "Pressione ENTER para voltar..." dummy
+        echo -e "${VERMELHO}Erro: Interface tun0 não está ativa.${SEM_COR}"
+        read -p "Pressione ENTER..." dummy
         return
     fi
 
-    # 1. Ignora o sinal de interrupção no script principal temporariamente
-    trap '' INT
+    # Bloqueia o CTRL+C para o script pai (menu)
+    trap '' INT 
 
-    # 2. Executa o vnstat em um subshell (os parênteses)
-    # Dentro dos parênteses, o CTRL+C vai matar apenas o vnstat
-    ( 
-      trap - INT # Restaura o sinal apenas para o vnstat
-      vnstat -l -i tun0 
-    )
+    # Roda o vnstat em um subshell que aceita o CTRL+C
+    ( trap - INT; vnstat -l -i tun0 )
 
-    # 3. Após o CTRL+C, o código CONTINUA aqui embaixo
-    echo ""
-    echo "---------------------------------------------------------------"
-    echo "Monitoramento encerrado com sucesso."
+    echo -e "\n---------------------------------------------------------------"
+    echo "Monitoramento encerrado."
     
-    # Restaura o comportamento padrão do CTRL+C para o resto do script
-    trap - INT
+    # Restaura o CTRL+C
+    trap - INT 
 
-    # Agora o read vai segurar a tela obrigatoriamente
+    # OBRIGA o usuário a apertar ENTER antes de voltar ao menu
     echo -n "Pressione [ENTER] para voltar ao menu..."
     read dummy
 }
