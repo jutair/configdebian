@@ -16,7 +16,7 @@ sudo apt install unzip -y
 wget https://github.com/jutair/configdebian/archive/refs/heads/main.zip
 unzip main.zip
 sudo rm main.zip
-USER=${SUDO_USER:-$(whoami)}
+USER=${SUDO_USER:$(logname)
 cd $HOME_HUMANA/configdebian-main
 chmod +x configura_sistema.sh
 chmod +x menu.sh
