@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################Função de redes########################
 update_sistema() {
-NOME_USUARIO=$(logname)
+NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
 # Verifica se o script foi executado como root
@@ -65,7 +65,7 @@ function gerencia_rede {
     function relatorio_consumo {
         while true; do
             INTERFACE=$(ip route | grep default | awk '{print $5}')
-            CURRENRT=$(logname)
+            CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
             clear
             echo "======================================"
             echo "   Relatório de consumo de rede:      "
@@ -91,7 +91,7 @@ function gerencia_rede {
 
     # Loop principal da gerencia_rede
     while true; do
-        CURRENRT=$(logname)
+        CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         IP_EXTERNO=$(curl -s ifconfig.me)
         clear
         echo "======================================"
@@ -120,9 +120,9 @@ function gerencia_rede {
 
 #########################################################
 function menu {
-CURRENRT=$(logname)
+CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
     while true; do
-        #CURRENRT=$(logname)
+        #CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         IP_EXTERNO=$(curl -s ifconfig.me)
         clear
         echo "========================================================="
