@@ -134,7 +134,7 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         echo "                    MENU PRINCIPAL                               "
         echo "Usuário:$CURRENRT"
         echo "================================================================="
-        echo "DATA: $DATA_ATUAL                           HORA: $HORA_ATUAL (MANAUS)"
+        echo "DATA: $DATA_ATUAL                          HORA: $HORA_ATUAL (MANAUS)"
         echo "IP Interno: $IP_INTERNO | IP Externo: $IP_EXTERNO"
         echo "================================================================="
         echo "Versão do script: 22/12/2025-3:18:57"
