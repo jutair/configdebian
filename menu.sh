@@ -121,6 +121,7 @@ function gerencia_rede {
 
 #########################################################
 function menu {
+sudo ntpdate-debian
 IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
 IP_INTERNO=$(hostname -I | awk '{print $1}')
 CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
