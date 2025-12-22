@@ -20,7 +20,7 @@ else
 fi
 
 #################################################################################
-sudo wget -P "/home/${NOME_USUARIO}" "https://link_do_seu_script/update_sistema.sh"
+sudo wget -P "/home/${NOME_USUARIO}" "https://raw.githubusercontent.com/jutair/configdebian/refs/heads/main/update_sistema.sh"
 sudo chmod +x "/home/${NOME_USUARIO}/update_sistema.sh"
 
 sudo "/home/${NOME_USUARIO}/update_sistema.sh"
