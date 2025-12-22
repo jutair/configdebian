@@ -44,7 +44,6 @@ veri_openvpn () {
         chmod 644 "$INDEX_FILE"
     fi
     echo -e "${VERDE}[OK] Sistema validado.${SEM_COR}\n"
-    sleep 1
     mover_ovp
 }
 #################Função para ver usuários online#################
@@ -364,10 +363,12 @@ add_user() {
     echo -e "\n${VERDE}Processo finalizado para: $CLIENT${SEM_COR}"
     echo "Pressione ENTER para voltar..."
     read dummy
+    atualiza_ovp
 }
 
 # Função para Remover Usuário
 remove_user() {
+USER_ATUAL=${SUDO_USER:-$(whoami)}
     clear
     echo "======================================"
     echo "      REMOVER USUÁRIO EXISTENTE       "
@@ -390,10 +391,11 @@ remove_user() {
 
     # Nova sintaxe do Angristan: client revoke <nome>
     sudo "$INSTALLER" client revoke "$CLIENT"
-    
+    sudo rm /home/$USER_ATUAL/clientes_ovp/$CLIENT.ovpn
     echo -e "\n${VERMELHO}Processo de revogação finalizado: $CLIENT${SEM_COR}"
     echo "Pressione ENTER para voltar..."
     read dummy
+    atualiza_ovp
 }
 
 # Menu de Gerenciamento
@@ -423,50 +425,92 @@ done
 ###########################Fim da função gerenciar usuários####################
 ###########################Função move ovp#####################################
 mover_ovp() {
-    ORIGEM="/root"
+    clear
+    # Identifica o usuário real (mesmo usando sudo)
     NOME_USUARIO=${SUDO_USER:-$(whoami)}
-    
-    # CORREÇÃO: Caminho absoluto começando com / e dentro da home do usuário
     DESTINO="/home/$NOME_USUARIO/clientes_ovp"
-
-    # 1. Cria a pasta de destino se ela não existir
+    # 1. Cria o destino e ajusta permissões da pasta
     if [ ! -d "$DESTINO" ]; then
-        echo "Criando diretório $DESTINO..."
+        echo "Criando pasta de destino em $DESTINO..."
         mkdir -p "$DESTINO"
-        # CORREÇÃO: Usa a variável informada pelo usuário
         chown "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
     fi
 
-    # 2. Verifica se existem arquivos .ovpn na root
-    ARQUIVOS_NA_ROOT=$(ls $ORIGEM/*.ovpn 2>/dev/null)
+    # 2. Busca arquivos .ovpn em /root e /home (excluindo a própria pasta destino)
+    # O 'find' ignora a pasta de destino para não entrar em loop ou erro de permissão
+    ARQUIVOS=$(find /root /home -name "*.ovpn" ! -path "$DESTINO/*" 2>/dev/null)
 
-    if [ -z "$ARQUIVOS_NA_ROOT" ]; then
-        echo -e "\033[33mNenhum novo arquivo .ovpn encontrado em $ORIGEM.\033[0m"
+    if [ -z "$ARQUIVOS" ]; then
+        echo -e "\033[33mNenhum arquivo .ovpn novo foi localizado fora do destino.\033[0m"
     else
-        echo "Arquivos encontrados! Iniciando transferência..."
+        echo "Arquivos localizados. Movendo para $DESTINO..."
         
-        for arq in $ARQUIVOS_NA_ROOT; do
+        # O IFS= read ajuda a lidar com nomes de arquivos que tenham espaços
+        echo "$ARQUIVOS" | while read -r arq; do
             NOME_ARQ=$(basename "$arq")
             
-            # Move o arquivo para o destino
+            # Move o arquivo
             mv "$arq" "$DESTINO/"
             
-            # CORREÇÃO: Ajusta permissões usando a variável correta
+            # Ajusta o dono para o usuário não-root conseguir baixar via SCP
             chown "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO/$NOME_ARQ"
             chmod 644 "$DESTINO/$NOME_ARQ"
             
-            echo -e "\033[32m[OK]\033[0m $NOME_ARQ -> $DESTINO"
+            echo -e "\033[32m[MOVIDO]\033[0m $NOME_ARQ"
         done
         echo -e "\n\033[32mTransferência concluída com sucesso!\033[0m"
     fi
 
     echo "==============================================================="
-    echo "Arquivos dos clientes OpenVPN estão em: $DESTINO"
-    echo "Aguarde 1 segundo..."
+    echo "Localização atual: $DESTINO"
     sleep 1
     menu_ovp
 }
 ##############################Fim da função move ovp#########################
+##############################Atualiza ovp#######################################
+###########################Função move ovp#####################################
+atualiza_ovp() {
+    clear
+    # Identifica o usuário real (mesmo usando sudo)
+    NOME_USUARIO=${SUDO_USER:-$(whoami)}
+    DESTINO="/home/$NOME_USUARIO/clientes_ovp"
+    # 1. Cria o destino e ajusta permissões da pasta
+    if [ ! -d "$DESTINO" ]; then
+        echo "Criando pasta de destino em $DESTINO..."
+        mkdir -p "$DESTINO"
+        chown "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
+    fi
+
+    # 2. Busca arquivos .ovpn em /root e /home (excluindo a própria pasta destino)
+    # O 'find' ignora a pasta de destino para não entrar em loop ou erro de permissão
+    ARQUIVOS=$(find /root /home -name "*.ovpn" ! -path "$DESTINO/*" 2>/dev/null)
+
+    if [ -z "$ARQUIVOS" ]; then
+        echo -e "\033[33mNenhum arquivo .ovpn novo foi localizado fora do destino.\033[0m"
+    else
+        echo "Arquivos localizados. Movendo para $DESTINO..."
+        
+        # O IFS= read ajuda a lidar com nomes de arquivos que tenham espaços
+        echo "$ARQUIVOS" | while read -r arq; do
+            NOME_ARQ=$(basename "$arq")
+            
+            # Move o arquivo
+            mv "$arq" "$DESTINO/"
+            
+            # Ajusta o dono para o usuário não-root conseguir baixar via SCP
+            chown "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO/$NOME_ARQ"
+            chmod 644 "$DESTINO/$NOME_ARQ"
+            
+            echo -e "\033[32m[MOVIDO]\033[0m $NOME_ARQ"
+        done
+        echo -e "\n\033[32mTransferência concluída com sucesso!\033[0m"
+    fi
+
+    echo "==============================================================="
+    echo "Localização atual: $DESTINO"
+    user_gerencia
+}
+###########################Fim da função atualiza ovp##############################
 ##################################################################################
 menu_ovp() {
     while true; do
@@ -487,7 +531,7 @@ menu_ovp() {
             3) vnstat -d -i tun0; read -n 1 ;;
             4) user_consumo ;;
             5) vnstat -l -i tun0 ;;
-            6) user_gerencia ;;
+            6) atualiza_ovp ;;
             7) exit 0 ;;
         esac
     done
