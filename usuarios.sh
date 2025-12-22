@@ -12,7 +12,7 @@ if [ "$EUID" -ne 0 ]; then
   echo -e "\033[0m"
   exit 1
 fi
-ORIGEM="/home/jutair/.ssh/authorized_keys"
+ORIGEM="root/.ssh/authorized_keys"
 echo "======================================"
 echo "    CADASTRO DE USUÁRIOS              "
 echo "======================================"
@@ -20,6 +20,14 @@ echo "======================================"
 read -p "Digite o nome do novo usuário: " NOME_USUARIO
 sudo useradd -G sudo -m $NOME_USUARIO -s /bin/bash
 sudo mkdir -p "/home/$NOME_USUARIO/.ssh"
+# 3. Tenta copiar a chave do root, mas verifica se ela existe primeiro
+if [ -f /root/.ssh/authorized_keys ]; then
+    sudo cp /root/.ssh/authorized_keys /home/jutair/.ssh/
+    echo "✅ Chaves copiadas com sucesso de /root"
+else
+    echo "⚠️  Aviso: /root/.ssh/authorized_keys não existe. Criando arquivo vazio."
+    sudo touch /home/$NOME_USUARIO/.ssh/authorized_keys
+fi
 sudo cp "$ORIGEM" "/home/$NOME_USUARIO/.ssh/authorized_keys"
 sudo mkdir -p "/home/$NOME_USUARIO/.ssh"
 sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "/home/$NOME_USUARIO/.ssh"
