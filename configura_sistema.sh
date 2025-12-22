@@ -70,8 +70,8 @@ echo -e "${VERDE}Criando os usuários${NC}"
 echo **********************************************************************************************************************
 # 1. Cria o usuário (se já não existir)
 sudo useradd -G sudo -m jutair -s /bin/bash 2>/dev/null
-echo "jutair:SUA_SENHA_AQUI" | sudo chpasswd
-
+echo "jutair:SUA_SENHA_AQUI"
+sudo passwd jutair
 # 2. Cria a pasta .ssh com o dono correto desde o início
 sudo mkdir -p /home/jutair/.ssh
 
@@ -98,8 +98,8 @@ echo "-------------------------------------------------------"
 # 1. Cria o usuário guest
 # -m cria a home, -s define o shell padrão
 sudo useradd -m -s /bin/bash guest 2>/dev/null
-echo "guest:SENHA_AQUI" | sudo chpasswd
-
+echo "guest:SENHA_AQUI"
+sudo passwd guest
 # 2. Configura o diretório SSH
 sudo mkdir -p /home/guest/.ssh
 
