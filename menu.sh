@@ -146,7 +146,8 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         echo "[3] Ver logs do sistema      [8] Gerenciar OpenVpn"
         echo "[5] Fazer Backup             [9] Sair"
         echo ""
-        read -n 1 -p "Digite a opção desejada: " OPCAO
+        echo -n "Digite a opção desejada: "
+        read -n 1 -t 58 OPCAO
         echo ""
         case $OPCAO in
             [1]) echo "Em desenvolvimento..." ; sleep 1 ;;
