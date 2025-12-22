@@ -185,24 +185,33 @@ monitora_tun() {
     echo "==============================================================="
     echo ""
     
-    # Verifica se a interface tun0 existe
     if ! ip link show tun0 > /dev/null 2>&1; then
         echo -e "\033[31mErro: Interface tun0 não está ativa no momento.\033[0m"
         read -p "Pressione ENTER para voltar..." dummy
         return
     fi
 
-    # TRAP MELHORADO: 
-    # Quando o CTRL+C (INT) for pressionado, ele executa as mensagens 
-    # e o 'read' antes de liberar o script.
-    trap 'echo -e "\n---------------------------------------------------------------\nMonitoramento encerrado.\n"; read -p "Pressione ENTER para voltar ao menu..." dummy; trap - INT; return' INT
+    # 1. Ignora o sinal de interrupção no script principal temporariamente
+    trap '' INT
 
-    # Roda o vnstat em tempo real
-    # Note que usamos o 'return' dentro do trap, então o vnstat para e a função encerra após o read.
-    vnstat -l -i tun0
+    # 2. Executa o vnstat em um subshell (os parênteses)
+    # Dentro dos parênteses, o CTRL+C vai matar apenas o vnstat
+    ( 
+      trap - INT # Restaura o sinal apenas para o vnstat
+      vnstat -l -i tun0 
+    )
 
-    # Caso o vnstat pare por algum outro motivo que não seja CTRL+C:
+    # 3. Após o CTRL+C, o código CONTINUA aqui embaixo
+    echo ""
+    echo "---------------------------------------------------------------"
+    echo "Monitoramento encerrado com sucesso."
+    
+    # Restaura o comportamento padrão do CTRL+C para o resto do script
     trap - INT
+
+    # Agora o read vai segurar a tela obrigatoriamente
+    echo -n "Pressione [ENTER] para voltar ao menu..."
+    read dummy
 }
 ###############Função lista ovpns################################################
 listar_ovpns() {
