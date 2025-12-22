@@ -68,34 +68,60 @@ echo ***************************************************************************
 echo -e "${VERDE}Criando os usuários${NC}"
 ####################################Apenas em servidor VPS#################################################################
 echo **********************************************************************************************************************
-echo -e "${VERDE}Usuário Jutair criado!${NC}"
-echo -e "${VERDE}Crie uma senha para o usuário Jutair!${NC}"
-sleep 1
-sudo useradd -G sudo -m jutair -s /bin/bash ##Apenas em servidor VPS
-sudo passwd jutair
-sudo usermod -aG sudo jutair
-# Cria a pasta .ssh no novo usuário
-mkdir -p /home/jutair/.ssh
-# Copia as chaves autorizadas do root para o usuário
-cp /root/.ssh/authorized_keys /home/jutair/.ssh/
-# Ajusta as permissões
-chown -R root:jutair /home/jutair/.ssh
-chmod 700 /home/jutair/.ssh
-chmod 600 /home/jutair/.ssh/authorized_keys
+# 1. Cria o usuário (se já não existir)
+sudo useradd -G sudo -m jutair -s /bin/bash 2>/dev/null
+echo "jutair:SUA_SENHA_AQUI" | sudo chpasswd
+
+# 2. Cria a pasta .ssh com o dono correto desde o início
+sudo mkdir -p /home/jutair/.ssh
+
+# 3. Tenta copiar a chave do root, mas verifica se ela existe primeiro
+if [ -f /root/.ssh/authorized_keys ]; then
+    sudo cp /root/.ssh/authorized_keys /home/jutair/.ssh/
+    echo "✅ Chaves copiadas com sucesso de /root"
+else
+    echo "⚠️  Aviso: /root/.ssh/authorized_keys não existe. Criando arquivo vazio."
+    sudo touch /home/jutair/.ssh/authorized_keys
+fi
+
+# 4. AJUSTE DE PERMISSÕES (O ponto mais importante)
+# O dono deve ser o USUÁRIO, não o root. Se o dono for root, o SSH rejeita o login.
+sudo chown -R jutair:jutair /home/jutair/.ssh
+sudo chmod 700 /home/jutair/.ssh
+sudo chmod 600 /home/jutair/.ssh/authorized_keys
+echo "-------------------------------------------------------"
+echo "✅ Usuário 'Jutair' configurado com sucesso."
+echo "-------------------------------------------------------"
 ###########################################################################################################################
-sudo useradd -G sudo -m guest -s /bin/bash
-echo -e "${VERDE}Usuário Guest criado!${NC}"
-echo -e "${VERDE}Crie uma senha para o usuário Guest!${NC}"
-sudo passwd guest
-# Cria a pasta .ssh no novo usuário
-mkdir -p /home/guest/.ssh
-# Copia as chaves autorizadas do root para o usuário
-cp /root/.ssh/authorized_keys /home/jutair/.ssh/
-# Ajusta as permissões
-# O SSH não funciona se as permissões estiverem abertas demais
-chown -R root:guest /home/guest/.ssh
-chmod 700 /home/guest/.ssh
-chmod 600 /home/guest/.ssh/authorized_keys
+#!/bin/bash
+
+# 1. Cria o usuário guest
+# -m cria a home, -s define o shell padrão
+sudo useradd -m -s /bin/bash guest 2>/dev/null
+echo "guest:SENHA_AQUI" | sudo chpasswd
+
+# 2. Configura o diretório SSH
+sudo mkdir -p /home/guest/.ssh
+
+# 3. Verifica e copia a chave autorizada do root
+if [ -f /root/.ssh/authorized_keys ]; then
+    sudo cp /root/.ssh/authorized_keys /home/guest/.ssh/
+    echo "✅ Chaves copiadas para o usuário guest."
+else
+    echo "⚠️  Aviso: Nenhuma chave encontrada em /root. Criando arquivo vazio."
+    sudo touch /home/guest/.ssh/authorized_keys
+fi
+
+# 4. Ajuste CRÍTICO de permissões
+# O dono DEVE ser o guest para o SSH permitir o login
+sudo chown -R guest:guest /home/guest/.ssh
+sudo chmod 700 /home/guest/.ssh
+sudo chmod 600 /home/guest/.ssh/authorized_keys
+
+# 5. Confirmação de restrição
+echo "-------------------------------------------------------"
+echo "✅ Usuário 'guest' configurado com sucesso."
+echo "-------------------------------------------------------"
 echo **********************************************************************************************************************
 echo -e "${VERDE}Fazendo BACKUP das configurações${NC}"
 cd /home/jutair
