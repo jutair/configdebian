@@ -127,12 +127,16 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
     while true; do
         #CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         clear
-        # Armazena a hora de Manaus em uma variável
-        HORA_MANAUS=$(TZ='America/Manaus' date '+%H:%M:%S')
-        echo "==============================================================="
-        echo "            Hora local (Manaus): $HORA_MANAUS"
-        echo "==============================================================="
-        echo "                  MENU PRINCIPAL:                              "
+        HORA_ATUAL=$(date '+%H:%M:%S')
+        # Captura a data atual
+        DATA_ATUAL=$(date '+%d/%m/%Y')
+        echo "================================================================="
+        echo "                    MENU PRINCIPAL                               "
+        echo "Usuário:$CURRENRT"
+        echo "================================================================="
+        echo " DATA: $DATA_ATUAL | HORA: $HORA_ATUAL"
+        echo "IP Interno: $IP_INT | IP Externo: $IP_EXT"
+        echo "================================================================="
         echo "Ip externo da rede: $IP_EXTERNO"
         echo "Ip interno da rede: $IP_INTERNO"
         echo "Seu usuário: $CURRENRT"
