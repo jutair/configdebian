@@ -27,6 +27,9 @@ sudo apt update && sudo apt upgrade -y
 echo **********************************************************************************************************************
 echo -e "${VERDE}Instalando as ferramentas basicas do sistema${NC}"
 sudo apt install htop -y
+sudo apt install ntpsec-ntpdate -y
+sudo ntpdate-debian
+sudo timedatectl set-ntp true
 echo **********************************************************************************************************************
 echo -e "${VERDE}Instalando os pacotes básicos de rede${NC}"
 sudo apt install net-tools -y
