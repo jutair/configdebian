@@ -193,7 +193,7 @@ fi
 function gerencia_user {
 clear
 while true; do
-CURRENRT=${SUDO_USER:-$(whoami)}
+CURRENRT=$(logname)
 LIST=$(ls /home)
 echo "======================================"
 echo "    GERENCIAR USUÁRIOS:              "
