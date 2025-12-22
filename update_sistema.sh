@@ -1,5 +1,5 @@
 #!/bin/bash
-NOME_USUARIO=$(logname)
+NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
 # Verifica se o script foi executado como root
@@ -13,16 +13,16 @@ echo "==========================================================================
 sudo apt update && sudo apt upgrade -y
 
 echo "=========================================================================="
-echo "Baixando os scripts no repositório do github..."
+echo "Baixando scripts do GitHub..."
 echo "=========================================================================="
-sudo wget -p /home/${NOME_USUARIO}/ https://github.com/jutair/configdebian/archive/refs/heads/main.zip
-
+sudo wget -O "/home/$NOME_USUARIO/main.zip" "https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
 echo "=========================================================================="
 echo "Extraindo os scripts para pasta do usuário..."
 echo "=========================================================================="
-unzip /home/${NOME_USUARIO}/main.zip -d /home/${NOME_USUARIO}/
-sudo rm /home/${NOME_USUARIO}/main.zip
-
+sudo unzip -o "/home/$NOME_USUARIO/main.zip" -d "/home/$NOME_USUARIO/"
+sudo rm "/home/$NOME_USUARIO/main.zip"
+# Arquivo gerado como sudo deve retornar ao usuário original
+sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
 echo "=========================================================================="
 echo "Acessando os novos scripts na pasta do usuário..."
 echo "=========================================================================="
@@ -34,5 +34,5 @@ chmod +x configura_sistema.sh menu.sh open_vpn_conf.sh usuarios.sh update_sistem
 echo "=========================================================================="
 echo "Atualização concluída! Iniciando o sistema..."
 echo "=========================================================================="
-sleep 10 #aumenta o tempo 
+sleep 5 #aumenta o tempo 
 sudo ./menu.sh
