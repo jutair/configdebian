@@ -1,5 +1,35 @@
 #!/bin/bash
 ################################Função de redes########################
+update_sistema() {
+NOME_USUARIO=${SUDO_USER:-$(whoami)}
+DESTINO="/home/$NOME_USUARIO/configdebian-main"
+
+# Verifica se o script foi executado como root
+if [ "$EUID" -ne 0 ]; then
+  echo -e "\033[31mPor favor execute esse script como sudo!\033[0m"
+  exit 1
+fi
+
+############ Verifica se já existe o script update_sistema.sh na pasta home ############
+ARQUIVOS=$(find "/home/${NOME_USUARIO}/update_sistema.sh" ! -path "$DESTINO/*" 2>/dev/null)
+
+if [ -z "$ARQUIVOS" ]; then
+    echo -e "Não foi encontrado script de atualização na pasta home!"
+else
+    echo "Removendo o script antigo da pasta home."
+    sudo rm "/home/${NOME_USUARIO}/update_sistema.sh"
+fi
+
+#################################################################################
+echo "=========================================================================="
+echo "Baixando um novo script de atualização..."
+echo "=========================================================================="
+sudo wget -P "/home/${NOME_USUARIO}" "https://raw.githubusercontent.com/jutair/configdebian/refs/heads/main/update_sistema.sh"
+sudo chmod +x "/home/${NOME_USUARIO}/update_sistema.sh"
+
+sudo "/home/${NOME_USUARIO}/.update_sistema.sh"
+}
+###################Fim da função update sistema#################################
 function gerencia_rede {
     ############Função testa velocidade############
     function testa_velocidade {
@@ -98,7 +128,6 @@ function menu {
         echo "                Menu principal:                          "
         echo "Ip externo da rede: $IP_EXTERNO"
         echo "Seu usuário: $CURRENRT"
-        echo "Versão do software 22/12/2025"
         echo "========================================================="
         echo ""
         echo "[1] Gerenciar Sistema        [6] Gerenciar usuários"
@@ -112,6 +141,7 @@ function menu {
             [1]) echo "Em desenvolvimento..." ; sleep 1 ;;
             [2]) gerencia_rede ;;
             [6]) ./usuarios.sh ;;
+            [7]) update_sistema ;;
             [8]) ./open_vpn_conf.sh ;;
             [9]) exit 0 ;;
             *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
