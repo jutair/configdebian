@@ -1,5 +1,5 @@
 #!/bin/bash
-NOME_USUARIO=${SUDO_USER:-$(whoami)}
+NOME_USUARIO=$(logname)
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
 # Verifica se o script foi executado como root
