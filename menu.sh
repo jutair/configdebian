@@ -120,15 +120,16 @@ function gerencia_rede {
 
 #########################################################
 function menu {
+CURRENRT=${SUDO_USER:-$(whoami)}
     while true; do
-        CURRENRT=${SUDO_USER:-$(whoami)}
+        #CURRENRT=${SUDO_USER:-$(whoami)}
         IP_EXTERNO=$(curl -s ifconfig.me)
         clear
         echo "========================================================="
         echo "                Menu principal:                          "
         echo "Ip externo da rede: $IP_EXTERNO"
         echo "Seu usuário: $CURRENRT"
-        #echo "Versão do script: 22/12/2025"
+        echo "Versão do script: 22/12/2025"
         echo "========================================================="
         echo ""
         echo "[1] Gerenciar Sistema        [6] Gerenciar usuários"
