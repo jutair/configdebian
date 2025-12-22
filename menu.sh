@@ -128,6 +128,7 @@ function menu {
         echo "                Menu principal:                          "
         echo "Ip externo da rede: $IP_EXTERNO"
         echo "Seu usuário: $CURRENRT"
+        echo "Versão do script: 22/12/2025"
         echo "========================================================="
         echo ""
         echo "[1] Gerenciar Sistema        [6] Gerenciar usuários"
