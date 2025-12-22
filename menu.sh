@@ -94,8 +94,10 @@ done
 clear
 while true; do
 CURRENRT=${SUDO_USER:-$(whoami)}
+IP_EXTERNO=$(curl -s ifconfig.me)
 echo "======================================"
-echo "    Gerenciar rede:              "
+echo "         Gerenciar rede:              "
+echo "IP externo da rede: $IP_EXTERNO
 echo "======================================"
 echo "Seu usuário: $CURRENRT"
 echo ""
@@ -142,13 +144,15 @@ function menu {
 clear
 while true; do
 CURRENRT=${SUDO_USER:-$(whoami)}
-echo "======================================"
-echo "    Menu principal:              "
-echo "======================================"
+IP_EXTERNO=$(curl -s ifconfig.me)
+echo "========================================================="
+echo "               Menu principal:                          "
+echo "Ip externo da rede:$IP_EXTERNO"
 echo "Seu usuário: $CURRENRT"
+echo "========================================================="
 echo ""
-echo "[1] Ver desempenho		[6] Gerenciar usuários"
-echo "[2] Gerenciar rede 		[7] Atualizar o sistema"
+echo "[1] Gerenciar Sistema		[6] Gerenciar usuários"
+echo "[2] Gerenciar Rede 		[7] Atualizar o sistema"
 echo "[3] Ver logs do sistema		[8] Gerenciar OpenVpn"
 echo "[5] Fazer Backup"					
 echo ""
