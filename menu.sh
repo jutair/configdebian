@@ -26,8 +26,8 @@ echo "Baixando um novo script de atualização..."
 echo "=========================================================================="
 sudo wget -P "/home/${NOME_USUARIO}" "https://raw.githubusercontent.com/jutair/configdebian/refs/heads/main/update_sistema.sh"
 sudo chmod +x "/home/${NOME_USUARIO}/update_sistema.sh"
-
-sudo "/home/${NOME_USUARIO}/.update_sistema.sh"
+cd /home/${NOME_USUARIO}/
+sudo ./update_sistema.sh
 }
 ###################Fim da função update sistema#################################
 function gerencia_rede {
