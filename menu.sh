@@ -152,7 +152,7 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
             [6]) ./usuarios.sh ;;
             [7]) update_sistema ;;
             [8]) ./open_vpn_conf.sh ;;
-            [9]) exit 0 ;;
+            [9]) exit ;;
             *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
         esac
     done
