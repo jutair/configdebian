@@ -15,12 +15,12 @@ sudo apt update && sudo apt upgrade -y
 echo "=========================================================================="
 echo "Baixando os scripts no repositório do github..."
 echo "=========================================================================="
-sudo wget -O /home/${NOME_USUARIO}/main.zip" "https://github.com/jutair/configdebian/archive/refs/heads/main.zip
+sudo wget -p /home/${NOME_USUARIO}/ https://github.com/jutair/configdebian/archive/refs/heads/main.zip
 
 echo "=========================================================================="
 echo "Extraindo os scripts para pasta do usuário..."
 echo "=========================================================================="
-unzip -o /home/${NOME_USUARIO}/main.zip -d /home/${NOME_USUARIO}/
+unzip /home/${NOME_USUARIO}/main.zip -d /home/${NOME_USUARIO}/
 sudo rm /home/${NOME_USUARIO}/main.zip
 
 echo "=========================================================================="
