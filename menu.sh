@@ -59,6 +59,7 @@ function gerencia_rede {
         trap ':' INT
         vnstat -l -i "$INTERFACE"
         trap - INT
+        read -p "Pressione ENTER para voltar..." dummy
     }
 
     ###############Função relatório de consumo###########
