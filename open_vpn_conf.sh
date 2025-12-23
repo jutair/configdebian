@@ -364,32 +364,33 @@ SEM_COR='\033[0m'
 # Função para Adicionar Usuário
 add_user() {
     IP_EXT=$(curl -4 -s ifconfig.me)
-    [ -z "$IP_EXT" ] && { echo -e "Erro IP"; return 1; }
+    [ -z "$IP_EXT" ] && { echo -e "Erro ao obter IP"; return 1; }
 
-    CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
-    [ ! -f "$CHAVE_MESTRA" ] && sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA" 2>/dev/null
+    # Garante que a chave tls-crypt existe no local correto para o instalador
+    sudo cp /etc/openvpn/tls-crypt.key /etc/openvpn/server/tls-crypt.key 2>/dev/null
 
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
     
     clear
+    echo "======================================"
+    echo "      GERAR USUÁRIO SEM ERROS         "
+    echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
-    if sudo ls /etc/openvpn/server/easy-rsa/pki/issued/ 2>/dev/null | grep -q "${CLIENT}.crt"; then
-        sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
-    fi
+    # Remove registros antigos para evitar duplicidade no arquivo final
+    sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
 
-    echo "Gerando certificado..."
-    cd /tmp
+    echo "Gerando chaves e certificados..."
     if sudo bash "$INSTALLER" client add "$CLIENT" > /dev/null 2>&1; then
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
-            echo "Reconstruindo perfil (Fix certReadError)..."
-            FINAL="/tmp/${CLIENT}_f.ovpn"
+            echo "Formatando arquivo para compatibilidade Android..."
+            FINAL="/tmp/${CLIENT}_limpo.ovpn"
             
-            # 1. Cabeçalho limpo
+            # PARTE 1: Cabeçalho Padrão (Removido opções que geram aviso de erro no log)
             sudo bash -c "cat << EOF > $FINAL
 client
 dev tun
@@ -397,8 +398,6 @@ proto udp
 remote $IP_EXT 1194
 resolv-retry infinite
 nobind
-persist-key
-persist-tun
 remote-cert-tls server
 auth SHA512
 cipher AES-256-GCM
@@ -406,35 +405,37 @@ ignore-unknown-option block-outside-dns
 verb 3
 EOF"
 
-            # 2. Extração Dinâmica (Busca o conteúdo real entre as tags)
-            # Extrai o CA (primeiro certificado)
+            # PARTE 2: Extração Segura de Blocos (Pega tudo entre os marcadores BEGIN e END)
+            
+            # Extrair CA
             echo "<ca>" >> "$FINAL"
-            sudo awk '/<ca>/{flag=1;next}/<\/ca>/{flag=0}flag' "$ARQUIVO_BRUTO" | sudo grep -v "Certificate:" | sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' >> "$FINAL"
+            sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$ARQUIVO_BRUTO" | sed -n '1,/-----END CERTIFICATE-----/p' >> "$FINAL"
             echo "</ca>" >> "$FINAL"
 
-            # Extrai o CERT (certificado do cliente)
+            # Extrair CERT
             echo "<cert>" >> "$FINAL"
-            sudo awk '/<cert>/{flag=1;next}/<\/cert>/{flag=0}flag' "$ARQUIVO_BRUTO" | sudo grep -v "Certificate:" | sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' >> "$FINAL"
+            sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$ARQUIVO_BRUTO" | sed -n '2,$p' | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' >> "$FINAL"
             echo "</cert>" >> "$FINAL"
 
-            # Extrai a KEY
+            # Extrair KEY
             echo "<key>" >> "$FINAL"
-            sudo awk '/<key>/{flag=1;next}/<\/key>/{flag=0}flag' "$ARQUIVO_BRUTO" >> "$FINAL"
+            sudo sed -n '/-----BEGIN PRIVATE KEY-----/,/-----END PRIVATE KEY-----/p' "$ARQUIVO_BRUTO" >> "$FINAL"
             echo "</key>" >> "$FINAL"
 
-            # Extrai o TLS-CRYPT (apenas um bloco)
+            # Extrair TLS-CRYPT (Pega apenas o primeiro bloco encontrado)
             echo "<tls-crypt>" >> "$FINAL"
-            sudo awk '/<tls-crypt>/{flag=1;next}/<\/tls-crypt>/{flag=0}flag' "$ARQUIVO_BRUTO" | sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' | head -n 18 >> "$FINAL"
+            sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' "$ARQUIVO_BRUTO" | head -n 18 >> "$FINAL"
             echo "</tls-crypt>" >> "$FINAL"
 
-            # 3. Limpeza final e substituição
+            # PARTE 3: Limpeza de lixo e caracteres Windows
             sudo tr -d '\r' < "$FINAL" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
             sudo rm "$FINAL"
 
-            echo -e "\n✅ Sucesso: Perfil validado para $CLIENT"
+            echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
+            echo "Local: $ARQUIVO_BRUTO"
         fi
     fi
-    read -p "ENTER..." dummy
+    read -p "Pressione ENTER para voltar ao menu..." dummy
     atualiza_ovp
 }
 # Função para Remover Usuário
