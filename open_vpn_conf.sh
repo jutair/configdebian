@@ -101,4 +101,63 @@ user_online() {
             IP_R=$(echo "$line" | cut -d',' -f3 | cut -d':' -f1)
             IP_V=$(echo "$line" | cut -d',' -f4)
             DESDE=$(echo "$line" | cut -d',' -f8 | awk '{print $2" "$3}')
-            printf "%-15s %-20s %
+            printf "%-15s %-20s %-15s %-10s\n" "$USER" "$IP_R" "$IP_V" "$DESDE"
+        done
+    fi
+    read -p "Pressione ENTER..." d
+}
+
+user_consumo() {
+    clear
+    echo "==============================================================="
+    echo "               CONSUMO DE DADOS (MB)"
+    echo "==============================================================="
+    printf "%-15s %-12s %-12s %-12s\n" "USUÁRIO" "RECEBIDO" "ENVIADO" "TOTAL"
+    echo "---------------------------------------------------------------"
+    if [ -f "$STATUS_FILE" ]; then
+        grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
+            USER=$(echo "$line" | cut -d',' -f2)
+            RECV_B=$(echo "$line" | cut -d',' -f5)
+            SENT_B=$(echo "$line" | cut -d',' -f6)
+            RECV_MB=$(echo "scale=2; $RECV_B/1024/1024" | bc 2>/dev/null || echo "0.00")
+            SENT_MB=$(echo "scale=2; $SENT_B/1024/1024" | bc 2>/dev/null || echo "0.00")
+            TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc 2>/dev/null || echo "0.00")
+            printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
+        done
+    fi
+    read -p "Pressione ENTER para voltar..." dummy
+}
+
+# --- MENU PRINCIPAL VPN ---
+
+menu_ovp() {
+    while true; do
+        clear
+        echo "================================================================="
+        echo "                      PAINEL OPEN VPN                            "
+        echo "================================================================="
+        echo "[1] Usuários Online            [5] Monitorar Tráfego (Live)"
+        echo "[2] Gerenciar Clientes (Rápido)[6] Relatório de Consumo (MB)"
+        echo "[3] Lista Completa (PKI)       [7] Voltar ao Menu Principal"
+        echo "[4] Testar Velocidade tun0     [9] Sair do Sistema"
+        echo "================================================================="
+        read -n 1 -p "Opção: " OPCAO
+        echo ""
+
+        case $OPCAO in
+            1) user_online ;;
+            2) gerenciar_clientes ;;
+            3) clear; [ -f "$INDEX_FILE" ] && column -t -s $'\t' "$INDEX_FILE" || echo "PKI não encontrada"; read -p "ENTER..." d ;;
+            4) clear; speedtest-cli --source $(ip addr show tun0 | grep "inet " | awk '{print $2}' | cut -d/ -f1) --simple || echo "tun0 offline"; read -p "ENTER..." d ;;
+            5) clear; trap '' INT; ( trap - INT; vnstat -l -i tun0 ); trap - INT; read -p "ENTER..." d ;;
+            6) user_consumo ;;
+            7) exec sudo "$DIRETORIO/menu.sh" ;;
+            9) kill -TERM -$(ps -o pgid= -p $$ | grep -o '[0-9]*'); exit 0 ;;
+            *) echo "Inválido"; sleep 1 ;;
+        esac
+    done
+}
+
+# Iniciar
+sincronizar_ovpns
+menu_ovp
