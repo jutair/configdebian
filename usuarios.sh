@@ -66,7 +66,6 @@ sudo unzip /home/${NOME_USUARIO}/main.zip -d /home/$NOME_USUARIO
 echo "Processo concluído para o usuário $NOME_USUARIO!"
 echo -e "\033[0m"
 sleep 2
-gerencia_user
 }
 ################################################################
 function remove_user {
@@ -106,13 +105,11 @@ if id "$username" &>/dev/null; then
     echo -e "\033[31mErro ao remover o usuário '$username'."
     sleep 2
     echo -e "\033[0m"
-    gerencia_user
   fi
 else
   echo -e "\033[31mUsuário '$username' não encontrado!."
   sleep 2
   echo -e "\033[0m"
-  gerencia_user
 fi
 }
 ################################################################
