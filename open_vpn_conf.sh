@@ -362,31 +362,42 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
+    USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     clear
     echo "======================================"
     echo "      ADICIONAR NOVO USUÁRIO          "
     echo "======================================"
     
-    # Define o caminho
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
     
+    # --- CORREÇÃO DE SEGURANÇA ---
+    # Verifica se a chave tls-crypt existe, se não, tenta localizar
+    if [ ! -f /etc/openvpn/server/tls-crypt.key ]; then
+        if [ -f /etc/openvpn/tls-crypt.key ]; then
+            sudo ln -s /etc/openvpn/tls-crypt.key /etc/openvpn/server/tls-crypt.key
+        elif [ -f /etc/openvpn/server/ta.key ]; then
+            echo -e "${AMARELO}[AVISO] Usando ta.key em vez de tls-crypt.key${SEM_COR}"
+        fi
+    fi
+
     read -p "Digite o nome do usuário: " CLIENT
     
     if [ -z "$CLIENT" ]; then
         echo -e "${VERMELHO}Nome não pode ser vazio!${SEM_COR}"
-        sleep 2
-        return
+        sleep 2; return
     fi
 
     echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     
-    # AJUSTE AQUI: A nova sintaxe exige 'client add'
-    # Usamos o interpretador bash diretamente para garantir a execução
-    sudo bash "$INSTALLER" client add "$CLIENT"
+    # Executa o instalador e captura erros
+    if sudo bash "$INSTALLER" client add "$CLIENT"; then
+        echo -e "\n${VERDE}✅ Sucesso: Certificado gerado para $CLIENT${SEM_COR}"
+    else
+        echo -e "\n${VERMELHO}❌ ERRO: Falha ao gerar o arquivo .ovpn${SEM_COR}"
+        echo "Verifique o log: tail -n 20 openvpn-install.log"
+    fi
     
-    echo -e "\n${VERDE}Processo finalizado para: $CLIENT${SEM_COR}"
-    echo "Pressione ENTER para voltar..."
+    echo "Pressione ENTER para continuar..."
     read dummy
     atualiza_ovp
 }
