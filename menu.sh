@@ -1,5 +1,5 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS (Resiliente e Auto-configurável)
+# menu.sh - Painel de Gestão VPS (Design Corrigido e Alinhado)
 
 DIR_SCRIPTS="$HOME/configdebian-main"
 AZUL='\033[0;34m'
@@ -9,7 +9,7 @@ VERMELHO='\033[0;31m'
 NC='\033[0m'
 
 # Coleta o IP Externo uma vez (timeout de 2s)
-IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Erro ao obter IP")
+IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
 while true; do
     # --- DADOS DINÂMICOS ---
@@ -18,41 +18,34 @@ while true; do
     DISCO=$(df -h / | awk '/\// { print $5 }')
     UPTIME=$(uptime -p | sed 's/up //')
     
-    # --- LÓGICA DE BANDA INTELIGENTE ---
+    # --- LÓGICA DE BANDA LIMPA ---
     IFACE="eth0"
     if ip link show tun0 > /dev/null 2>&1; then
-        # Se tun0 existe mas não está no vnstat, adiciona-a
-        if ! vnstat --dbiflist | grep -q "tun0"; then
-            sudo vnstat -i tun0 --add > /dev/null 2>&1
-            systemctl restart vnstat > /dev/null 2>&1
-        fi
-        
+        IFACE="tun0"
+        # Tenta pegar apenas os dados. 2>/dev/null limpa avisos de "No data"
         BANDA_HOJE=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
-        
-        # Se a tun0 ainda estiver vazia no banco, usa eth0 como fallback
-        if [ -z "$BANDA_HOJE" ] || [[ "$BANDA_HOJE" == *"Error"* ]] || [[ "$BANDA_HOJE" == "0.00 MB" ]]; then
-            BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
-            IFACE="eth0"
-        else
-            IFACE="tun0"
-        fi
     else
         BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
-        IFACE="eth0"
     fi
 
-    [ -z "$BANDA_HOJE" ] && BANDA_HOJE="Calculando..."
+    # Se a banda vier vazia ou com erro de banco de dados, limpa para 0.00 MB
+    if [[ -z "$BANDA_HOJE" ]] || [[ "$BANDA_HOJE" == *"Error"* ]] || [[ "$BANDA_HOJE" == *"No data"* ]]; then
+        BANDA_HOJE="0.00 MB"
+    fi
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DIGITALOCE${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    printf "  %-15s : %-20s\n" "IP EXTERNO" "${AMARELO}$IP_EXT${NC}"
-    printf "  %-15s : %-20s\n" "SSH ATIVOS" "${AMARELO}$USER_SSH${NC}"
-    printf "  %-15s : %-20s\n" "BANDA (HOJE)" "${VERDE}$BANDA_HOJE ($IFACE)${NC}"
-    printf "  %-15s : %-20s\n" "MEMÓRIA RAM" "${AMARELO}$MEM_LIVRE em uso${NC}"
-    printf "  %-15s : %-20s\n" "DISCO (/)  " "${AMARELO}$DISCO ocupado${NC}"
-    printf "  %-15s : %-20s\n" "UPTIME     " "${AMARELO}$UPTIME${NC}"
+    
+    # printf garante que as colunas fiquem sempre alinhadas
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "IP EXTERNO" "$IP_EXT"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "SSH ATIVOS" "$USER_SSH"
+    printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "BANDA (HOJE)" "$BANDA_HOJE ($IFACE)"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "MEMÓRIA RAM" "$MEM_LIVRE em uso"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "DISCO (/)" "$DISCO ocupado"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "UPTIME" "$UPTIME"
+    
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "  [1] 🌐 Gerenciar VPN (OpenVPN)"
     echo -e "  [2] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
@@ -60,6 +53,7 @@ while true; do
     echo -e "  [4] 🆙 Atualizar Sistema"
     echo -e "  [5] ❌ Sair"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    
     read -n 1 -p " Digite a opção: " OPCAO
     echo ""
 
