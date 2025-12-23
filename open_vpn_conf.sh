@@ -341,7 +341,7 @@ VERMELHO='\033[0;31m'
 SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
-dd_user() {
+add_user() {
     clear
     echo "======================================"
     echo "      ADICIONAR NOVO USUÁRIO          "
