@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################Função de redes########################
 update_sistema() {
-NOME_USUARIO=${SUDO_USER:-$(whoami)}
+NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
 # Verifica se o script foi executado como root
@@ -26,8 +26,8 @@ echo "Baixando um novo script de atualização..."
 echo "=========================================================================="
 sudo wget -P "/home/${NOME_USUARIO}" "https://raw.githubusercontent.com/jutair/configdebian/refs/heads/main/update_sistema.sh"
 sudo chmod +x "/home/${NOME_USUARIO}/update_sistema.sh"
-
-sudo "/home/${NOME_USUARIO}/.update_sistema.sh"
+cd /home/${NOME_USUARIO}/
+sudo ./update_sistema.sh
 }
 ###################Fim da função update sistema#################################
 function gerencia_rede {
@@ -59,13 +59,14 @@ function gerencia_rede {
         trap ':' INT
         vnstat -l -i "$INTERFACE"
         trap - INT
+        read -p "Pressione ENTER para voltar..." dummy
     }
 
     ###############Função relatório de consumo###########
     function relatorio_consumo {
         while true; do
             INTERFACE=$(ip route | grep default | awk '{print $5}')
-            CURRENRT=${SUDO_USER:-$(whoami)}
+            CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
             clear
             echo "======================================"
             echo "   Relatório de consumo de rede:      "
@@ -91,8 +92,8 @@ function gerencia_rede {
 
     # Loop principal da gerencia_rede
     while true; do
-        CURRENRT=${SUDO_USER:-$(whoami)}
-        IP_EXTERNO=$(curl -s ifconfig.me)
+        CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
+        IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
         clear
         echo "======================================"
         echo "           Gerenciar rede:            "
@@ -120,15 +121,23 @@ function gerencia_rede {
 
 #########################################################
 function menu {
+IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
+IP_INTERNO=$(hostname -I | awk '{print $1}')
+CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
     while true; do
-        CURRENRT=${SUDO_USER:-$(whoami)}
-        IP_EXTERNO=$(curl -s ifconfig.me)
+        #CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         clear
-        echo "========================================================="
-        echo "                Menu principal:                          "
+        # Armazena a hora de Manaus em uma variável
+        HORA_MANAUS=$(TZ='America/Manaus' date '+%H:%M:%S')
+        echo "==============================================================="
+        echo "            Hora local (Manaus): $HORA_MANAUS"
+        echo "==============================================================="
+        echo "                  MENU PRINCIPAL:                              "
         echo "Ip externo da rede: $IP_EXTERNO"
+        echo "Ip interno da rede: $IP_INTERNO"
         echo "Seu usuário: $CURRENRT"
-        echo "========================================================="
+        echo "Versão do script: 22/12/2025-3:18:57"
+        echo "==============================================================="
         echo ""
         echo "[1] Gerenciar Sistema        [6] Gerenciar usuários"
         echo "[2] Gerenciar Rede           [7] Atualizar o sistema"
