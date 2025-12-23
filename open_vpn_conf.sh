@@ -369,41 +369,42 @@ add_user() {
     
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (NOVA SINTAXE)    "
+    echo "      GERAR USUÁRIO (AJUSTE FINAL)    "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
     echo "Gerando chaves para: $CLIENT..."
     
-    # O seu instalador usa a sintaxe: openvpn-install client add <nome>
-    # Adicionamos --no-color para evitar caracteres estranhos no arquivo
-    if sudo bash "$INSTALLER" client add "$CLIENT" --no-pass; then
+    # Tentamos primeiro a sintaxe mais comum para essa versão do script
+    # Se ele pedir confirmação, o 'yes' ajuda a passar
+    if yes "" | sudo bash "$INSTALLER" client add "$CLIENT"; then
         
-        # O instalador costuma salvar em /root ou no diretório atual
+        # Busca o arquivo gerado
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
-            echo "Arquivo gerado! Aplicando correção de compatibilidade..."
+            echo "Arquivo gerado! Ajustando para padrão 'jutair'..."
             
-            # REMOÇÃO DAS LINHAS CONFLITANTES (Para ficar igual ao jutair)
-            # 1. Removemos a linha cipher
+            # 1. Remove a linha cipher que causa erro no seu Android
             sudo sed -i '/cipher AES-256-GCM/d' "$ARQUIVO_BRUTO"
-            # 2. Adicionamos as persistências (caso não existam)
-            grep -q "persist-key" "$ARQUIVO_BRUTO" || echo "persist-key" | sudo tee -a "$ARQUIVO_BRUTO" > /dev/null
-            grep -q "persist-tun" "$ARQUIVO_BRUTO" || echo "persist-tun" | sudo tee -a "$ARQUIVO_BRUTO" > /dev/null
             
-            # Limpeza de caracteres Windows
+            # 2. Garante as linhas de persistência do jutair
+            for opt in "persist-key" "persist-tun"; do
+                grep -q "$opt" "$ARQUIVO_BRUTO" || echo "$opt" | sudo tee -a "$ARQUIVO_BRUTO" > /dev/null
+            done
+            
+            # 3. Limpeza de caracteres invisíveis
             sudo tr -d '\r' < "$ARQUIVO_BRUTO" | sudo tee "${ARQUIVO_BRUTO}_tmp" > /dev/null
             sudo mv "${ARQUIVO_BRUTO}_tmp" "$ARQUIVO_BRUTO"
 
             echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
             echo "Local: $ARQUIVO_BRUTO"
         else
-            echo -e "\n❌ Erro: O instalador disse que criou, mas o arquivo .ovpn não foi encontrado."
+            echo -e "\n❌ Erro: O comando rodou, mas o arquivo .ovpn não apareceu."
         fi
     else
-        echo -e "\n❌ Erro ao executar: sudo $INSTALLER client add $CLIENT"
+        echo -e "\n❌ Erro ao executar o comando de adição."
     fi
 
     read -p "Pressione ENTER para voltar..." dummy
