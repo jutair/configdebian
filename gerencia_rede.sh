@@ -355,7 +355,7 @@ menu_ssh
             read -n 1 -p "Digite a opção desejada: " OPCAO
             echo ""
             case $OPCAO in
-                [1]) config_firewall;;
+                [1]) fire_config;;
                 [2]) ssh_config ;;
                 [3]) return ;;
                 [4])
