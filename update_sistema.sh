@@ -24,8 +24,8 @@ sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
 echo "=========================================================================="
 echo "Baixando o script do OpenVPN do Angristan..."
 echo "=========================================================================="
-sudo wget -O /home/$NOME_USUARIO/configdebian-main/openvpn-install.sh https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-sudo chmod +x /home/$NOME_USUARI0/configdebian-main/openvpn-install.sh
+sudo wget -O $DESTINO/openvpn-install.sh https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+sudo chmod +x $DESTINO/openvpn-install.sh
 sleep 1
 echo "=========================================================================="
 echo "Acessando os novos scripts na pasta do usuário..."
