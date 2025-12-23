@@ -363,47 +363,47 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
+    IP_EXT=$(curl -4 -s ifconfig.me)
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
     
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (ANGRISTAN)       "
+    echo "      GERAR USUÁRIO (NOVA SINTAXE)    "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
-    # O script do Angristan espera: 
-    # 1 para adicionar, o nome do cliente, e 1 para "sem senha"
-    echo "Chamando instalador original..."
+    echo "Gerando chaves para: $CLIENT..."
     
-    # Exportamos variáveis que o script do Angristan reconhece para não pedir perguntas
-    export MENU_OPTION="1"
-    export CLIENT="$CLIENT"
-    export PASS="1"
-    
-    if sudo -E bash "$INSTALLER"; then
-        # O Angristan sempre salva o arquivo no diretório onde o script foi executado ou no /root
+    # O seu instalador usa a sintaxe: openvpn-install client add <nome>
+    # Adicionamos --no-color para evitar caracteres estranhos no arquivo
+    if sudo bash "$INSTALLER" client add "$CLIENT" --no-pass; then
+        
+        # O instalador costuma salvar em /root ou no diretório atual
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
-            # Ajuste de compatibilidade para o seu Android:
-            # Removemos a linha 'cipher' (para ficar igual ao jutair) 
-            # e removemos o bloco de erro do log.
-            sudo sed -i '/cipher AES-256-GCM/d' "$ARQUIVO_BRUTO"
-            sudo sed -i '/ignore-unknown-option block-outside-dns/d' "$ARQUIVO_BRUTO"
+            echo "Arquivo gerado! Aplicando correção de compatibilidade..."
             
-            # Garante que não há caracteres de Windows que quebram o Android
+            # REMOÇÃO DAS LINHAS CONFLITANTES (Para ficar igual ao jutair)
+            # 1. Removemos a linha cipher
+            sudo sed -i '/cipher AES-256-GCM/d' "$ARQUIVO_BRUTO"
+            # 2. Adicionamos as persistências (caso não existam)
+            grep -q "persist-key" "$ARQUIVO_BRUTO" || echo "persist-key" | sudo tee -a "$ARQUIVO_BRUTO" > /dev/null
+            grep -q "persist-tun" "$ARQUIVO_BRUTO" || echo "persist-tun" | sudo tee -a "$ARQUIVO_BRUTO" > /dev/null
+            
+            # Limpeza de caracteres Windows
             sudo tr -d '\r' < "$ARQUIVO_BRUTO" | sudo tee "${ARQUIVO_BRUTO}_tmp" > /dev/null
             sudo mv "${ARQUIVO_BRUTO}_tmp" "$ARQUIVO_BRUTO"
 
             echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
-            echo "Arquivo: $ARQUIVO_BRUTO"
+            echo "Local: $ARQUIVO_BRUTO"
         else
-            echo -e "\n❌ Arquivo .ovpn não encontrado após a execução."
+            echo -e "\n❌ Erro: O instalador disse que criou, mas o arquivo .ovpn não foi encontrado."
         fi
     else
-        echo -e "\n❌ O script do Angristan retornou um erro."
+        echo -e "\n❌ Erro ao executar: sudo $INSTALLER client add $CLIENT"
     fi
 
     read -p "Pressione ENTER para voltar..." dummy
