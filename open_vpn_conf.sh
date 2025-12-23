@@ -364,13 +364,13 @@ SEM_COR='\033[0m'
 # Função para Adicionar Usuário
 add_user() {
     IP_EXT=$(curl -4 -s ifconfig.me)
-    [ -z "$IP_EXT" ] && { echo "Erro IP"; return 1; }
+    [ -z "$IP_EXT" ] && { echo "Erro ao obter IP externo"; return 1; }
 
-    # 1. Sincroniza Chave
+    # 1. Sincroniza Chave Mestra
     CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
     [ ! -f "$CHAVE_MESTRA" ] && sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA" 2>/dev/null
 
-    # 2. Template sem NENHUM espaço (colado na esquerda)
+    # 2. Gera o Template (COLADO NA ESQUERDA)
 sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
 client
 dev tun
@@ -399,30 +399,29 @@ EOF"
         sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
     fi
 
-    echo "Gerando..."
+    echo "Gerando certificado..."
     cd /tmp
     if sudo bash "$INSTALLER" client add "$CLIENT" > /dev/null 2>&1; then
         ARQUIVO_GERADO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_GERADO" ]; then
-            # === LIMPEZA ULTRA AGRESSIVA ===
-            # 1. Remove toda a parte descritiva (Text) do certificado
-            sudo sed -i '/^Certificate:/,/^-----BEGIN CERTIFICATE-----/{/^-----BEGIN CERTIFICATE-----/!d}' "$ARQUIVO_GERADO"
+            # === LIMPEZA CIRÚRGICA (NÃO APAGA O TOPO DO ARQUIVO) ===
             
-            # 2. Remove linhas em branco (causam buffer_full em alguns clientes)
+            # 1. Remove apenas o texto informativo que fica entre a tag <cert> e o BEGIN CERTIFICATE
+            sudo sed -i '/<cert>/,/-----BEGIN CERTIFICATE-----/{/<cert>/b; /-----BEGIN CERTIFICATE-----/b; d}' "$ARQUIVO_GERADO"
+            
+            # 2. Remove espaços extras e linhas em branco acidentais
+            sudo sed -i 's/^[[:space:]]*//;s/[[:space:]]*$//' "$ARQUIVO_GERADO"
             sudo sed -i '/^$/d' "$ARQUIVO_GERADO"
             
-            # 3. Remove espaços no início e fim de cada linha
-            sudo sed -i 's/^[[:space:]]*//;s/[[:space:]]*$//' "$ARQUIVO_GERADO"
-            
-            # 4. Força quebras de linha padrão Unix (remove \r do Windows)
+            # 3. Garante que o arquivo termine de forma limpa (Unix format)
             sudo tr -d '\r' < "$ARQUIVO_GERADO" | sudo tee "${ARQUIVO_GERADO}.tmp" > /dev/null
             sudo mv "${ARQUIVO_GERADO}.tmp" "$ARQUIVO_GERADO"
 
-            echo -e "\n✅ Criado com sucesso!"
+            echo -e "\n✅ Sucesso! Arquivo gerado em: $ARQUIVO_GERADO"
         fi
     fi
-    read -p "ENTER..." dummy
+    read -p "Pressione ENTER..." dummy
     atualiza_ovp
 }
 # Função para Remover Usuário
