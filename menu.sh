@@ -120,22 +120,22 @@ function gerencia_rede {
 }
 
 #########################################################
-function menu {
-sudo ntpdate-debian
-IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
-IP_INTERNO=$(hostname -I | awk '{print $1}')
-CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
+menu() {
+    sudo ntpdate-debian
+    IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
+    IP_INTERNO=$(hostname -I | awk '{print $1}')
+    CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
+
     while true; do
-        #CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         clear
         HORA_ATUAL=$(date '+%H:%M:%S')
-        # Captura a data atual
         DATA_ATUAL=$(date '+%d/%m/%Y')
+        
         echo "================================================================="
         echo "                    MENU PRINCIPAL                               "
-        echo "Usuário:$CURRENRT"
+        echo "Usuário: $CURRENRT"
         echo "================================================================="
-        echo "DATA: $DATA_ATUAL                          HORA: $HORA_ATUAL (MANAUS)"
+        echo "DATA: $DATA_ATUAL                           HORA: $HORA_ATUAL (MANAUS)"
         echo "IP Interno: $IP_INTERNO | IP Externo: $IP_EXTERNO"
         echo "================================================================="
         echo "Versão do script: 22/12/2025-3:18:57"
@@ -146,17 +146,24 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         echo "[3] Ver logs do sistema      [8] Gerenciar OpenVpn"
         echo "[5] Fazer Backup             [9] Sair"
         echo ""
-        echo -n "Digite a opção desejada: "
-        read -n 1 -t 58 OPCAO
-        echo ""
-        case $OPCAO in
-            [1]) echo "Em desenvolvimento..." ; sleep 1 ;;
-            [2]) gerencia_rede ;;
-            [6]) ./usuarios.sh ;;
-            [7]) update_sistema ;;
-            [8]) ./open_vpn_conf.sh ;;
-            [9]) exit ;;
-            *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
+        
+        # REMOVIDO O -n 1 para aceitar apenas após o ENTER
+        echo -n "Digite a opção desejada (e aperte Enter): "
+        read -t 58 OPCAO
+
+        case "$OPCAO" in
+            1) echo "Em desenvolvimento..." ; sleep 1 ;;
+            2) gerencia_rede ;;
+            6) ./usuarios.sh ;;
+            7) update_sistema ;;
+            8) ./open_vpn_conf.sh ;;
+            9) exit 0 ;;
+            "") # Caso o tempo de 58s acabe (variável vazia)
+                continue ;;
+            *) 
+                echo -e "\n\033[31mOpção inválida!\033[0m"
+                sleep 1 
+                ;;
         esac
     done
 }
