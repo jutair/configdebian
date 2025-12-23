@@ -45,19 +45,32 @@ teste_velocidade() {
 }
 
 trafego_acumulado() {
-    clear
-    echo "======================================"
-    echo "    TRÁFEGO ACUMULADO (Interface)     "
-    echo "======================================"
-    # Mostra o tráfego da tun0 (VPN). Se não existir, mostra da eth0.
-    if ip link show tun0 > /dev/null 2>&1; then
-        vnstat -i tun0
-    else
-        echo -e "${AMARELO}Interface tun0 offline. Mostrando tráfego geral:${SEM_COR}"
-        vnstat
-    fi
-    echo "======================================"
-    read -p "Pressione ENTER para voltar..." dummy
+    while true; do
+        clear
+        echo "======================================"
+        echo "    RELATÓRIO DE TRÁFEGO (VNSTAT)     "
+        echo "======================================"
+        echo -e " Interface atual: ${VERDE}$(if ip link show tun0 > /dev/null 2>&1; then echo "tun0 (VPN)"; else echo "eth0 (Padrão)"; fi)${SEM_COR}"
+        echo "--------------------------------------"
+        echo " [1] Relatório Diário"
+        echo " [2] Relatório Mensal"
+        echo " [3] Relatório Anual"
+        echo " [4] Voltar ao Menu Principal"
+        echo "--------------------------------------"
+        read -p "Escolha o período: " PERIODO
+
+        # Define a interface (prioriza tun0 se estiver online)
+        IFACE="eth0"
+        ip link show tun0 > /dev/null 2>&1 && IFACE="tun0"
+
+        case $PERIODO in
+            1) clear; echo "--- TRÁFEGO DIÁRIO ---"; vnstat -i "$IFACE" -d; read -p "ENTER para voltar..." dummy ;;
+            2) clear; echo "--- TRÁFEGO MENSAL ---"; vnstat -i "$IFACE" -m; read -p "ENTER para voltar..." dummy ;;
+            3) clear; echo "--- TRÁFEGO ANUAL ---" ; vnstat -i "$IFACE" -y; read -p "ENTER para voltar..." dummy ;;
+            4) return ;;
+            *) echo -e "${VERMELHO}Opção inválida!${SEM_COR}"; sleep 1 ;;
+        esac
+    done
 }
 
 chamar_seguranca() {
