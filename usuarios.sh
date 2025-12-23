@@ -256,5 +256,3 @@ echo "Processo concluído para o usuário $NOME_USUARIO!"
 clear
 }
 gerencia_user ###Chama a função principal!
-
-Implemente aqui
