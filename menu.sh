@@ -148,7 +148,8 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         echo ""
         case $OPCAO in
             [1]) echo "Em desenvolvimento..." ; sleep 1 ;;
-            [2]) gerencia_rede ;;
+            [2]) cd /home/$CURRENRT/configdebian-main/
+                 exec sudo -E bash ./gerencia_rede.sh ;;
             [6]) cd /home/$CURRENRT/configdebian-main/
                  exec sudo -E bash ./usuarios.sh ;;
             [7]) update_sistema ;;
