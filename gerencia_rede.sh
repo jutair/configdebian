@@ -124,6 +124,22 @@ restaura_seguranca() {
     sleep 3
 }
 
+banir_ip() {
+    echo -e "\n${AMARELO}---------------------------------------------------------------${NC}"
+    read -p " Digite o IP que deseja BANIR: " IP_ALVO
+    
+    # Validação simples de formato de IP
+    if [[ $IP_ALVO =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "${VERMELHO}Bloqueando IP: $IP_ALVO...${NC}"
+        # Adiciona a regra de rejeição no topo para garantir prioridade
+        ufw insert 1 deny from "$IP_ALVO" to any
+        echo -e "${VERDE}O IP $IP_ALVO foi banido com sucesso!${NC}"
+    else
+        echo -e "${VERMELHO}Formato de IP inválido!${NC}"
+    fi
+    echo -e "${AMARELO}---------------------------------------------------------------${NC}"
+    sleep 2
+}
 # --- MENU PRINCIPAL DO MÓDULO ---
 
 while true; do
@@ -183,9 +199,10 @@ while true; do
                 echo -e "  [1] 📋 Ver Regras Detalhadas (UFW)"
                 echo -e "  [2] 🚫 Ver IPs Banidos (Fail2Ban)"
                 echo -e "  [3] 🔓 Abrir Nova Porta"
-                echo -e "  [4] 🧹 Limpar Log de Ataques"
-                echo -e "  [5] 🛡️  RESTAURAR SEGURANÇA PADRÃO"
-                echo -e "  [6] ⬅️  Voltar"
+                echo -e "  [4] 🔨 BANIR IP MANUALMENTE" # <-- Nova Opção
+                echo -e "  [5] 🧹 Limpar Log de Ataques"
+                echo -e "  [6] 🛡️  RESTAURAR SEGURANÇA PADRÃO"
+                echo -e "  [7] ⬅️  Voltar"
                 echo -e "${AZUL}---------------------------------------------------------------${NC}"
                 read -n 1 -p " Digite a opção: " FO; echo ""
 
@@ -193,9 +210,10 @@ while true; do
                     1) ufw status numbered; read -p " ENTER para voltar..." d ;;
                     2) monitora_banidos ;;
                     3) read -p " Porta: " P; ufw allow "$P"; echo -e "${VERDE}Porta $P aberta!${NC}"; sleep 2 ;;
-                    4) echo "" > /var/log/auth.log; echo -e "${VERDE}Contador de ataques resetado!${NC}"; sleep 2 ;;
-                    5) restaura_seguranca ;;
-                    6) break ;;
+                    4) banir_ip ;; # <-- Chamada da nova função
+                    5) echo "" > /var/log/auth.log; echo -e "${VERDE}Contador de ataques resetado!${NC}"; sleep 2 ;;
+                    6) restaura_seguranca ;;
+                    7) break ;;
                 esac
             done ;;
         5) ssh_config ;;
