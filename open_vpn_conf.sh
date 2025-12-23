@@ -363,69 +363,49 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-    IP_EXT=$(curl -4 -s ifconfig.me)
-    # Caminhos padrão do Easy-RSA no OpenVPN
-    EASYRSA_DIR="/etc/openvpn/easy-rsa"
-    [ ! -d "$EASYRSA_DIR" ] && EASYRSA_DIR="/usr/share/easy-rsa" # fallback comum
-
+    USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
+    INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
+    
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (VIA EASY-RSA)    "
+    echo "      GERAR USUÁRIO (ANGRISTAN)       "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
-    echo "Gerando chaves e certificados para: $CLIENT..."
-
-    # 1. Entrar no diretório do Easy-RSA e gerar o par de chaves
-    cd "$EASYRSA_DIR" || { echo "Erro: Pasta Easy-RSA não encontrada"; return 1; }
+    # O script do Angristan espera: 
+    # 1 para adicionar, o nome do cliente, e 1 para "sem senha"
+    echo "Chamando instalador original..."
     
-    # Gera o certificado sem pedir senha (nopass)
-    sudo ./easyrsa build-client-full "$CLIENT" nopass > /tmp/easyrsa.log 2>&1
+    # Exportamos variáveis que o script do Angristan reconhece para não pedir perguntas
+    export MENU_OPTION="1"
+    export CLIENT="$CLIENT"
+    export PASS="1"
+    
+    if sudo -E bash "$INSTALLER"; then
+        # O Angristan sempre salva o arquivo no diretório onde o script foi executado ou no /root
+        ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
-    # 2. Verificar se as chaves foram criadas
-    if [ ! -f "pki/issued/$CLIENT.crt" ]; then
-        echo "Erro ao gerar certificados. Verifique /tmp/easyrsa.log"
-        cd - > /dev/null
-        return 1
+        if [ -f "$ARQUIVO_BRUTO" ]; then
+            # Ajuste de compatibilidade para o seu Android:
+            # Removemos a linha 'cipher' (para ficar igual ao jutair) 
+            # e removemos o bloco de erro do log.
+            sudo sed -i '/cipher AES-256-GCM/d' "$ARQUIVO_BRUTO"
+            sudo sed -i '/ignore-unknown-option block-outside-dns/d' "$ARQUIVO_BRUTO"
+            
+            # Garante que não há caracteres de Windows que quebram o Android
+            sudo tr -d '\r' < "$ARQUIVO_BRUTO" | sudo tee "${ARQUIVO_BRUTO}_tmp" > /dev/null
+            sudo mv "${ARQUIVO_BRUTO}_tmp" "$ARQUIVO_BRUTO"
+
+            echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
+            echo "Arquivo: $ARQUIVO_BRUTO"
+        else
+            echo -e "\n❌ Arquivo .ovpn não encontrado após a execução."
+        fi
+    else
+        echo -e "\n❌ O script do Angristan retornou um erro."
     fi
 
-    # 3. Montar o arquivo .ovpn final (usando o modelo do jutair)
-    FINAL_OVPN="/root/${CLIENT}.ovpn"
-    
-    sudo bash -c "cat << EOF > $FINAL_OVPN
-client
-dev tun
-proto udp
-remote $IP_EXT 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-remote-cert-tls server
-auth SHA512
-ignore-unknown-option block-outside-dns
-verb 3
-<ca>
-\$(cat pki/ca.crt)
-</ca>
-<cert>
-\$(openssl x509 -in pki/issued/$CLIENT.crt)
-</cert>
-<key>
-\$(cat pki/private/$CLIENT.key)
-</key>
-<tls-crypt>
-\$(cat /etc/openvpn/server/tc.key 2>/dev/null || cat /etc/openvpn/tc.key)
-</tls-crypt>
-EOF"
-
-    sudo tr -d '\r' < "$FINAL_OVPN" | sudo tee "$FINAL_OVPN" > /dev/null
-    
-    echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
-    echo "Arquivo disponível em: $FINAL_OVPN"
-    
-    cd - > /dev/null
     read -p "Pressione ENTER para voltar..." dummy
     atualiza_ovp
 }
