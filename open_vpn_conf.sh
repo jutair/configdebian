@@ -81,22 +81,42 @@ EOD
 }
 remove_user() {
     clear
-    echo "===================================================="
-    echo "            REMOVER USUÁRIO (REVOGAR)               "
-    echo "===================================================="
-    read -p "Nome do usuário para deletar: " CLIENT_NAME
-    [ -z "$CLIENT_NAME" ] && return
+    echo "======================================"
+    echo "        REMOVER USUÁRIO (REVOKE)      "
+    echo "======================================"
+    
+    echo -e "${AMARELO}O robô vai abrir a lista. Digite o NÚMERO e dê ENTER.${SEM_COR}"
+    sleep 2
 
-    export MENU_OPTION="3"
-    export CLIENT="$CLIENT_NAME"
+    # Iniciamos o robô
+    /usr/bin/expect <<EOD
+    set timeout 60
+    spawn sudo "$INSTALLER_PATH" interactive
+    
+    # 1. O robô seleciona a opção 3 para revogar
+    expect "Select an option"
+    send "3\r"
+    
+    # 2. O robô espera a lista aparecer e "para" para você interagir
+    # Quando você digitar o número e der ENTER, o controle volta para o robô
+    expect "Select one client"
+    interact \r
+    
+    # 3. O robô finaliza qualquer pergunta de confirmação que sobrar (como o "Continue?")
+    expect {
+        "Continue?" { send "\r"; exp_continue }
+        "Confirm" { send "\r"; exp_continue }
+        eof
+    }
+EOD
 
-    if sudo -E "$INSTALLER_PATH" > /dev/null; then
-        rm -f "$DESTINO/$CLIENT_NAME.ovpn"
-        echo -e "\n${VERDE}✅ Usuário $CLIENT_NAME removido com sucesso.${SEM_COR}"
-    else
-        echo -e "\n${VERMELHO}❌ Erro ao tentar remover o usuário.${SEM_COR}"
-    fi
-    read -p "Pressione ENTER..." dummy
+    echo -e "\n${VERDE}✅ Processo de revogação concluído no servidor!${SEM_COR}"
+    
+    # Dica extra: Como você escolheu o número na tela, o Bash não sabe o nome do arquivo.
+    # Recomendamos listar a pasta para apagar o .ovpn manualmente se desejar.
+    echo -e "${AMARELO}Dica: Se quiser apagar o arquivo .ovpn, use a opção de listar arquivos.${SEM_COR}"
+    
+    read -p "Pressione ENTER para voltar ao menu..." dummy
 }
 
 listar_online() {
