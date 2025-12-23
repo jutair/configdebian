@@ -370,7 +370,7 @@ add_user() {
     
     IP_EXT=$(curl -4 -s ifconfig.me)
     
-    sudo bash -c "cat <<EOF > /etc/openvpn/server/client-template.txt
+    sudo bash -c "cat << 'EOF' > /etc/openvpn/server/client-template.txt
     client
     dev tun
     proto udp
@@ -384,7 +384,6 @@ add_user() {
     cipher AES-256-GCM
     ignore-unknown-option block-outside-dns
     verb 3
-    <ca>
     EOF"
       # Se o template estiver vazio, restaura o básico
     if [ ! -s /etc/openvpn/server/client-template.txt ]; then
@@ -439,6 +438,7 @@ add_user() {
 
         if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
             # Verifica se a linha 'remote' existe (se não existir, o arquivo está quebrado)
+            sudo sed -i '/Certificate:/,/-----BEGIN CERTIFICATE-----/{/-----BEGIN CERTIFICATE-----/!d}' "$ARQUIVO_GERADO"
             if sudo grep -q "remote " "$ARQUIVO_GERADO"; then
                 echo -e "\n${VERDE}✅ Sucesso: Certificado gerado e validado para $CLIENT${SEM_COR}"
             else
