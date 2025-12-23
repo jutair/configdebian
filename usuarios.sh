@@ -235,7 +235,7 @@ case $OPCAO in
             echo "Retornando ao menu principal..."
             # Garante que estamos na pasta certa e substitui o processo atual pelo menu principal
             cd "/home/$USER_ATUAL/configdebian-main/"
-            exec sudo bash ./menu.sh
+            exec sudo -E bash ./menu.sh
             #exit
             ;;
         *)
