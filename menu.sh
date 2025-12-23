@@ -104,4 +104,62 @@ function gerencia_rede {
             2) monitora_placa ;;
             3) relatorio_consumo ;;
             4) return ;; 
-            *) echo -e "\033[31mOpção inválida!\03
+            *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
+        esac
+    done
+}
+
+#########################################################
+menu() {
+    sudo ntpdate-debian 2>/dev/null
+    IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
+    IP_INTERNO=$(hostname -I | awk '{print $1}')
+    CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
+
+    while true; do
+        clear
+        HORA_ATUAL=$(date '+%H:%M:%S')
+        DATA_ATUAL=$(date '+%d/%m/%Y')
+        
+        echo "================================================================="
+        echo "                    MENU PRINCIPAL                               "
+        echo "Usuário: $CURRENRT"
+        echo "================================================================="
+        echo "DATA: $DATA_ATUAL                           HORA: $HORA_ATUAL"
+        echo "IP Interno: $IP_INTERNO | IP Externo: $IP_EXTERNO"
+        echo "================================================================="
+        echo "Versão do script: 22/12/2025-4:2044:57"
+        echo "================================================================="
+        echo ""
+        echo "[1] Gerenciar Sistema        [6] Gerenciar usuários"
+        echo "[2] Gerenciar Rede           [7] Atualizar o sistema"
+        echo "[3] Ver logs do sistema      [8] Gerenciar OpenVpn"
+        echo "[5] Fazer Backup             [9] Sair"
+        echo ""
+        
+        echo -n "Digite a opção desejada: "
+        read -t 58 OPCAO || true
+
+        case "$OPCAO" in
+            1) echo "Em desenvolvimento..." ; sleep 1 ;;
+            2) gerencia_rede ;;
+            # CORREÇÃO: Espaço entre sudo e ./ para evitar erro de diretório
+            6) exec sudo ./usuarios.sh ;;
+            7) update_sistema ;;
+            8) exec sudo ./open_vpn_conf.sh ;;
+            9) 
+                clear
+                echo -e "\033[1;33m[!] Encerrando painel e voltando ao terminal...\033[0m"
+                sleep 1
+                # Encerra o grupo de processos do menu sem derrubar o SSH
+                kill -TERM -$(ps -o pgid= -p $$ | grep -o '[0-9]*')
+                exit 0
+                ;;
+            "") continue ;;
+            *) echo -e "\n\033[31mOpção inválida: '$OPCAO'\033[0m" ; sleep 1 ;;
+        esac
+    done
+}
+
+# Início do Script
+menu
