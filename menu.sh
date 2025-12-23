@@ -1,5 +1,5 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS (Correção de Identidade de Usuário)
+# menu.sh - Painel de Gestão VPS (Versão Final com CPU Precisa)
 
 DIR_SCRIPTS="$HOME/configdebian-main"
 AZUL='\033[0;34m'
@@ -8,12 +8,12 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-# Coleta o IP Externo do SERVIDOR uma vez
+# Coleta o IP Externo uma vez
 IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
 while true; do
     # --- DADOS DINÂMICOS ---
-    # Captura o usuário real que fez o login, não o usuário do sudo
+    # Captura o usuário real (ignora o sudo)
     USUARIO_NOME=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
     
     # Extrai o IP de quem está acessando o SSH
@@ -22,8 +22,9 @@ while true; do
 
     USER_SSH=$(who | wc -l)
     
-    # Cálculo de CPU
-    CPU_USO=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1"%"}')
+    # --- CÁLCULO DE CPU PRECISO ---
+    # Lê o /proc/stat para calcular o uso real instantâneo
+    CPU_USO=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {printf "%.1f%%", usage}')
     
     MEM_LIVRE=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
     DISCO=$(df -h / | awk '/\// { print $5 }')
@@ -38,7 +39,7 @@ while true; do
         BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
     fi
 
-    [ -z "$BANDA_HOJE" ] || [[ "$BANDA_HOJE" == *"No data"* ]] && BANDA_HOJE="0.00 MB"
+    [[ -z "$BANDA_HOJE" ]] || [[ "$BANDA_HOJE" == *"No data"* ]] && BANDA_HOJE="0.00 MB"
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
