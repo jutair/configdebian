@@ -153,9 +153,9 @@ menu() {
         case "$OPCAO" in
             1) echo "Em desenvolvimento..." ; sleep 1 ;;
             2) gerencia_rede ;;
-            6) exec ./usuarios.sh ;;
+            6) exec sudo./usuarios.sh ;;
             7) update_sistema ;;
-            8) exec ./open_vpn_conf.sh ;;
+            8) exec sudo./open_vpn_conf.sh ;;
             9) 
                 clearclear
                 echo -e "\033[1;33m[!] Encerrando painel e voltando ao terminal...\033[0m"
