@@ -20,12 +20,6 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Instala dependências
-if ! command -v speedtest-cli &> /dev/null || ! command -v vnstat &> /dev/null; then
-    echo -e "${AMARELO}Instalando ferramentas de monitoramento...${SEM_COR}"
-    apt update && apt install speedtest-cli vnstat bc -y
-fi
-
 # Cria a pasta de clientes se não existir
 mkdir -p "$DESTINO"
 chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
@@ -34,19 +28,24 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 
 organizar_arquivos() {
     echo -e "${AMARELO}Sincronizando arquivos .ovpn para $DESTINO...${SEM_COR}"
-    # Busca arquivos .ovpn criados nos últimos 10 minutos em /root ou na home do usuário
-    find /root /home/$USER_ATUAL -maxdepth 1 -name "*.ovpn" -mmin -10 -exec mv {} "$DESTINO/" \; 2>/dev/null
+    # Busca arquivos .ovpn em /root ou na home do usuário e move para a pasta de clientes
+    find /root /home/$USER_ATUAL -maxdepth 1 -name "*.ovpn" -exec mv {} "$DESTINO/" \; 2>/dev/null
     sudo chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
     sudo chmod -R 644 "$DESTINO"/*.ovpn 2>/dev/null
 }
 
 gerenciar_usuarios() {
-    # Chama o script SEM o 'interactive' para você ter o controle total
-    sudo bash "$INSTALLER_PATH"
+    clear
+    echo -e "${AMARELO}Abrindo o Gerenciador Nativo...${SEM_COR}"
+    sleep 1
     
-    # Após sair do script do Angristan, organiza os novos arquivos
+    # CHAMADA EXATA QUE VOCÊ PRECISA:
+    # Rodamos com sudo e passamos o argumento interactive
+    sudo bash "$INSTALLER_PATH" interactive
+    
+    # Ao sair do script do Angristan, organiza os arquivos
     organizar_arquivos
-    echo -e "${VERDE}Feito! Retornando ao menu principal...${SEM_COR}"
+    echo -e "${VERDE}Retornando ao menu principal...${SEM_COR}"
     sleep 2
 }
 
@@ -122,7 +121,7 @@ menu_ovp() {
         echo -e "${AMARELO}=================================================================${SEM_COR}"
         echo -e "                GERENCIADOR OPENVPN - DIGITALOCE                 "
         echo -e "${AMARELO}=================================================================${SEM_COR}"
-        echo -e " [1] Gerenciar Usuários (Add/Remover/Certificados)"
+        echo -e " [1] Gerenciar Usuários (Nativo Angristan)"
         echo -e " [2] Listar Arquivos .ovpn Gerados"
         echo -e " [3] Ver Usuários Online & Consumo"
         echo -e " [4] Testar Velocidade da Internet"
