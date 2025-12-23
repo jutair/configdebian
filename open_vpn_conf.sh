@@ -85,40 +85,33 @@ remove_user() {
     echo "        REMOVER USUÁRIO (REVOKE)      "
     echo "======================================"
     
-    echo -e "${AMARELO}O robô vai abrir a lista. Digite o NÚMERO e dê ENTER.${SEM_COR}"
+    echo -e "${AMARELO}⚠️ ATENÇÃO: Digite apenas o NÚMERO do cliente.${SEM_COR}"
+    echo -e "${AMARELO}O robô vai abrir a lista agora...${SEM_COR}"
     sleep 2
 
-    # Iniciamos o robô
     /usr/bin/expect <<EOD
     set timeout 60
     spawn sudo "$INSTALLER_PATH" interactive
     
-    # 1. O robô seleciona a opção 3 para revogar
     expect "Select an option"
     send "3\r"
     
-    # 2. O robô espera a lista aparecer e "para" para você interagir
-    # Quando você digitar o número e der ENTER, o controle volta para o robô
+    # O robô para aqui. VOCÊ DIGITA O NÚMERO (Ex: 3) e aperta ENTER.
     expect "Select one client"
     interact \r
     
-    # 3. O robô finaliza qualquer pergunta de confirmação que sobrar (como o "Continue?")
+    # Após o seu ENTER, o robô tenta dar os ENTERS de confirmação
     expect {
         "Continue?" { send "\r"; exp_continue }
-        "Confirm" { send "\r"; exp_continue }
+        "Confirm"  { send "\r"; exp_continue }
+        "invalid selection" { puts "\nErro: Você não digitou um número válido!"; exp_continue }
         eof
     }
 EOD
 
-    echo -e "\n${VERDE}✅ Processo de revogação concluído no servidor!${SEM_COR}"
-    
-    # Dica extra: Como você escolheu o número na tela, o Bash não sabe o nome do arquivo.
-    # Recomendamos listar a pasta para apagar o .ovpn manualmente se desejar.
-    echo -e "${AMARELO}Dica: Se quiser apagar o arquivo .ovpn, use a opção de listar arquivos.${SEM_COR}"
-    
-    read -p "Pressione ENTER para voltar ao menu..." dummy
+    echo -e "\n${VERDE}✅ Retornando ao menu principal...${SEM_COR}"
+    read -p "Pressione ENTER para continuar..." dummy
 }
-
 listar_online() {
     clear
     echo "=========================================================================="
