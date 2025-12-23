@@ -4,8 +4,8 @@ DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
 # Verifica se o script foi executado como root
 if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[31mPor favor execute esse script como sudo!\033[0m"
-  exit 1
+  echo -e "\033[31mPor favor execute esse script como sudo!\033[0m"
+  exit 1
 fi
 echo "=========================================================================="
 echo "Buscando por atualização dos pacotes no repositório do debian..."
