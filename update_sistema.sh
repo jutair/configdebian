@@ -10,8 +10,7 @@ fi
 echo "=========================================================================="
 echo "Buscando por atualização dos pacotes no repositório do debian..."
 echo "=========================================================================="
-sudo apt update && sudo apt upgrade -y
-
+#sudo apt update && sudo apt upgrade -y
 echo "=========================================================================="
 echo "Baixando scripts do GitHub..."
 echo "=========================================================================="
