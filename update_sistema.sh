@@ -39,5 +39,5 @@ chmod +x configura_sistema.sh menu.sh open_vpn_conf.sh usuarios.sh update_sistem
 echo "=========================================================================="
 echo "Atualização concluída! Iniciando o sistema..."
 echo "=========================================================================="
-sleep 2
+sleep 15
 sudo ./menu.sh
