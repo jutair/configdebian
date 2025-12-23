@@ -362,39 +362,33 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-    # 2. Verifica se o IP não veio vazio (proteção)
-    if [ -z "$IP_EXT" ]; then
-        echo "Erro: Não foi possível detectar o IP externo."
-        return 1
-    fi
-    
+    # 1. Primeiro capturamos o IP
     IP_EXT=$(curl -4 -s ifconfig.me)
-    
-    sudo bash -c "cat << 'EOF' > /etc/openvpn/server/client-template.txt
-    client
-    dev tun
-    proto udp
-    remote $IP_EXT 1194
-    resolv-retry infinite
-    nobind
-    persist-key
-    persist-tun
-    remote-cert-tls server
-    auth SHA512
-    cipher AES-256-GCM
-    ignore-unknown-option block-outside-dns
-    verb 3
-    EOF"
-      # Se o template estiver vazio, restaura o básico
-    if [ ! -s /etc/openvpn/server/client-template.txt ]; then
-        echo -e "${AMARELO}Restaurando template de cliente corrompido...${SEM_COR}"
-        IP_PUB=$(curl -s ifconfig.me)
-        echo "client" | sudo tee /etc/openvpn/server/client-template.txt > /dev/null
-        echo "dev tun" | sudo tee -a /etc/openvpn/server/client-template.txt > /dev/null
-        echo "proto udp" | sudo tee -a /etc/openvpn/server/client-template.txt > /dev/null
-        echo "remote $IP_PUB 1194" | sudo tee -a /etc/openvpn/server/client-template.txt > /dev/null
-        # ... adicione as outras linhas se desejar ...
+
+    # 2. Agora verificamos se ele não veio vazio
+    if [ -z "$IP_EXT" ]; then
+        echo -e "${VERMELHO}Erro: Não foi possível detectar o IP externo.${SEM_COR}"
+        sleep 2; return 1
     fi
+    
+    # 3. Gravamos o template usando aspas duplas em "EOF" para permitir a variável $IP_EXT
+    # Nota: Alinhado à esquerda para evitar espaços indesejados no arquivo
+    sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
+client
+dev tun
+proto udp
+remote $IP_EXT 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+auth SHA512
+cipher AES-256-GCM
+ignore-unknown-option block-outside-dns
+verb 3
+EOF"
+
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     clear
     echo "======================================"
@@ -428,34 +422,28 @@ add_user() {
 
     echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     
-    # Execução no /tmp para manter logs e arquivos temporários organizados
     cd /tmp
     if sudo bash "$INSTALLER" client add "$CLIENT" > "$LOG_SISTEMA" 2>&1; then
         
-        # --- BLOCO DE VALIDAÇÃO DO ARQUIVO GERADO ---
-        # Procura o arquivo .ovpn recém criado (geralmente em /root ou /home/usuário)
-        ARQUIVO_GERADO=$(sudo find /root /home/$USER_ATUAL -name "${CLIENT}.ovpn" | head -n 1)
+        # --- BLOCO DE VALIDAÇÃO E LIMPEZA ---
+        ARQUIVO_GERADO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-            # Verifica se a linha 'remote' existe (se não existir, o arquivo está quebrado)
+            # Remove lixo informativo do certificado
             sudo sed -i '/Certificate:/,/-----BEGIN CERTIFICATE-----/{/-----BEGIN CERTIFICATE-----/!d}' "$ARQUIVO_GERADO"
+            
+            # Valida se o comando remote está presente
             if sudo grep -q "remote " "$ARQUIVO_GERADO"; then
-                echo -e "\n${VERDE}✅ Sucesso: Certificado gerado e validado para $CLIENT${SEM_COR}"
+                echo -e "\n${VERDE}✅ Sucesso: Certificado gerado, limpo e validado para $CLIENT${SEM_COR}"
             else
-                echo -e "\n${VERMELHO}⚠️ ALERTA: Arquivo gerado está incompleto (falta opção remote).${SEM_COR}"
-                echo -e "${AMARELO}Dica: Verifique se /etc/openvpn/server/client-template.txt está correto.${SEM_COR}"
+                echo -e "\n${VERMELHO}⚠️ ALERTA: Arquivo gerado está incompleto.${SEM_COR}"
             fi
         else
-            echo -e "\n${VERMELHO}❌ ERRO: Arquivo .ovpn não foi encontrado após a criação.${SEM_COR}"
+            echo -e "\n${VERMELHO}❌ ERRO: Arquivo .ovpn não encontrado.${SEM_COR}"
         fi
-        # --------------------------------------------
-
     else
         echo -e "\n${VERMELHO}❌ ERRO: Falha crítica no instalador.${SEM_COR}"
-        echo "Verifique o log persistente em: $LOG_SISTEMA"
-        echo "------------------------------------------------"
         tail -n 15 "$LOG_SISTEMA"
-        echo "------------------------------------------------"
     fi
     
     echo -e "\nPressione ENTER para continuar..."
