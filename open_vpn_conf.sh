@@ -85,32 +85,33 @@ remove_user() {
     echo "        REMOVER USUÁRIO (REVOKE)      "
     echo "======================================"
     
-    echo -e "${AMARELO}⚠️ ATENÇÃO: Digite apenas o NÚMERO do cliente.${SEM_COR}"
-    echo -e "${AMARELO}O robô vai abrir a lista agora...${SEM_COR}"
+    echo -e "${AMARELO}1. O robô vai selecionar a opção 3.${SEM_COR}"
+    echo -e "${AMARELO}2. Quando a lista aparecer, DIGITE O NÚMERO e dê ENTER.${SEM_COR}"
     sleep 2
 
     /usr/bin/expect <<EOD
     set timeout 60
     spawn sudo "$INSTALLER_PATH" interactive
     
+    # Robô digita 3 e ENTER
     expect "Select an option"
     send "3\r"
     
-    # O robô para aqui. VOCÊ DIGITA O NÚMERO (Ex: 3) e aperta ENTER.
+    # Robô espera a lista e te dá o controle
+    # O comando 'return' faz o expect reassumir após você dar o ENTER
     expect "Select one client"
-    interact \r
+    interact \r return
     
-    # Após o seu ENTER, o robô tenta dar os ENTERS de confirmação
+    # Agora o robô reassume e dá ENTER nas confirmações finais
     expect {
         "Continue?" { send "\r"; exp_continue }
         "Confirm"  { send "\r"; exp_continue }
-        "invalid selection" { puts "\nErro: Você não digitou um número válido!"; exp_continue }
         eof
     }
 EOD
 
-    echo -e "\n${VERDE}✅ Retornando ao menu principal...${SEM_COR}"
-    read -p "Pressione ENTER para continuar..." dummy
+    echo -e "\n${VERDE}✅ Revogação finalizada no servidor!${SEM_COR}"
+    read -p "Pressione ENTER para voltar ao menu..." dummy
 }
 listar_online() {
     clear
