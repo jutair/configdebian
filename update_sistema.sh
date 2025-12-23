@@ -56,7 +56,7 @@ echo "==========================================================================
 cd "$DESTINO" || exit
 
 # 1. Dá permissão de execução aos scripts de gestão diária
-chmod +x menu.sh open_vpn_conf.sh usuarios.sh update_sistema.sh gerencia_rede.sh
+chmod +x menu.sh open_vpn_conf.sh usuarios.sh update_sistema.sh gerencia_rede.sh backup.sh
 
 # 2. APAGA os scripts que não devem ser rodados novamente (Autodestruição)
 # Removemos o configurador e este próprio instalador da pasta de destino final
