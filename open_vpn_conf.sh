@@ -369,47 +369,55 @@ add_user() {
     
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (AJUSTE FINAL)    "
+    echo "      GERAR USUÁRIO (SEM DUPLICIDADE) "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
     echo "Gerando chaves para: $CLIENT..."
     
-    # Tentamos primeiro a sintaxe mais comum para essa versão do script
-    # Se ele pedir confirmação, o 'yes' ajuda a passar
+    # 1. Executa o instalador (usando o comando que descobrimos ser o correto)
     if yes "" | sudo bash "$INSTALLER" client add "$CLIENT"; then
         
-        # Busca o arquivo gerado
+        # 2. Localiza o arquivo que o Angristan gerou
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
-            echo "Arquivo gerado! Ajustando para padrão 'jutair'..."
+            echo "Limpando duplicidade e corrigindo TLS-CRYPT..."
             
-            # 1. Remove a linha cipher que causa erro no seu Android
-            sudo sed -i '/cipher AES-256-GCM/d' "$ARQUIVO_BRUTO"
+            TEMP="/tmp/limpo.ovpn"
             
-            # 2. Garante as linhas de persistência do jutair
-            for opt in "persist-key" "persist-tun"; do
-                grep -q "$opt" "$ARQUIVO_BRUTO" || echo "$opt" | sudo tee -a "$ARQUIVO_BRUTO" > /dev/null
-            done
-            
-            # 3. Limpeza de caracteres invisíveis
-            sudo tr -d '\r' < "$ARQUIVO_BRUTO" | sudo tee "${ARQUIVO_BRUTO}_tmp" > /dev/null
-            sudo mv "${ARQUIVO_BRUTO}_tmp" "$ARQUIVO_BRUTO"
+            # 3. Reconstrói o cabeçalho idêntico ao 'jutair'
+            sudo bash -c "cat << EOF > $TEMP
+client
+dev tun
+proto udp
+remote $IP_EXT 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+auth SHA512
+ignore-unknown-option block-outside-dns
+verb 3
+EOF"
 
-            echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
-            echo "Local: $ARQUIVO_BRUTO"
-        else
-            echo -e "\n❌ Erro: O comando rodou, mas o arquivo .ovpn não apareceu."
-        fi
-    else
-        echo -e "\n❌ Erro ao executar o comando de adição."
-    fi
+            # 4. Extrai CA, CERT e KEY do arquivo bruto (ignora o resto)
+            sudo sed -n '/<ca>/,/<\/key>/p' "$ARQUIVO_BRUTO" >> "$TEMP"
 
-    read -p "Pressione ENTER para voltar..." dummy
-    atualiza_ovp
-}
+            # 5. Adiciona a TLS-CRYPT ÚNICA diretamente do arquivo do servidor
+            # Tentamos os dois nomes comuns: tc.key ou tls-crypt.key
+            echo "<tls-crypt>" >> "$TEMP"
+            if [ -f "/etc/openvpn/server/tc.key" ]; then
+                sudo cat "/etc/openvpn/server/tc.key" >> "$TEMP"
+            elif [ -f "/etc/openvpn/tc.key" ]; then
+                sudo cat "/etc/openvpn/tc.key" >> "$TEMP"
+            elif [ -f "/etc/openvpn/tls-crypt.key" ]; then
+                sudo cat "/etc/openvpn/tls-crypt.key" >> "$TEMP"
+            else
+                # Se não achar no servidor, tenta pegar a segunda ocorrência do bruto (que é a funcional)
+                sudo sed -n '/-----BEGIN OpenVPN Static key V1
 # Função para Remover Usuário
 remove_user() {
 USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
