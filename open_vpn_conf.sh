@@ -43,7 +43,48 @@ teste_velocidade() {
     echo "======================================"
     read -p "Pressione ENTER para voltar..." dummy
 }
+listar_online() {
+    clear
+    echo "=========================================================================="
+    echo "                 USUÁRIOS ONLINE E TRÁFEGO (MB)                           "
+    echo "=========================================================================="
+    
+    if [ ! -f "$STATUS_LOG" ]; then
+        echo -e "${VERMELHO}Arquivo de log não encontrado em: $STATUS_LOG${SEM_COR}"
+        echo -e "${AMARELO}Verifique se 'status-version' está configurado no server.conf do OpenVPN.${SEM_COR}"
+    else
+        # Cabeçalho da tabela
+        printf "${VERDE}%-15s %-15s %-12s %-12s %-15s${SEM_COR}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
+        echo "--------------------------------------------------------------------------"
+        
+        # Detecta se o separador é vírgula ou tabulação e processa
+        # Filtramos apenas as linhas que começam com CLIENT_LIST
+        grep "^CLIENT_LIST" "$STATUS_LOG" | while read -r line; do
+            # Verifica se a linha contém vírgulas, se sim usa vírgula, senão usa TAB
+            if [[ "$line" == *","* ]]; then SEP=","; else SEP="\t"; fi
+            
+            USER=$(echo "$line" | cut -d"$SEP" -f2)
+            IP=$(echo "$line" | cut -d"$SEP" -f3 | cut -d':' -f1)
+            RECV_BYTES=$(echo "$line" | cut -d"$SEP" -f5)
+            SENT_BYTES=$(echo "$line" | cut -d"$SEP" -f6)
+            DATA=$(echo "$line" | cut -d"$SEP" -f8)
 
+            # Converte Bytes para MB usando bc
+            RECV_MB=$(echo "scale=2; $RECV_BYTES/1048576" | bc)
+            SENT_MB=$(echo "scale=2; $SENT_BYTES/1048576" | bc)
+
+            printf "%-15s %-15s %-12s %-12s %-15s\n" "$USER" "$IP" "${RECV_MB}MB" "${SENT_MB}MB" "$DATA"
+        done
+        
+        # Se o grep não encontrar nada
+        if ! grep -q "^CLIENT_LIST" "$STATUS_LOG"; then
+            echo -e "${AMARELO}Nenhum usuário conectado no momento.${SEM_COR}"
+        fi
+    fi
+    echo "=========================================================================="
+    echo "Dica: O log do OpenVPN demora cerca de 1 a 5 segundos para atualizar."
+    read -p "Pressione ENTER para voltar..." dummy
+}
 trafego_acumulado() {
     while true; do
         clear
