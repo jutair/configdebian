@@ -27,19 +27,24 @@ listar_usuarios_cadastrados() {
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                ${VERDE}USUÁRIOS CADASTRADOS NO SISTEMA${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    printf "${AMARELO}%-20s %-15s %-15s${NC}\n" "USUÁRIO" "UID" "PRIVILÉGIO"
+    # Cabeçalho da tabela
+    echo -e "${AMARELO} USUÁRIO             UID             PRIVILÉGIO${NC}"
     echo -e "---------------------------------------------------------------"
     
     # Filtra usuários reais (com diretório em /home)
     while IFS=: read -r user pass uid gid info home shell; do
         if [[ "$home" == /home/* ]]; then
-            # Verifica se pertence ao grupo sudo
+            # Verifica se pertence ao grupo sudo e define a label colorida
             if groups "$user" | grep -q "\bsudo\b"; then
-                PRIV="${VERMELHO}ADMIN (sudo)${NC}"
+                PRIV=$(echo -e "${VERMELHO}ADMIN (sudo)${NC}")
             else
-                PRIV="${VERDE}COMUM${NC}"
+                PRIV=$(echo -e "${VERDE}COMUM${NC}")
             fi
-            printf "%-20s %-15s %-15s\n" "$user" "$uid" "$PRIV"
+            
+            # Alinhamento manual para evitar problemas com os códigos de cor
+            # Usamos printf apenas para o nome e UID (que não têm cor) e echo para o privilégio
+            printf " %-19s %-15s" "$user" "$uid"
+            echo -e "$PRIV"
         fi
     done < /etc/passwd
     
@@ -85,24 +90,28 @@ cadastrar_user() {
 ############################ MENU PRINCIPAL ############################
 
 while true; do
-    # Dados para o Dashboard
+    # --- COLETA DE DADOS DO DASHBOARD ---
     TOTAL_USERS=$(grep -c "/home" /etc/passwd)
     LOGADOS_AGORA=$(who | wc -l)
     
+    # Define a string de status com cores antes de entrar no printf
     if groups "$USER_ATUAL" | grep -q "\bsudo\b"; then
-        STATUS_ROOT="${VERDE}SIM (ROOT)${NC}"
+        STATUS_ROOT=$(echo -e "${VERDE}SIM (ROOT)${NC}")
     else
-        STATUS_ROOT="${VERMELHO}NÃO (LIMITADO)${NC}"
+        STATUS_ROOT=$(echo -e "${VERMELHO}NÃO (LIMITADO)${NC}")
     fi
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "            ${VERDE}GERENCIAMENTO DE USUÁRIOS E ACESSOS${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    printf "  ${AZUL}%-20s :${NC} ${AMARELO}%-20s${NC}\n" "USUÁRIO LOGADO" "$USER_ATUAL"
-    printf "  ${AZUL}%-20s :${NC} %-20s\n" "STATUS ROOT" "$STATUS_ROOT"
-    printf "  ${AZUL}%-20s :${NC} ${AMARELO}%-20s${NC}\n" "TOTAL CADASTRADOS" "$TOTAL_USERS"
-    printf "  ${AZUL}%-20s :${NC} ${VERDE}%-20s${NC}\n" "SESSÕES ATIVAS" "$LOGADOS_AGORA"
+    
+    # Usamos echo -e para garantir que os escapes de cor sejam processados
+    echo -e "  ${AZUL}USUÁRIO LOGADO      :${NC} ${AMARELO}$USER_ATUAL${NC}"
+    echo -e "  ${AZUL}STATUS ROOT         :${NC} $STATUS_ROOT"
+    echo -e "  ${AZUL}TOTAL CADASTRADOS   :${NC} ${AMARELO}$TOTAL_USERS${NC}"
+    echo -e "  ${AZUL}SESSÕES ATIVAS      :${NC} ${VERDE}$LOGADOS_AGORA${NC}"
+    
     echo -e "${AZUL}===============================================================${NC}"
     
     echo -e "  [1] 📋 Listar Todos os Usuários"
