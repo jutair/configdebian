@@ -27,49 +27,44 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (MODO SEGURO)     "
+    echo "      GERAR USUÁRIO (MODO ENTER)      "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
 
-    echo -e "${AMARELO}O robô está digitando devagar para evitar erros...${SEM_COR}"
+    echo -e "${AMARELO}O robô está processando os campos automáticos...${SEM_COR}"
 
     cd "$DESTINO" || exit
 
     /usr/bin/expect <<EOD
     set timeout 60
-    # Define a velocidade de digitação humana (milissegundos entre caracteres)
-    set send_human {.1 .1 1 .05 2}
-    
     spawn sudo "$INSTALLER_PATH" interactive
     
-    # 1. Opção de Adicionar
+    # 1. Seleciona a opção 1 (Add User)
     expect "Select an option"
     sleep 1
-    send -h "1\r"
+    send "1\r"
     
-    # 2. Nome do Cliente
+    # 2. Digita o nome do usuário
     expect "Client name:"
     sleep 1
-    send -h "$CLIENT_NAME\r"
+    send "$CLIENT_NAME\r"
     
-    # 3. Validade (ENTER)
+    # 3. ENTER na Validade (Aceita o padrão 3650)
     expect "Certificate validity"
     sleep 1
-    send -h "\r"
+    send "\r"
     
-    # 4. Passwordless - AQUI É O PONTO CRÍTICO
-    # Esperamos o texto exato e limpamos o buffer antes de enviar
+    # 4. ENTER na Senha (Aceita o padrão 1 - Passwordless)
     expect "Select an option"
-    sleep 2
-    send -h "1\r"
+    sleep 1
+    send "\r"
     
-    # Espera o final sem enviar mais nada
     expect eof
 EOD
 
     sleep 2
-    # Busca o arquivo (procurando especificamente o que foi criado agora)
+    # Busca e move o arquivo
     ARQUIVO_FINAL=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
 
     if [ -n "$ARQUIVO_FINAL" ] && [ -f "$ARQUIVO_FINAL" ]; then
@@ -79,7 +74,6 @@ EOD
         echo -e "\n${VERDE}✅ SUCESSO! Arquivo salvo em: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
     else
         echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
-        echo -e "${AMARELO}Se o '11' ainda apareceu, tente rodar o script sem o sudo interno do expect.${SEM_COR}"
     fi
 
     cd - > /dev/null
