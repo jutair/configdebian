@@ -39,4 +39,5 @@ echo "==========================================================================
 echo "Atualização concluída! Iniciando o sistema..."
 echo "=========================================================================="
 sleep 2
+cd "/home/$USER_ATUAL/configdebian-main/"
 exec sudo -E bash ./menu.sh
