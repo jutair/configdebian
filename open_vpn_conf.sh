@@ -362,6 +362,7 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
+      IP_EXT=$(curl -4 -s ifconfig.me)
       sudo bash -c "cat <<EOF > /etc/openvpn/server/client-template.txt
       client
       dev tun
