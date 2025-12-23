@@ -20,112 +20,142 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Instala dependências se faltarem (Speedtest e Vnstat)
-if ! command -v speedtest-cli &> /dev/null || ! command -v vnstat &> /dev/null; then
-    echo -e "${AMARELO}Instalando ferramentas de monitoramento (speedtest-cli, vnstat)...${SEM_COR}"
-    apt update && apt install speedtest-cli vnstat bc -y
+# Instala dependências se faltarem
+if ! command -v speedtest-cli &> /dev/null || ! command -v vnstat &> /dev/null || ! command -v expect &> /dev/null; then
+    echo -e "${AMARELO}Instalando ferramentas necessárias...${SEM_COR}"
+    apt update && apt install speedtest-cli vnstat expect bc -y
 fi
 
 # Cria a pasta de clientes se não existir
 mkdir -p "$DESTINO"
 chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 
-# --- NOVAS FUNÇÕES ---
+# --- FUNÇÕES ---
 
-teste_velocidade() {
+add_user() {
     clear
     echo "======================================"
-    echo "    TESTE DE VELOCIDADE (TUN0)        "
+    echo "      GERAR USUÁRIO (MODO ENTER)      "
     echo "======================================"
-    echo -e "${AMARELO}Iniciando Speedtest... Aguarde...${SEM_COR}"
-    # Força o speedtest a usar a interface da VPN se disponível, senão usa a padrão
-    speedtest-cli --share
-    echo "======================================"
+    read -p "Digite o nome do usuário: " CLIENT_NAME
+    [ -z "$CLIENT_NAME" ] && return
+
+    echo -e "${AMARELO}O robô está processando os campos automáticos...${SEM_COR}"
+
+    /usr/bin/expect <<EOD
+    set timeout 60
+    spawn sudo "$INSTALLER_PATH" interactive
+    expect "Select an option"
+    sleep 1
+    send "1\r"
+    expect "Client name:"
+    sleep 1
+    send "$CLIENT_NAME\r"
+    expect "Certificate validity"
+    sleep 1
+    send "\r"
+    expect "Select an option"
+    sleep 1
+    send "\r"
+    expect eof
+EOD
+
+    sleep 2
+    ARQUIVO_FINAL=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
+
+    if [ -n "$ARQUIVO_FINAL" ] && [ -f "$ARQUIVO_FINAL" ]; then
+        sudo mv "$ARQUIVO_FINAL" "$DESTINO/${CLIENT_NAME}.ovpn"
+        sudo chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
+        sudo chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
+        echo -e "\n${VERDE}✅ SUCESSO! Arquivo salvo em: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+    else
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
+    fi
     read -p "Pressione ENTER para voltar..." dummy
 }
+
+remove_user() {
+    clear
+    echo "======================================"
+    echo "        REMOVER USUÁRIO (REVOKE)      "
+    echo "======================================"
+    echo -e "${AMARELO}Consultando lista de clientes atuais...${SEM_COR}"
+    printf "3\n" | sudo "$INSTALLER_PATH" interactive | sed -n '/Select the existing/,/Select one client/p'
+    
+    echo ""
+    read -p "Digite o NÚMERO do cliente que deseja remover: " NUM_CLIENTE
+    [ -z "$NUM_CLIENTE" ] && return
+
+    /usr/bin/expect <<EOD
+    set timeout 60
+    spawn sudo "$INSTALLER_PATH" interactive
+    expect "Select an option"
+    send "3\r"
+    expect "Select one client"
+    send "$NUM_CLIENTE\r"
+    expect {
+        "Continue?" { send "\r"; exp_continue }
+        "Confirm"  { send "\r"; exp_continue }
+        eof
+    }
+EOD
+    echo -e "\n${VERDE}✅ Revogação concluída!${SEM_COR}"
+    read -p "Pressione ENTER para voltar ao menu..." dummy
+}
+
 listar_online() {
     clear
     echo "=========================================================================="
     echo "                 USUÁRIOS ONLINE E TRÁFEGO (MB)                           "
     echo "=========================================================================="
-    
     if [ ! -f "$STATUS_LOG" ]; then
         echo -e "${VERMELHO}Arquivo de log não encontrado em: $STATUS_LOG${SEM_COR}"
-        echo -e "${AMARELO}Verifique se 'status-version' está configurado no server.conf do OpenVPN.${SEM_COR}"
     else
-        # Cabeçalho da tabela
         printf "${VERDE}%-15s %-15s %-12s %-12s %-15s${SEM_COR}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
         echo "--------------------------------------------------------------------------"
-        
-        # Detecta se o separador é vírgula ou tabulação e processa
-        # Filtramos apenas as linhas que começam com CLIENT_LIST
         grep "^CLIENT_LIST" "$STATUS_LOG" | while read -r line; do
-            # Verifica se a linha contém vírgulas, se sim usa vírgula, senão usa TAB
             if [[ "$line" == *","* ]]; then SEP=","; else SEP="\t"; fi
-            
             USER=$(echo "$line" | cut -d"$SEP" -f2)
             IP=$(echo "$line" | cut -d"$SEP" -f3 | cut -d':' -f1)
             RECV_BYTES=$(echo "$line" | cut -d"$SEP" -f5)
             SENT_BYTES=$(echo "$line" | cut -d"$SEP" -f6)
             DATA=$(echo "$line" | cut -d"$SEP" -f8)
-
-            # Converte Bytes para MB usando bc
             RECV_MB=$(echo "scale=2; $RECV_BYTES/1048576" | bc)
             SENT_MB=$(echo "scale=2; $SENT_BYTES/1048576" | bc)
-
             printf "%-15s %-15s %-12s %-12s %-15s\n" "$USER" "$IP" "${RECV_MB}MB" "${SENT_MB}MB" "$DATA"
         done
-        
-        # Se o grep não encontrar nada
         if ! grep -q "^CLIENT_LIST" "$STATUS_LOG"; then
             echo -e "${AMARELO}Nenhum usuário conectado no momento.${SEM_COR}"
         fi
     fi
-    echo "=========================================================================="
-    echo "Dica: O log do OpenVPN demora cerca de 1 a 5 segundos para atualizar."
     read -p "Pressione ENTER para voltar..." dummy
 }
+
+teste_velocidade() {
+    clear
+    echo "Iniciando Speedtest... Aguarde..."
+    speedtest-cli --share
+    read -p "Pressione ENTER para voltar..." dummy
+}
+
 trafego_acumulado() {
     while true; do
         clear
-        echo "======================================"
-        echo "    RELATÓRIO DE TRÁFEGO (VNSTAT)     "
-        echo "======================================"
-        echo -e " Interface atual: ${VERDE}$(if ip link show tun0 > /dev/null 2>&1; then echo "tun0 (VPN)"; else echo "eth0 (Padrão)"; fi)${SEM_COR}"
-        echo "--------------------------------------"
-        echo " [1] Relatório Diário"
-        echo " [2] Relatório Mensal"
-        echo " [3] Relatório Anual"
-        echo " [4] Voltar ao Menu Principal"
-        echo "--------------------------------------"
-        read -p "Escolha o período: " PERIODO
-
-        # Define a interface (prioriza tun0 se estiver online)
-        IFACE="eth0"
-        ip link show tun0 > /dev/null 2>&1 && IFACE="tun0"
-
+        echo " [1] Diário | [2] Mensal | [3] Anual | [4] Voltar"
+        read -p "Escolha: " PERIODO
+        IFACE="eth0"; ip link show tun0 > /dev/null 2>&1 && IFACE="tun0"
         case $PERIODO in
-            1) clear; echo "--- TRÁFEGO DIÁRIO ---"; vnstat -i "$IFACE" -d; read -p "ENTER para voltar..." dummy ;;
-            2) clear; echo "--- TRÁFEGO MENSAL ---"; vnstat -i "$IFACE" -m; read -p "ENTER para voltar..." dummy ;;
-            3) clear; echo "--- TRÁFEGO ANUAL ---" ; vnstat -i "$IFACE" -y; read -p "ENTER para voltar..." dummy ;;
+            1) vnstat -i "$IFACE" -d; read -p "ENTER..." d ;;
+            2) vnstat -i "$IFACE" -m; read -p "ENTER..." d ;;
+            3) vnstat -i "$IFACE" -y; read -p "ENTER..." d ;;
             4) return ;;
-            *) echo -e "${VERMELHO}Opção inválida!${SEM_COR}"; sleep 1 ;;
         esac
     done
 }
 
 chamar_seguranca() {
-    if [ -f "$SCRIPT_REDE" ]; then
-        bash "$SCRIPT_REDE"
-    else
-        echo -e "${VERMELHO}Erro: Script gerencia_rede.sh não encontrado em $SCRIPT_REDE${SEM_COR}"
-        sleep 2
-    fi
+    [ -f "$SCRIPT_REDE" ] && bash "$SCRIPT_REDE" || echo "Script não encontrado!"
 }
-
-# --- FUNÇÕES ORIGINAIS (MANTIDAS) ---
-# [add_user, remove_user, listar_online permanecem como você enviou]
-# (Cole aqui as suas funções add_user, remove_user e listar_online)
 
 menu_ovp() {
     while true; do
@@ -133,27 +163,16 @@ menu_ovp() {
         echo -e "${AMARELO}=================================================================${SEM_COR}"
         echo -e "                GERENCIADOR OPENVPN - DIGITALOCE                 "
         echo -e "${AMARELO}=================================================================${SEM_COR}"
-        echo -e " [1] Adicionar Usuário (Robô)"
-        echo -e " [2] Remover Usuário (Revogar)"
-        echo -e " [3] Listar Arquivos .ovpn Gerados"
-        echo -e " [4] Ver Usuários Online & Consumo"
-        echo -e "-----------------------------------------------------------------"
-        echo -e " [5] Testar Velocidade da Internet (Speedtest)"
-        echo -e " [6] Ver Tráfego Acumulado (VnStat)"
-        echo -e " [7] Gerenciamento de Rede & Segurança (Firewall)"
-        echo -e " [8] Sair"
+        echo -e " [1] Adicionar Usuário (Robô)     [5] Speedtest"
+        echo -e " [2] Remover Usuário (Revogar)    [6] VnStat (Tráfego)"
+        echo -e " [3] Listar Arquivos .ovpn        [7] Rede & Segurança"
+        echo -e " [4] Usuários Online              [8] Sair"
         echo -e "${AMARELO}=================================================================${SEM_COR}"
-        read -p "Escolha uma opção: " OPCAO
+        read -p "Escolha: " OPCAO
         case $OPCAO in
-            1) add_user ;;
-            2) remove_user ;;
-            3) clear; echo "--- Arquivos em $DESTINO ---"; ls -1 "$DESTINO"; read -p "ENTER..." dummy ;;
-            4) listar_online ;;
-            5) teste_velocidade ;;
-            6) trafego_acumulado ;;
-            7) chamar_seguranca ;;
-            8) exit 0 ;;
-            *) echo -e "${VERMELHO}Opção inválida!${SEM_COR}"; sleep 1 ;;
+            1) add_user ;; 2) remove_user ;; 3) ls -1 "$DESTINO"; read -p "ENTER..." d ;;
+            4) listar_online ;; 5) teste_velocidade ;; 6) trafego_acumulado ;;
+            7) chamar_seguranca ;; 8) exit 0 ;;
         esac
     done
 }
