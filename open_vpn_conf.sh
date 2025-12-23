@@ -37,27 +37,33 @@ add_user() {
     # Entra na pasta de destino
     cd "$DESTINO" || exit
 
-    # O script Expect simula você digitando
+    # O script Expect simula você digitando em cada etapa
     /usr/bin/expect <<EOD
     set timeout 30
     spawn sudo "$INSTALLER_PATH" interactive
     
+    # 1. Seleciona Add New User
     expect "Select an option"
     send "1\r"
     
+    # 2. Digita o Nome
     expect "Client name:"
     send "$CLIENT_NAME\r"
     
+    # 3. Enter na Validade (3650)
     expect "Certificate validity"
     send "\r"
     
-    # Adicione mais "expect" e "send" se o seu script fizer mais perguntas
+    # 4. Seleciona Passwordless (Opção 1)
+    expect "Select an option"
+    send "1\r"
+    
     expect eof
 EOD
 
     sleep 2
 
-    # Verifica o local do arquivo
+    # Verifica se o arquivo apareceu na pasta atual ($DESTINO) ou /root
     if [ -f "${CLIENT_NAME}.ovpn" ]; then
         chown "$USER_ATUAL:$USER_ATUAL" "${CLIENT_NAME}.ovpn"
         chmod 644 "${CLIENT_NAME}.ovpn"
@@ -65,9 +71,9 @@ EOD
     elif [ -f "/root/${CLIENT_NAME}.ovpn" ]; then
         mv "/root/${CLIENT_NAME}.ovpn" "$DESTINO/"
         chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ SUCESSO! Arquivo movido de /root.${SEM_COR}"
+        echo -e "\n${VERDE}✅ SUCESSO! Movido de /root para: $DESTINO${SEM_COR}"
     else
-        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi gerado.${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
     fi
 
     cd - > /dev/null
