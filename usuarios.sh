@@ -63,8 +63,8 @@ done
 echo "Baixando os scripts de gerenciamento do sistema na pasta /home/${NOME_USUARIO}/configdebian-main"
 sudo wget -P /home/${NOME_USUARIO} https://github.com/jutair/configdebian/archive/refs/heads/main.zip
 sudo unzip /home/${NOME_USUARIO}/main.zip -d /home/$NOME_USUARIO
-sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "/home/$NOME_USUARIO/configdebian
-sudo chmod 600 "/home/$NOME_USUARIO/
+sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "/home/$NOME_USUARIO/configdebian"
+sudo chmod 600 "/home/$NOME_USUARIO/configdebian"
 echo "Processo concluído para o usuário $NOME_USUARIO!"
 echo -e "\033[0m"
 sleep 2
