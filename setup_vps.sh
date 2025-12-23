@@ -18,9 +18,5 @@ unzip main.zip
 sudo rm main.zip
 USER=${SUDO_USER:$(logname 2>/dev/null || echo $SUDO_USER)}
 cd $HOME_HUMANA/configdebian-main
-chmod +x configura_sistema.sh
-chmod +x menu.sh
-chmod +x open_vpn_conf.sh
-chmod +x usuarios.sh
-chmod +x gerencia_rede.sh
+chmod +x configura_sistema.sh menu.sh open_vpn_conf.sh usuarios.sh update_sistema.sh gerencia_rede.sh
 exec sudo -E bash ./configura_sistema.sh
