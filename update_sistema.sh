@@ -1,5 +1,4 @@
 #!/bin/bash
-INSTALLER_PATH="/home/$NOME_USUARIO/configdebian-main/openvpn-install.sh"
 NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
@@ -28,7 +27,7 @@ echo "==========================================================================
 echo "Baixando o script do OpenVPN do Angristan..."
 echo "=========================================================================="
 sudo wget -P "/home/$USER_ATUAL/configdebian-main" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-chmod +x INSTALLER_PATH
+sudo chmod +x home/$USER_ATUAL/configdebian-main/openvpn-install.sh
 echo "=========================================================================="
 echo "Acessando os novos scripts na pasta do usuário..."
 echo "=========================================================================="
