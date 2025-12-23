@@ -27,32 +27,28 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (MODO AUTO-ENTER) "
+    echo "      GERAR USUÁRIO (MODO FORÇADO)    "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
 
     echo -e "${AMARELO}Iniciando criação para: $CLIENT_NAME...${SEM_COR}"
 
-    # Entra na pasta de destino para tentar capturar o arquivo lá
+    # Entra na pasta de destino
     cd "$DESTINO" || exit
 
-    # O bloco abaixo faz o seguinte:
-    # 1 -> Seleciona "Add a new user"
-    # $CLIENT_NAME -> Digita o nome
-    # (Linha em branco) -> ENTER para Validade (3650 dias)
-    # (Linha em branco) -> ENTER para qualquer outra pergunta extra
-    sudo "$INSTALLER_PATH" interactive <<EOF
-1
-$CLIENT_NAME
+    # EXPLICAÇÃO DO COMANDO ABAIXO:
+    # "1\n"         -> Seleciona opção 1 (Add User)
+    # "$CLIENT_NAME\n" -> Digita o nome do celular e dá ENTER
+    # "\n"          -> ENTER na validade (3650 dias)
+    # "\n"          -> ENTER em qualquer confirmação extra
+    
+    printf "1\n$CLIENT_NAME\n\n\n" | sudo "$INSTALLER_PATH" interactive
 
-
-EOF
-
+    # Aguarda 2 segundos para o arquivo ser escrito no disco
     sleep 2
 
-    # O Angristan geralmente salva na pasta onde o script foi chamado
-    # ou na pasta /root. Vamos verificar ambos:
+    # Verifica se o arquivo apareceu na pasta atual ($DESTINO) ou no /root
     if [ -f "${CLIENT_NAME}.ovpn" ]; then
         chown "$USER_ATUAL:$USER_ATUAL" "${CLIENT_NAME}.ovpn"
         chmod 644 "${CLIENT_NAME}.ovpn"
@@ -62,12 +58,12 @@ EOF
         chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         echo -e "\n${VERDE}✅ SUCESSO! Movido de /root para: $DESTINO${SEM_COR}"
     else
-        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado após o processo.${SEM_COR}"
-        echo -e "${AMARELO}Dica: Verifique se o nome '$CLIENT_NAME' já não existia.${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi gerado ou o script parou no meio.${SEM_COR}"
+        echo -e "${AMARELO}Se o erro persistir, pode ser necessário instalar o pacote 'expect'.${SEM_COR}"
     fi
 
     cd - > /dev/null
-    read -p "Pressione ENTER para continuar..." dummy
+    read -p "Pressione ENTER para voltar ao menu..." dummy
 }
 remove_user() {
     clear
