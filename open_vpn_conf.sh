@@ -14,17 +14,25 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # --- CONFIGURAÇÃO E DETECÇÃO DO INSTALADOR ---
-if [ -f "/home/$USER_ATUAL/configdebian-main/openvpn-install.sh" ]; then
-    INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
-elif [ -f "./openvpn-install.sh" ]; then
-    INSTALLER_PATH="./openvpn-install.sh"
-else
-    INSTALLER_PATH="/home/$USER_ATUAL/openvpn-install.sh"
-fi
+# Define os locais possíveis para busca
+LOCAIS=(
+    "/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
+    "/home/$USER_ATUAL/openvpn-install.sh"
+    "./openvpn-install.sh"
+)
 
-# Se não existir em nenhum lugar, baixa o oficial
-if [ ! -f "$INSTALLER_PATH" ]; then
-    echo -e "${AMARELO}[!] Instalador Angristan não localizado. Baixando...${SEM_COR}"
+INSTALLER_PATH=""
+for local in "${LOCAIS[@]}"; do
+    if [ -f "$local" ]; then
+        INSTALLER_PATH="$local"
+        break
+    fi
+done
+
+# Se não existir em nenhum lugar, baixa o oficial na home do usuário
+if [ -z "$INSTALLER_PATH" ]; then
+    INSTALLER_PATH="/home/$USER_ATUAL/openvpn-install.sh"
+    echo -e "${AMARELO}[!] Instalador não localizado. Baixando em $INSTALLER_PATH...${SEM_COR}"
     wget -O "$INSTALLER_PATH" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
     chmod +x "$INSTALLER_PATH"
 fi
@@ -57,7 +65,6 @@ user_consumo() {
     echo "==============================================================="
     printf "%-15s %-12s %-12s %-12s\n" "USUÁRIO" "RECEBIDO" "ENVIADO" "TOTAL"
     echo "---------------------------------------------------------------"
-
     if [ ! -f "$STATUS_FILE" ]; then
         echo -e "${VERMELHO}Erro: Log de status não encontrado.${SEM_COR}"
     else
@@ -137,7 +144,18 @@ menu_ovp() {
 
         case $OPCAO in
             1) user_online ;;
-            2) sudo "$INSTALLER_PATH"; sincronizar_ovpns ;;
+            2) 
+               # Tenta executar o instalador forçando o interpretador BASH
+               if [ -f "$INSTALLER_PATH" ]; then
+                   sudo bash "$INSTALLER_PATH"
+               else
+                   echo -e "${VERMELHO}Instalador não encontrado! Baixando...${SEM_COR}"
+                   wget -O "/home/$USER_ATUAL/openvpn-install.sh" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+                   chmod +x "/home/$USER_ATUAL/openvpn-install.sh"
+                   sudo bash "/home/$USER_ATUAL/openvpn-install.sh"
+               fi
+               sincronizar_ovpns
+               ;;
             3) listar_usuarios_pki ;;
             4) 
                clear
@@ -159,6 +177,7 @@ menu_ovp() {
         esac
     done
 }
+
 # --- INÍCIO DO SCRIPT ---
 sincronizar_ovpns
 menu_ovp
