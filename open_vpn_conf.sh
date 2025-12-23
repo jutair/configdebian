@@ -369,19 +369,26 @@ add_user() {
     echo "======================================"
     
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
+    # Definimos o caminho fixo e persistente do LOG
+    LOG_SISTEMA="/var/log/openvpn-install.log"
     
-    # --- CORREÇÃO DE SEGURANÇA ---
-    # Verifica se a chave tls-crypt existe, se não, tenta localizar
+    # Garante que o arquivo de log exista e seja gravável
+    if [ ! -f "$LOG_SISTEMA" ]; then
+        sudo touch "$LOG_SISTEMA"
+        sudo chmod 664 "$LOG_SISTEMA"
+    fi
+
+    # --- CORREÇÃO DE SEGURANÇA (TLS) ---
     if [ ! -f /etc/openvpn/server/tls-crypt.key ]; then
         if [ -f /etc/openvpn/tls-crypt.key ]; then
             sudo ln -s /etc/openvpn/tls-crypt.key /etc/openvpn/server/tls-crypt.key
-        elif [ -f /etc/openvpn/server/ta.key ]; then
-            echo -e "${AMARELO}[AVISO] Usando ta.key em vez de tls-crypt.key${SEM_COR}"
+        else
+            echo -e "${AMARELO}Gerando tls-crypt.key ausente...${SEM_COR}"
+            sudo openvpn --genkey --secret /etc/openvpn/server/tls-crypt.key
         fi
     fi
 
     read -p "Digite o nome do usuário: " CLIENT
-    
     if [ -z "$CLIENT" ]; then
         echo -e "${VERMELHO}Nome não pode ser vazio!${SEM_COR}"
         sleep 2; return
@@ -389,12 +396,21 @@ add_user() {
 
     echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     
-    # Executa o instalador e captura erros
-    if sudo bash "$INSTALLER" client add "$CLIENT"; then
+    # Executamos o instalador. 
+    # Dica: Se o instalador não aceitar o caminho do log via parâmetro, 
+    # podemos usar um redirecionamento, mas o script do Angristan costuma 
+    # gerar o log no diretório onde ele é chamado. 
+    # Por isso, entramos na pasta /tmp para rodar, mantendo sua home limpa.
+    
+    cd /tmp
+    if sudo bash "$INSTALLER" client add "$CLIENT" > "$LOG_SISTEMA" 2>&1; then
         echo -e "\n${VERDE}✅ Sucesso: Certificado gerado para $CLIENT${SEM_COR}"
     else
         echo -e "\n${VERMELHO}❌ ERRO: Falha ao gerar o arquivo .ovpn${SEM_COR}"
-        echo "Verifique o log: tail -n 20 openvpn-install.log"
+        echo "Verifique o log persistente em: $LOG_SISTEMA"
+        echo "------------------------------------------------"
+        tail -n 15 "$LOG_SISTEMA"
+        echo "------------------------------------------------"
     fi
     
     echo "Pressione ENTER para continuar..."
