@@ -1,16 +1,16 @@
 #!/bin/bash
 USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
 
-# Cores
+# --- CORES ---
 VERDE='\033[0;32m'
 VERMELHO='\033[31m'
 AMARELO='\033[1;33m'
 SEM_COR='\033[0m'
 
-# Verifica root
+# --- VERIFICAÇÃO ROOT ---
 if [ "$EUID" -ne 0 ]; then
-  echo -e "${VERMELHO}Por favor, execute como sudo!${SEM_COR}"
-  exit 1
+    echo -e "${VERMELHO}Por favor, execute como sudo!${SEM_COR}"
+    exit 1
 fi
 
 # --- CONFIGURAÇÃO DE CAMINHOS ---
@@ -20,36 +20,16 @@ INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
 STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
 [ ! -f "$STATUS_FILE" ] && STATUS_FILE="/var/log/openvpn/openvpn-status.log"
 
-# --- FUNÇÕES DE APOIO ---
+INDEX_FILE="/etc/openvpn/server/easy-rsa/pki/index.txt"
 
-veri_openvpn () {
-    if ! command -v openvpn >/dev/null 2>&1; then
-        echo -e "${AMARELO}[AVISO] OpenVPN não instalado. Iniciando instalador...${SEM_COR}"
-        sudo wget -P "$(dirname "$INSTALLER_PATH")" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-        sudo chmod +x "$INSTALLER_PATH"
-        sudo "$INSTALLER_PATH"
-    fi
+# --- FUNÇÕES DE SINCRONIZAÇÃO ---
 
-    # Auto-detecção do Easy-RSA e PKI
-    [ -d "/etc/openvpn/easy-rsa" ] && EASYRSA_DIR="/etc/openvpn/easy-rsa"
-    [ -d "/etc/openvpn/server/easy-rsa" ] && EASYRSA_DIR="/etc/openvpn/server/easy-rsa"
-    
-    # Valida estrutura básica
-    INDEX_FILE="$EASYRSA_DIR/pki/index.txt"
-    if [ ! -f "$INDEX_FILE" ]; then
-        sudo mkdir -p "$(dirname "$INDEX_FILE")"
-        sudo touch "$INDEX_FILE"
-    fi
-}
-
-# Função unificada para mover arquivos .ovpn para a home do usuário
-sincronizar_arquivos() {
+sincronizar_ovpns() {
     DESTINO="/home/$USER_ATUAL/clientes_ovp"
     mkdir -p "$DESTINO"
-    chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
-
     ARQUIVOS=$(find /root /home -name "*.ovpn" ! -path "$DESTINO/*" 2>/dev/null)
     if [ -n "$ARQUIVOS" ]; then
+        echo "Sincronizando ficheiros .ovpn..."
         echo "$ARQUIVOS" | while read -r arq; do
             mv "$arq" "$DESTINO/"
             chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/$(basename "$arq")"
@@ -58,7 +38,36 @@ sincronizar_arquivos() {
     fi
 }
 
-# --- FUNÇÕES DO MENU ---
+# --- FUNÇÕES DE CONSUMO E STATUS (RESTAURADAS) ---
+
+user_consumo() {
+    clear
+    echo "==============================================================="
+    echo "               CONSUMO DE DADOS (Sessão Atual)"
+    echo "==============================================================="
+    printf "%-15s %-12s %-12s %-12s\n" "USUÁRIO" "RECEBIDO" "ENVIADO" "TOTAL"
+    echo "---------------------------------------------------------------"
+
+    if [ ! -f "$STATUS_FILE" ]; then
+        echo -e "${VERMELHO}Erro: Log de status não encontrado.${SEM_COR}"
+    else
+        # Filtra CLIENT_LIST e processa os bytes
+        grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
+            USER=$(echo "$line" | cut -d',' -f2)
+            RECV_B=$(echo "$line" | cut -d',' -f5)
+            SENT_B=$(echo "$line" | cut -d',' -f6)
+
+            # Cálculo para MB (escala de 2 casas decimais)
+            RECV_MB=$(echo "scale=2; $RECV_B/1024/1024" | bc 2>/dev/null || echo "0.00")
+            SENT_MB=$(echo "scale=2; $SENT_B/1024/1024" | bc 2>/dev/null || echo "0.00")
+            TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc 2>/dev/null || echo "0.00")
+
+            printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
+        done
+    fi
+    echo "---------------------------------------------------------------"
+    read -p "Pressione ENTER para voltar..." dummy
+}
 
 user_online() {
     clear
@@ -67,123 +76,92 @@ user_online() {
     echo "==============================================================="
     printf "%-15s %-20s %-15s %-10s\n" "USUÁRIO" "IP REAL" "IP VPN" "DESDE"
     echo "---------------------------------------------------------------"
-
-    if [ ! -f "$STATUS_FILE" ]; then
-        echo -e "${VERMELHO}Erro: Log não encontrado.${SEM_COR}"
+    if [ -f "$STATUS_FILE" ]; then
+        grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
+            USER=$(echo "$line" | cut -d',' -f2)
+            IP_R=$(echo "$line" | cut -d',' -f3 | cut -d':' -f1)
+            IP_V=$(echo "$line" | cut -d',' -f4)
+            DESDE=$(echo "$line" | cut -d',' -f8 | awk '{print $2" "$3}')
+            printf "%-15s %-20s %-15s %-10s\n" "$USER" "$IP_R" "$IP_V" "$DESDE"
+        done
     else
-        LISTA=$(grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name")
-        if [ -z "$LISTA" ]; then
-            echo "Nenhum usuário conectado."
-        else
-            echo "$LISTA" | while read -r line; do
-                USER=$(echo "$line" | cut -d',' -f2)
-                IP_R=$(echo "$line" | cut -d',' -f3 | cut -d':' -f1)
-                IP_V=$(echo "$line" | cut -d',' -f4)
-                DESDE=$(echo "$line" | cut -d',' -f8 | awk '{print $2" "$3}')
-                printf "%-15s %-20s %-15s %-10s\n" "$USER" "$IP_R" "$IP_V" "$DESDE"
-            done
-        fi
+        echo "Log não encontrado."
     fi
-    echo "---------------------------------------------------------------"
-    read -p "Pressione ENTER para voltar..." dummy
+    read -p "Pressione ENTER..." d
 }
 
-user_consumo() {
+listar_usuarios_pki() {
     clear
     echo "==============================================================="
-    echo "               CONSUMO DE DADOS (SESSÃO)"
+    echo "              RELATÓRIO DE USUÁRIOS (PKI)"
     echo "==============================================================="
-    printf "%-15s %-12s %-12s %-12s\n" "USUÁRIO" "RECEBIDO" "ENVIADO" "TOTAL"
-    echo "---------------------------------------------------------------"
-    
-    grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
-        USER=$(echo "$line" | cut -d',' -f2)
-        RECV=$(echo "$line" | cut -d',' -f5)
-        SENT=$(echo "$line" | cut -d',' -f6)
-        
-        RECV_MB=$(echo "scale=2; $RECV/1024/1024" | bc)
-        SENT_MB=$(echo "scale=2; $SENT/1024/1024" | bc)
-        TOTAL=$(echo "scale=2; ($RECV+$SENT)/1024/1024" | bc)
-        
-        printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL}MB"
-    done
-    read -p "Pressione ENTER para voltar..." dummy
+    if [ -f "$INDEX_FILE" ]; then
+        echo -e "${VERDE}[ ATIVOS ]${SEM_COR}"
+        grep "^V" "$INDEX_FILE" | while read -r line; do
+            USER=$(echo "$line" | awk -F'=' '{print $2}')
+            DATA_RAW=$(echo "$line" | awk '{print $2}')
+            DATA_BR="20${DATA_RAW:0:2}-${DATA_RAW:2:2}-${DATA_RAW:4:2}"
+            printf "%-20s %-25s\n" "$USER" "$DATA_BR"
+        done
+        echo -e "\n${VERMELHO}[ REVOGADOS ]${SEM_COR}"
+        grep "^R" "$INDEX_FILE" | while read -r line; do
+            USER=$(echo "$line" | awk -F'=' '{print $2}')
+            DATA_RAW=$(echo "$line" | awk '{print $3}')
+            DATA_BR="20${DATA_RAW:0:2}-${DATA_RAW:2:2}-${DATA_RAW:4:2}"
+            printf "%-20s %-25s\n" "$USER" "$DATA_BR"
+        done
+    fi
+    read -p "ENTER para voltar..." d
 }
 
-user_gerencia() {
-    while true; do
-        clear
-        echo "======================================"
-        echo "      GERENCIAMENTO DE CLIENTES       "
-        echo "======================================"
-        echo "[1] Adicionar Cliente"
-        echo "[2] Remover/Revogar Cliente"
-        echo "[3] Listar todos (PKI)"
-        echo "[4] Voltar ao Menu VPN"
-        echo "======================================"
-        read -n 1 -p "Opção: " OP_G
-        echo ""
-
-        case $OP_G in
-            1)
-                read -p "Nome do cliente: " CLIENT
-                sudo "$INSTALLER_PATH" add "$CLIENT" # Ajustado para sintaxe padrão
-                sincronizar_arquivos
-                ;;
-            2)
-                sudo "$INSTALLER_PATH" revoke
-                sincronizar_arquivos
-                ;;
-            3)
-                clear
-                echo "--- STATUS NO BANCO PKI ---"
-                column -t -s ',' /etc/openvpn/server/easy-rsa/pki/index.txt
-                read -p "ENTER..." d
-                ;;
-            4) return ;; # Volta para o menu_ovp
-        esac
-    done
-}
-
-# --- MENU PRINCIPAL DA VPN ---
+# --- MENU PRINCIPAL VPN ---
 
 menu_ovp() {
-    # Busca IPs uma vez por entrada no menu para não lentificar o loop
     IP_INT=$(hostname -I | awk '{print $1}')
     IP_EXT=$(curl -4 -s ifconfig.me)
 
     while true; do
         clear
         echo "================================================================="
-        echo "                     PAINEL OPEN VPN                             "
+        echo "                      PAINEL OPEN VPN                            "
         echo " IP Interno: $IP_INT | IP Externo: $IP_EXT"
         echo "================================================================="
-        echo "[1] Testar Velocidade (tun0)   [5] Monitorar Tráfego (Live)"
-        echo "[2] Usuários Online            [6] Gerenciar Usuários/Certificados"
-        echo "[3] Relatório Diário (vnstat)  [7] Voltar ao Menu Principal"
-        echo "[4] Consumo da Sessão          [9] Sair do Sistema"
+        echo "[1] Usuários Online            [5] Monitorar Tráfego (Live)"
+        echo "[2] Gerenciar Usuários (Add/R) [6] Relatório de Consumo (MB)"
+        echo "[3] Lista Completa (PKI)       [7] Voltar ao Menu Principal"
+        echo "[4] Testar Velocidade tun0     [9] Sair do Sistema"
         echo "================================================================="
-        read -n 1 -p "Digite a opção: " OPCAO
+        read -n 1 -p "Opção: " OPCAO
         echo ""
 
         case $OPCAO in
-            1) testa_velocidade ;;
-            2) user_online ;;
-            3) vnstat -d -i tun0; read -p "ENTER..." d ;;
-            4) user_consumo ;;
-            5) monitora_tun ;; # Sua função com trap que já está no script
-            6) user_gerencia ;;
-            7) exec ./menu.sh ;; # VOLTA PARA O MENU PRINCIPAL LIMPANDO PROCESSO
-            9) 
-                echo "Encerrando..."
-                kill -9 $(ps -o sess= -p $$) 
-                ;;
-            *) echo "Opção inválida"; sleep 1 ;;
+            1) user_online ;;
+            2) 
+               sudo "$INSTALLER_PATH"
+               sincronizar_ovpns
+               ;;
+            3) listar_usuarios_pki ;;
+            4) 
+               clear
+               IP_TUN0=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+               if [ -n "$IP_TUN0" ]; then
+                   speedtest-cli --source "$IP_TUN0" --simple
+               else
+                   echo "Erro: tun0 offline."
+               fi
+               read -p "ENTER..." d ;;
+            5) 
+               clear; trap '' INT
+               ( trap - INT; vnstat -l -i tun0 )
+               trap - INT; read -p "ENTER..." d ;;
+            6) user_consumo ;;
+            7) exec ./menu.sh ;;
+            9) kill -9 $(ps -o sess= -p $$) ;;
+            *) echo "Inválido"; sleep 1 ;;
         esac
     done
 }
 
-# --- EXECUÇÃO ---
-veri_openvpn
-sincronizar_arquivos
+# --- INÍCIO ---
+sincronizar_ovpns
 menu_ovp
