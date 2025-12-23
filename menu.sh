@@ -148,10 +148,8 @@ menu() {
         echo ""
         
         echo -n "Digite a opção desejada: "
-        # IMPORTANTE: Adicionamos o "|| true" para o read não encerrar o script em caso de timeout
         read -t 58 OPCAO || true
 
-        # Usamos "$OPCAO" com aspas para garantir que o valor seja tratado como string única
         case "$OPCAO" in
             1) echo "Em desenvolvimento..." ; sleep 1 ;;
             2) gerencia_rede ;;
@@ -159,12 +157,15 @@ menu() {
             7) update_sistema ;;
             8) exec ./open_vpn_conf.sh ;;
             9) 
-                echo "Encerrando sistema..."
-                kill -TERM -$(ps -o pgid= $PPID | grep -o '[0-9]*')
-                exit 0
-                sleep 10
+                clear
+                echo -e "\n\033[1;33m[!] Encerrando sessões e limpando memória...\033[0m"
+                sleep 1
+                echo -e "\033[1;32mObrigado por usar o painel. Até logo!\033[0m"
+                sleep 0.5
+                # O comando abaixo mata o processo líder da sessão e todos os seus filhos
+                kill -9 $(ps -o sess= -p $$)
                 ;;
-            "") # Quando o tempo de 58s acaba, ele apenas reinicia o loop
+            "") 
                 continue 
                 ;;
             *) 
@@ -174,6 +175,5 @@ menu() {
         esac
     done
 }
-
 # Início do Script
 menu
