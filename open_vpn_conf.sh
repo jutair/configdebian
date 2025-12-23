@@ -369,28 +369,26 @@ add_user() {
     
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (DEBUG MODE)      "
+    echo "      GERAR USUÁRIO (MODO COMPAT)     "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
-    echo "Tentando gerar chaves..."
+    echo "Gerando chaves (pode levar alguns segundos)..."
     
-    # Tentativa 1: Formato padrão (MENU_OPTION=1 é 'Adicionar Usuário' na maioria dos scripts)
-    # Se falhar, ele tentará o formato de argumento direto
-    if ! sudo MENU_OPTION=1 CLIENT="$CLIENT" PASS=1 bash "$INSTALLER" > /tmp/vpn_err.log 2>&1; then
-        sudo bash "$INSTALLER" add "$CLIENT" >> /tmp/vpn_err.log 2>&1
-    fi
+    # Esta linha simula você digitando as opções no instalador:
+    # 1 (Adicionar), Nome do Cliente, 1 (Sem senha)
+    # Usamos o 'expect' ou apenas o redirecionamento de strings:
+    printf "1\n$CLIENT\n1\n" | sudo bash "$INSTALLER" > /tmp/vpn_install.log 2>&1
 
-    # Verificação se o arquivo .ovpn foi de fato criado
+    # Localiza o arquivo .ovpn gerado (o instalador costuma salvar no /root ou home)
     ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
     if [ -f "$ARQUIVO_BRUTO" ]; then
-        echo "Arquivo encontrado! Formatando..."
+        echo "Formatando para compatibilidade total..."
         
-        # Otimização: Vamos apenas garantir que o cabeçalho seja idêntico ao 'jutair'
-        # mas manter os certificados que o script acabou de gerar.
-        TEMP="/tmp/final.ovpn"
+        TEMP="/tmp/limpo.ovpn"
+        # Mantemos o cabeçalho idêntico ao 'jutair' que funciona
         sudo bash -c "cat << EOF > $TEMP
 client
 dev tun
@@ -405,15 +403,21 @@ auth SHA512
 ignore-unknown-option block-outside-dns
 verb 3
 EOF"
-        # Extrai os certificados do arquivo que o instalador gerou
-        sudo sed -n '/<ca>/,/<\/tls-crypt>/p' "$ARQUIVO_BRUTO" >> "$TEMP"
-        sudo tr -d '\r' < "$TEMP" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
+
+        # Anexa os certificados originais gerados pelo instalador
+        # O comando sed abaixo remove o cabeçalho do arquivo bruto e pega as tags <ca>, <cert>, etc.
+        sudo sed -n '/<ca>/,$p' "$ARQUIVO_BRUTO" >> "$TEMP"
         
-        echo -e "\n✅ Usuário $CLIENT criado com sucesso em: $ARQUIVO_BRUTO"
+        # Limpa caracteres invisíveis e salva no destino final
+        sudo tr -d '\r' < "$TEMP" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
+        sudo rm "$TEMP"
+
+        echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
+        echo "Configuração: $ARQUIVO_BRUTO"
     else
-        echo -e "\n❌ ERRO CRÍTICO: O instalador falhou."
-        echo "Log de erro do sistema:"
-        cat /tmp/vpn_err.log | tail -n 5
+        echo -e "\n❌ FALHA AO GERAR ARQUIVO"
+        echo "O instalador não criou o arquivo .ovpn. Verifique se o nome já existe."
+        echo "Dica: Tente remover o usuário antes com a opção 2 do menu do instalador."
     fi
 
     read -p "Pressione ENTER para voltar..." dummy
