@@ -362,23 +362,32 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-      IP_EXT=$(curl -4 -s ifconfig.me)
-      sudo bash -c "cat <<EOF > /etc/openvpn/server/client-template.txt
-      client
-      dev tun
-      proto udp
-      remote $IP_EXTERNO 1194
-      resolv-retry infinite
-      nobind
-      persist-key
-      persist-tun
-      remote-cert-tls server
-      auth SHA512
-      cipher AES-256-GCM
-      ignore-unknown-option block-outside-dns
-      verb 3
-      <ca>
-      EOF"
+# 1. Captura o IP corretamente
+    IP_EXT=$(curl -4 -s ifconfig.me)
+    
+    # 2. Verifica se o IP não veio vazio (proteção)
+    if [ -z "$IP_EXT" ]; then
+        echo "Erro: Não foi possível detectar o IP externo."
+        return 1
+    fi
+    
+    # 3. Cria o arquivo usando a variável correta $IP_EXT
+    sudo bash -c "cat <<EOF > /etc/openvpn/server/client-template.txt
+    client
+    dev tun
+    proto udp
+    remote $IP_EXT 1194
+    resolv-retry infinite
+    nobind
+    persist-key
+    persist-tun
+    remote-cert-tls server
+    auth SHA512
+    cipher AES-256-GCM
+    ignore-unknown-option block-outside-dns
+    verb 3
+    <ca>
+    EOF"
       # Se o template estiver vazio, restaura o básico
     if [ ! -s /etc/openvpn/server/client-template.txt ]; then
         echo -e "${AMARELO}Restaurando template de cliente corrompido...${SEM_COR}"
