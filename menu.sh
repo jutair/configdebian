@@ -1,170 +1,95 @@
 #!/bin/bash
-################################Função de redes########################
-update_sistema() {
-NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
-DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
-# Verifica se o script foi executado como root
+# --- CONFIGURAÇÃO INICIAL E CORES ---
+VERDE='\033[0;32m'
+AMARELO='\033[1;33m'
+AZUL='\033[0;34m'
+SEM_COR='\033[0m'
+
+# Detecta o usuário e o caminho home corretamente
+USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
+HOME_HUMANA=$(getent passwd "$USER_ATUAL" | cut -d: -f6)
+DIR_SCRIPTS="$HOME_HUMANA/configdebian-main"
+
+# Verifica se o script está sendo executado como root/sudo
 if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[31mPor favor execute esse script como sudo!\033[0m"
+  echo -e "${VERMELHO}Por favor, execute como sudo!${SEM_COR}"
   exit 1
 fi
 
-############ Verifica se já existe o script update_sistema.sh na pasta home ############
-ARQUIVOS=$(find "/home/${NOME_USUARIO}/update_sistema.sh" ! -path "$DESTINO/*" 2>/dev/null)
-
-if [ -z "$ARQUIVOS" ]; then
-    echo -e "Não foi encontrado script de atualização na pasta home!"
-else
-    echo "Removendo o script antigo da pasta home."
-    sudo rm "/home/${NOME_USUARIO}/update_sistema.sh"
-fi
-
-#################################################################################
-echo "=========================================================================="
-echo "Baixando um novo script de atualização..."
-echo "=========================================================================="
-sudo wget -P "/home/${NOME_USUARIO}" "https://raw.githubusercontent.com/jutair/configdebian/refs/heads/main/update_sistema.sh"
-sudo chmod +x "/home/${NOME_USUARIO}/update_sistema.sh"
-cd /home/${NOME_USUARIO}/
-sudo ./update_sistema.sh
-}
-###################Fim da função update sistema#################################
-function gerencia_rede {
-    ############Função testa velocidade############
-    function testa_velocidade {
-        clear
-        echo "======================================"
-        echo "        Velocidade da rede:            "
-        echo "======================================"
-        echo "Isto pode levar algum tempo!"
-        echo "Aguarde, testando a conexão da VPS..."
-        # Captura apenas os números usando grep e cut
-        PING=$(speedtest-cli --simple | grep "Ping" | cut -d' ' -f2)
-        DOWNLOAD=$(speedtest-cli --simple | grep "Download" | cut -d' ' -f2)
-        UPLOAD=$(speedtest-cli --simple | grep "Upload" | cut -d' ' -f2)
-        clear
-        echo "Sua velocidade de Download é: $DOWNLOAD Mbps"
-        echo "Sua velocidade de Upload é: $UPLOAD Mbps"
-        echo "O seu ping é: $PING ms" # Corrigi aqui para exibir PING
-        read -p "Pressione ENTER para voltar..." dummy
-    }
-
-    ############Função monitora placa de rede############
-    function monitora_placa {
-        clear
-        INTERFACE=$(ip route | grep default | awk '{print $5}')
-        echo "Monitorando a interface: $INTERFACE"
-        echo "Pressione CTRL+C para parar."
-        trap ':' INT
-        vnstat -l -i "$INTERFACE"
-        trap - INT
-        read -p "Pressione ENTER para voltar..." dummy
-    }
-
-    ###############Função relatório de consumo###########
-    function relatorio_consumo {
-        while true; do
-            INTERFACE=$(ip route | grep default | awk '{print $5}')
-            CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
-            clear
-            echo "======================================"
-            echo "   Relatório de consumo de rede:      "
-            echo "======================================"
-            echo "Seu usuário: $CURRENRT"
-            echo ""
-            echo "[1] Anual"
-            echo "[2] Mensal"
-            echo "[3] Diário"
-            echo "[4] Sair"
-            echo ""
-            read -n 1 -p "Digite a opção desejada: " OPCAO
-            echo ""
-            case $OPCAO in
-                [1]) clear; vnstat -y -i "$INTERFACE"; read -p "Pressione ENTER..." dummy ;;
-                [2]) clear; vnstat -m -i "$INTERFACE"; read -p "Pressione ENTER..." dummy ;;
-                [3]) clear; vnstat -d -i "$INTERFACE"; read -p "Pressione ENTER..." dummy ;;
-                [4]) break ;;
-                *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
-            esac
-        done
-    }
-
-    # Loop principal da gerencia_rede
-    while true; do
-        CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
-        IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
-        clear
-        echo "======================================"
-        echo "           Gerenciar rede:            "
-        # CORREÇÃO DA LINHA 98 ABAIXO (Aspas fechadas)
-        echo "IP externo da rede: $IP_EXTERNO" 
-        echo "======================================"
-        echo "Seu usuário: $CURRENRT"
-        echo ""
-        echo "[1] Testar velocidade"
-        echo "[2] Monitorar placa de rede"
-        echo "[3] Ver relatório de consumo de rede"
-        echo "[4] Voltar ao Menu Principal"
-        echo ""
-        read -n 1 -p "Digite a opção desejada: " OPCAO
-        echo ""
-        case $OPCAO in
-            [1]) testa_velocidade ;;
-            [2]) monitora_placa ;;
-            [3]) relatorio_consumo ;;
-            [4]) return ;; # Usa return para sair da função e voltar ao menu
-            *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
-        esac
-    done
+# --- FUNÇÃO DE CABEÇALHO ---
+cabecalho() {
+    IP_INT=$(hostname -I | awk '{print $1}')
+    IP_EXT=$(curl -4 -s ifconfig.me || echo "Offline")
+    UPTIME=$(uptime -p)
+    
+    clear
+    echo -e "${AZUL}===============================================================${SEM_COR}"
+    echo -e "          PAINEL DE CONTROLE VPS - USUÁRIO: ${VERDE}$USER_ATUAL${SEM_COR}"
+    echo -e "  IP INTERNO: $IP_INT | IP EXTERNO: $IP_EXT"
+    echo -e "  STATUS: $UPTIME"
+    echo -e "${AZUL}===============================================================${SEM_COR}"
 }
 
-#########################################################
-function menu {
-IP_EXTERNO=$(curl -4 -s ifconfig.me || curl -4 -s ident.me)
-IP_INTERNO=$(hostname -I | awk '{print $1}')
-CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
-    while true; do
-        #CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
-        clear
-        # Armazena a hora de Manaus em uma variável
-        HORA_MANAUS=$(TZ='America/Manaus' date '+%H:%M:%S')
-        echo "==============================================================="
-        echo "            Hora local (Manaus): $HORA_MANAUS"
-        echo "==============================================================="
-        echo "                  MENU PRINCIPAL:                              "
-        echo "Ip externo da rede: $IP_EXTERNO"
-        echo "Ip interno da rede: $IP_INTERNO"
-        echo "Seu usuário: $CURRENRT"
-        echo "Versão do script: 22/12/2025-3:18:57"
-        echo "==============================================================="
-        echo ""
-        echo "[1] Gerenciar Sistema        [6] Gerenciar usuários"
-        echo "[2] Gerenciar Rede           [7] Atualizar o sistema"
-        echo "[3] Ver logs do sistema      [8] Gerenciar OpenVpn"
-        echo "[5] Fazer Backup             [9] Sair"
-        echo ""
-        read -n 1 -p "Digite a opção desejada: " OPCAO
-        echo ""
-        case $OPCAO in
-            [1]) echo "Em desenvolvimento..." ; sleep 1 ;;
-            [2]) cd /home/$CURRENRT/configdebian-main/
-                 exec sudo -E bash ./gerencia_rede.sh ;;
-            [6]) cd /home/$CURRENRT/configdebian-main/
-                 exec sudo -E bash ./usuarios.sh ;;
-            [7]) update_sistema ;;
-            [8])  cd /home/$CURRENRT/configdebian-main/
-                  exec sudo -E bash ./open_vpn_conf.sh ;;
-            [9]) 
-                 clear
-                 echo "Saindo do sistema..."
-                 sleep 1
-                 exit 0
-                 ;;
-            *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
-        esac
-    done
-}
+# --- MENU PRINCIPAL ---
+while true; do
+    cabecalho
+    echo -e "${AMARELO}Selecione uma categoria de gerenciamento:${SEM_COR}"
+    echo ""
+    echo -e "[1] 🌐 Gerenciar VPN (OpenVPN)"
+    echo -e "[2] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
+    echo -e "[3] 👤 Gerenciar Usuários do Sistema"
+    echo -e "[4] 🆙 Atualizar Sistema e Pacotes"
+    echo -e "[5] ⚙️  Configuração Inicial da Máquina"
+    echo -e "[6] ❌ Sair"
+    echo ""
+    echo -e "${AZUL}---------------------------------------------------------------${SEM_COR}"
+    read -n 1 -p " Digite a opção: " OPCAO
+    echo ""
 
-# Início do Script
-menu
+    case $OPCAO in
+        1)
+            if [ -f "$DIR_SCRIPTS/open_vpn_conf.sh" ]; then
+                exec sudo -E bash "$DIR_SCRIPTS/open_vpn_conf.sh"
+            else
+                echo -e "${VERMELHO}Erro: script open_vpn_conf.sh não encontrado!${SEM_COR}"; sleep 2
+            fi
+            ;;
+        2)
+            if [ -f "$DIR_SCRIPTS/gerencia_rede.sh" ]; then
+                exec sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh"
+            else
+                echo -e "${VERMELHO}Erro: script gerencia_rede.sh não encontrado!${SEM_COR}"; sleep 2
+            fi
+            ;;
+        3)
+            if [ -f "$DIR_SCRIPTS/usuarios.sh" ]; then
+                exec sudo -E bash "$DIR_SCRIPTS/usuarios.sh"
+            else
+                echo -e "${VERMELHO}Erro: script usuarios.sh não encontrado!${SEM_COR}"; sleep 2
+            fi
+            ;;
+        4)
+            if [ -f "$DIR_SCRIPTS/update_sistema.sh" ]; then
+                exec sudo -E bash "$DIR_SCRIPTS/update_sistema.sh"
+            else
+                echo -e "${VERMELHO}Erro: script update_sistema.sh não encontrado!${SEM_COR}"; sleep 2
+            fi
+            ;;
+        5)
+            if [ -f "$DIR_SCRIPTS/configura_sistema.sh" ]; then
+                exec sudo -E bash "$DIR_SCRIPTS/configura_sistema.sh"
+            else
+                echo -e "${VERMELHO}Erro: script configura_sistema.sh não encontrado!${SEM_COR}"; sleep 2
+            fi
+            ;;
+        6)
+            echo -e "${VERDE}Saindo... Até logo!${SEM_COR}"
+            exit 0
+            ;;
+        *)
+            echo -e "${VERMELHO}Opção inválida!${SEM_COR}"
+            sleep 1
+            ;;
+    esac
+done
