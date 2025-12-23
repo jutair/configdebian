@@ -27,7 +27,7 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO AUTOMÁTICO        "
+    echo "      GERAR USUÁRIO (VERSÃO FINAL)    "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
@@ -39,28 +39,37 @@ add_user() {
     export CLIENT="$CLIENT_NAME"
     export PASS="1"
 
-    # Rodamos o instalador
-    if sudo -E "$INSTALLER_PATH" > /dev/null; then
-        
-        # BUSCA AMPLIADA: Procura em /root e em todas as /home
-        # filtrando pelo nome exato do arquivo criado nos últimos 5 minutos
-        ARQUIVO_GERADO=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -5 | head -n 1)
+    # 1. Tenta rodar o instalador
+    sudo -E "$INSTALLER_PATH" > /dev/null 2>&1
 
-        if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-            # Move para a pasta definitiva
-            mv "$ARQUIVO_GERADO" "$DESTINO/${CLIENT_NAME}.ovpn"
-            chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
-            chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
-            
-            echo -e "\n${VERDE}✅ Sucesso!${SEM_COR}"
-            echo -e "📂 Arquivo movido para: ${AMARELO}$DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+    # 2. BUSCA AGGRESSIVA (Procura em /root, /home e no diretório atual)
+    # Procuramos por arquivos .ovpn criados nos últimos 2 minutos
+    ARQUIVO_GERADO=$(find /root /home /etc/openvpn $(pwd) -maxdepth 2 -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
+
+    # 3. VERIFICAÇÃO E MOVIMENTAÇÃO
+    if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
+        mv "$ARQUIVO_GERADO" "$DESTINO/${CLIENT_NAME}.ovpn"
+    else
+        # 4. ÚLTIMO RECURSO: Se o arquivo sumiu mas o usuário foi criado, 
+        # o Angristan geralmente deixa uma cópia em /root/ ou na home do user logado
+        if [ -f "/root/${CLIENT_NAME}.ovpn" ]; then
+            mv "/root/${CLIENT_NAME}.ovpn" "$DESTINO/"
+        elif [ -f "$HOME/${CLIENT_NAME}.ovpn" ]; then
+            mv "$HOME/${CLIENT_NAME}.ovpn" "$DESTINO/"
         else
-            echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi encontrado.${NC}"
-            echo -e "${AMARELO}Tentando busca manual...${NC}"
-            # Caso o find falhe, tentamos listar o diretório atual
-            ls *.ovpn 2>/dev/null
+            echo -e "${VERMELHO}❌ Erro crítico: O instalador não gerou o arquivo físico.${SEM_COR}"
+            echo -e "${AMARELO}Dica: Tente rodar o instalador uma vez manualmente com './openvpn-install.sh' para ver se há erro de permissão nas chaves.${SEM_COR}"
+            read -p "Pressione ENTER..." dummy
+            return
         fi
     fi
+
+    # Ajusta permissões finais
+    chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
+    chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
+    
+    echo -e "\n${VERDE}✅ SUCESSO!${SEM_COR}"
+    echo -e "📂 Arquivo disponível em: ${AMARELO}$DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
     read -p "Pressione ENTER para continuar..." dummy
 }
 remove_user() {
