@@ -371,7 +371,7 @@ add_user() {
         sleep 2; return 1
     fi
 
-    # 2. Sincronização da Chave Mestra (Evita erro de TLS Unwrap)
+    # 2. Sincronização da Chave Mestra
     CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
     if [ ! -f "$CHAVE_MESTRA" ]; then
         if [ -f /etc/openvpn/tls-crypt.key ]; then
@@ -383,8 +383,8 @@ add_user() {
         sudo chmod 644 "$CHAVE_MESTRA"
     fi
 
-    # 3. Preparação do Template de Cliente
-    sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
+    # 3. Preparação do Template (IMPORTANTE: Sem espaços no início das linhas)
+sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
 client
 dev tun
 proto udp
@@ -421,14 +421,11 @@ EOF"
         sleep 2; return
     fi
 
-    # === BLOCO DE LIMPEZA PREVENTIVA (NOVO) ===
-    # Se o certificado já existe no banco do Easy-RSA, removemos antes de criar
+    # === BLOCO DE LIMPEZA PREVENTIVA ===
     if sudo ls /etc/openvpn/server/easy-rsa/pki/issued/ 2>/dev/null | grep -q "${CLIENT}.crt"; then
-        echo -e "${AMARELO}O nome '$CLIENT' já existe no banco de dados. Revogando antigo...${SEM_COR}"
-        # Revoga silenciosamente para permitir a nova criação sem erro de duplicata
+        echo -e "${AMARELO}O nome '$CLIENT' já existe. Revogando antigo...${SEM_COR}"
         sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
     fi
-    # ==========================================
 
     echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     
@@ -436,28 +433,30 @@ EOF"
     cd /tmp
     if sudo bash "$INSTALLER" client add "$CLIENT" > "$LOG_SISTEMA" 2>&1; then
         
-        # 6. Pós-Processamento: Localização, Limpeza e Validação
+        # 6. Pós-Processamento: Localização, Limpeza e Formatação
         ARQUIVO_GERADO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-            # Remove metadados do OpenSSL (Data, Version, Serial...) para compatibilidade
+            # Remove metadados do OpenSSL (Data, Version, Serial...)
             sudo sed -i '/Certificate:/,/-----BEGIN CERTIFICATE-----/{/-----BEGIN CERTIFICATE-----/!d}' "$ARQUIVO_GERADO"
             
-            # Validação final do conteúdo (Garante que o template funcionou)
+            # REMOVE ESPAÇOS NO INÍCIO E FIM (Evita erro de buffer_full)
+            sudo sed -i 's/^[ \t]*//;s/[ \t]*$//' "$ARQUIVO_GERADO"
+            
+            # Remove possíveis quebras de linha estilo Windows que corrompem o arquivo
+            sudo tr -d '\r' < "$ARQUIVO_GERADO" | sudo tee "${ARQUIVO_GERADO}.tmp" > /dev/null
+            sudo mv "${ARQUIVO_GERADO}.tmp" "$ARQUIVO_GERADO"
+
             if sudo grep -q "remote $IP_EXT" "$ARQUIVO_GERADO"; then
-                echo -e "\n${VERDE}✅ Sucesso: Certificado gerado, limpo e validado para $CLIENT${SEM_COR}"
-                echo -e "${AZUL}Arquivo: $ARQUIVO_GERADO${SEM_COR}"
+                echo -e "\n${VERDE}✅ Sucesso: Certificado gerado e formatado para $CLIENT${SEM_COR}"
+                echo -e "${AZUL}Local: $ARQUIVO_GERADO${SEM_COR}"
             else
-                echo -e "\n${VERMELHO}⚠️ ALERTA: Arquivo gerado está incompleto (falta remote).${SEM_COR}"
+                echo -e "\n${VERMELHO}⚠️ ALERTA: Falha na validação do IP no arquivo.${SEM_COR}"
             fi
-        else
-            echo -e "\n${VERMELHO}❌ ERRO: Arquivo .ovpn não encontrado após a criação.${SEM_COR}"
         fi
     else
         echo -e "\n${VERMELHO}❌ ERRO: Falha crítica no instalador.${SEM_COR}"
-        echo "------------------------------------------------"
         tail -n 10 "$LOG_SISTEMA"
-        echo "------------------------------------------------"
     fi
     
     echo -e "\nPressione ENTER para continuar..."
