@@ -1,7 +1,5 @@
 #!/bin/bash
 NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
-echo "$NOME_USUARIO"
-sleep 5
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 # Verifica se o script foi executado como root
 if [ "$EUID" -ne 0 ]; then
@@ -26,9 +24,9 @@ sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
 echo "=========================================================================="
 echo "Baixando o script do OpenVPN do Angristan..."
 echo "=========================================================================="
-sudo wget -o "/home/$NOME_USUARIO/configdebian-main/openvpn-install.sh" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-chmod +x /home/$NOME_USUARIO/configdebian-main/openvpn-install.sh
-sleep 10
+sudo wget -O /home/$NOME_USUARIO/configdebian-main/openvpn-install.sh https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+sudo chmod +x /home/$NOME_USUARI0/configdebian-main/openvpn-install.sh
+sleep 1
 echo "=========================================================================="
 echo "Acessando os novos scripts na pasta do usuário..."
 echo "=========================================================================="
