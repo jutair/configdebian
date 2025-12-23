@@ -157,7 +157,7 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
             [9]) 
                  clear
                  echo "Saindo do sistema..."
-                 leep 1
+                 sleep 1
                  exit 0
                  ;;
             *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
