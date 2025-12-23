@@ -27,7 +27,7 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (MODO EXPECT)     "
+    echo "      GERAR USUÁRIO (FLUXO COMPLETO)  "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
@@ -39,7 +39,7 @@ add_user() {
 
     # O script Expect simula você digitando em cada etapa
     /usr/bin/expect <<EOD
-    set timeout 30
+    set timeout 60
     spawn sudo "$INSTALLER_PATH" interactive
     
     # 1. Seleciona Add New User
@@ -58,22 +58,27 @@ add_user() {
     expect "Select an option"
     send "1\r"
     
-    expect eof
+    # Espera o processo de geração terminar (pode levar alguns segundos)
+    expect {
+        "Finished!" { exp_continue }
+        "is available at:" { exp_continue }
+        eof
+    }
 EOD
 
     sleep 2
 
-    # Verifica se o arquivo apareceu na pasta atual ($DESTINO) ou /root
-    if [ -f "${CLIENT_NAME}.ovpn" ]; then
-        chown "$USER_ATUAL:$USER_ATUAL" "${CLIENT_NAME}.ovpn"
-        chmod 644 "${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ SUCESSO! Arquivo: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
-    elif [ -f "/root/${CLIENT_NAME}.ovpn" ]; then
-        mv "/root/${CLIENT_NAME}.ovpn" "$DESTINO/"
+    # Busca o arquivo final (o Angristan pode salvar em /root ou no diretório atual)
+    ARQUIVO_FINAL=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
+
+    if [ -n "$ARQUIVO_FINAL" ] && [ -f "$ARQUIVO_FINAL" ]; then
+        mv "$ARQUIVO_FINAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ SUCESSO! Movido de /root para: $DESTINO${SEM_COR}"
+        chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
+        echo -e "\n${VERDE}✅ SUCESSO! Arquivo: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
     else
         echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
+        echo -e "${AMARELO}Verifique se o processo terminou corretamente no log acima.${SEM_COR}"
     fi
 
     cd - > /dev/null
