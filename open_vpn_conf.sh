@@ -27,49 +27,43 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (VERSÃO FINAL)    "
+    echo "      GERAR USUÁRIO (MODO INTERATIVO) "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
 
-    echo -e "${AMARELO}Gerando chaves para: $CLIENT_NAME...${SEM_COR}"
+    echo -e "${AMARELO}Enviando comandos para o instalador...${SEM_COR}"
 
-    # Exporta as variáveis para o Angristan
-    export MENU_OPTION="1"
-    export CLIENT="$CLIENT_NAME"
-    export PASS="1"
+    # Entra na pasta de destino para o arquivo nascer lá
+    cd "$DESTINO" || exit
 
-    # 1. Tenta rodar o instalador
-    sudo -E "$INSTALLER_PATH" > /dev/null 2>&1
+    # O segredo está aqui: enviamos as respostas (1, nome, 1) em sequência
+    # 1 -> Add a new user
+    # $CLIENT_NAME -> Nome do usuário
+    # 1 -> No password
+    sudo "$INSTALLER_PATH" <<EOF
+1
+$CLIENT_NAME
+1
+EOF
 
-    # 2. BUSCA AGGRESSIVA (Procura em /root, /home e no diretório atual)
-    # Procuramos por arquivos .ovpn criados nos últimos 2 minutos
-    ARQUIVO_GERADO=$(find /root /home /etc/openvpn $(pwd) -maxdepth 2 -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
+    # Pequena pausa para o sistema de arquivos sincronizar
+    sleep 2
 
-    # 3. VERIFICAÇÃO E MOVIMENTAÇÃO
-    if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-        mv "$ARQUIVO_GERADO" "$DESTINO/${CLIENT_NAME}.ovpn"
+    # Verifica se o arquivo apareceu (Angristan pode salvar na pasta atual ou /root)
+    if [ -f "${CLIENT_NAME}.ovpn" ]; then
+        chown "$USER_ATUAL:$USER_ATUAL" "${CLIENT_NAME}.ovpn"
+        chmod 644 "${CLIENT_NAME}.ovpn"
+        echo -e "\n${VERDE}✅ SUCESSO! Criado em: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+    elif [ -f "/root/${CLIENT_NAME}.ovpn" ]; then
+        mv "/root/${CLIENT_NAME}.ovpn" "$DESTINO/"
+        chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
+        echo -e "\n${VERDE}✅ SUCESSO! Movido de /root para: $DESTINO${SEM_COR}"
     else
-        # 4. ÚLTIMO RECURSO: Se o arquivo sumiu mas o usuário foi criado, 
-        # o Angristan geralmente deixa uma cópia em /root/ ou na home do user logado
-        if [ -f "/root/${CLIENT_NAME}.ovpn" ]; then
-            mv "/root/${CLIENT_NAME}.ovpn" "$DESTINO/"
-        elif [ -f "$HOME/${CLIENT_NAME}.ovpn" ]; then
-            mv "$HOME/${CLIENT_NAME}.ovpn" "$DESTINO/"
-        else
-            echo -e "${VERMELHO}❌ Erro crítico: O instalador não gerou o arquivo físico.${SEM_COR}"
-            echo -e "${AMARELO}Dica: Tente rodar o instalador uma vez manualmente com './openvpn-install.sh' para ver se há erro de permissão nas chaves.${SEM_COR}"
-            read -p "Pressione ENTER..." dummy
-            return
-        fi
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi gerado mesmo no modo interativo.${SEM_COR}"
     fi
 
-    # Ajusta permissões finais
-    chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
-    chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
-    
-    echo -e "\n${VERDE}✅ SUCESSO!${SEM_COR}"
-    echo -e "📂 Arquivo disponível em: ${AMARELO}$DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+    cd - > /dev/null
     read -p "Pressione ENTER para continuar..." dummy
 }
 remove_user() {
