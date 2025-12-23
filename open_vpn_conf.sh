@@ -24,42 +24,45 @@ mkdir -p "$DESTINO"
 chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 
 # --- FUNÇÕES ---
-
 add_user() {
     clear
-    echo "===================================================="
-    echo "          ADICIONAR NOVO USUÁRIO VPN                "
-    echo "===================================================="
-    read -p "Digite o nome do usuário (sem espaços): " CLIENT_NAME
+    echo "======================================"
+    echo "      GERAR USUÁRIO AUTOMÁTICO        "
+    echo "======================================"
+    read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
 
-    echo -e "${AMARELO}Gerando chaves e certificado para: $CLIENT_NAME...${SEM_COR}"
+    echo -e "${AMARELO}Gerando chaves para: $CLIENT_NAME...${SEM_COR}"
 
-    # Exporta variáveis para o instalador do Angristan automatizar
+    # Exporta as variáveis para o Angristan
     export MENU_OPTION="1"
     export CLIENT="$CLIENT_NAME"
-    export PASS="1" # 1 = Sem senha no arquivo .ovpn
+    export PASS="1"
 
-    # Executa o instalador preservando as variáveis (-E)
+    # Rodamos o instalador
     if sudo -E "$INSTALLER_PATH" > /dev/null; then
-        # Busca o arquivo gerado pelo instalador
-        ARQUIVO_GERADO=$(find /root /home/$USER_ATUAL -maxdepth 1 -name "${CLIENT_NAME}.ovpn" | head -n 1)
+        
+        # BUSCA AMPLIADA: Procura em /root e em todas as /home
+        # filtrando pelo nome exato do arquivo criado nos últimos 5 minutos
+        ARQUIVO_GERADO=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -5 | head -n 1)
 
-        if [ -f "$ARQUIVO_GERADO" ]; then
-            mv "$ARQUIVO_GERADO" "$DESTINO/"
+        if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
+            # Move para a pasta definitiva
+            mv "$ARQUIVO_GERADO" "$DESTINO/${CLIENT_NAME}.ovpn"
             chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
             chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
-            echo -e "\n${VERDE}✅ SUCESSO! Usuário $CLIENT_NAME criado.${SEM_COR}"
-            echo -e "📂 Arquivo pronto em: ${AMARELO}$DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+            
+            echo -e "\n${VERDE}✅ Sucesso!${SEM_COR}"
+            echo -e "📂 Arquivo movido para: ${AMARELO}$DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
         else
-            echo -e "\n${VERMELHO}❌ ERRO: O instalador não gerou o arquivo na pasta esperada.${SEM_COR}"
+            echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi encontrado.${NC}"
+            echo -e "${AMARELO}Tentando busca manual...${NC}"
+            # Caso o find falhe, tentamos listar o diretório atual
+            ls *.ovpn 2>/dev/null
         fi
-    else
-        echo -e "\n${VERMELHO}❌ ERRO ao processar o comando no instalador.${SEM_COR}"
     fi
-    read -p "Pressione ENTER para voltar..." dummy
+    read -p "Pressione ENTER para continuar..." dummy
 }
-
 remove_user() {
     clear
     echo "===================================================="
