@@ -27,61 +27,59 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (VERSÃO FINAL)    "
+    echo "      GERAR USUÁRIO (MODO SEGURO)     "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
-    
-    # Validação simples
-    if [ -z "$CLIENT_NAME" ]; then
-        echo "Nome vazio!"
-        return
-    fi
+    [ -z "$CLIENT_NAME" ] && return
 
-    echo -e "${AMARELO}O robô está processando, aguarde...${SEM_COR}"
+    echo -e "${AMARELO}O robô está digitando devagar para evitar erros...${SEM_COR}"
 
-    # Garante que estamos na pasta de destino
     cd "$DESTINO" || exit
 
-    # Usamos <<'EOD' (com aspas) se não quisermos que o bash mexa em nada,
-    # mas como precisamos da variável $CLIENT_NAME, usamos <<EOD e cuidamos dos nomes.
     /usr/bin/expect <<EOD
     set timeout 60
+    # Define a velocidade de digitação humana (milissegundos entre caracteres)
+    set send_human {.1 .1 1 .05 2}
+    
     spawn sudo "$INSTALLER_PATH" interactive
     
+    # 1. Opção de Adicionar
     expect "Select an option"
     sleep 1
-    send "1\r"
+    send -h "1\r"
     
+    # 2. Nome do Cliente
     expect "Client name:"
     sleep 1
-    send "$CLIENT_NAME\r"
+    send -h "$CLIENT_NAME\r"
     
+    # 3. Validade (ENTER)
     expect "Certificate validity"
     sleep 1
-    send "\r"
+    send -h "\r"
     
+    # 4. Passwordless - AQUI É O PONTO CRÍTICO
+    # Esperamos o texto exato e limpamos o buffer antes de enviar
     expect "Select an option"
     sleep 2
-    send "1\r"
+    send -h "1\r"
     
+    # Espera o final sem enviar mais nada
     expect eof
 EOD
 
-    echo -e "${AMARELO}Buscando arquivo gerado...${SEM_COR}"
     sleep 2
-
-    # BUSCA CORRIGIDA: Sem as barras invertidas inúteis
+    # Busca o arquivo (procurando especificamente o que foi criado agora)
     ARQUIVO_FINAL=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
 
     if [ -n "$ARQUIVO_FINAL" ] && [ -f "$ARQUIVO_FINAL" ]; then
-        # Move para a pasta final (DESTINO)
         sudo mv "$ARQUIVO_FINAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         sudo chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         sudo chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ SUCESSO! Arquivo: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+        echo -e "\n${VERDE}✅ SUCESSO! Arquivo salvo em: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
     else
-        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado em /root ou /home.${SEM_COR}"
-        echo -e "${AMARELO}Dica: Verifique se o instalador emitiu algum erro de 'Easy-RSA'.${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
+        echo -e "${AMARELO}Se o '11' ainda apareceu, tente rodar o script sem o sudo interno do expect.${SEM_COR}"
     fi
 
     cd - > /dev/null
