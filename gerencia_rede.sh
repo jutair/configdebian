@@ -307,16 +307,17 @@ alternar_root_login() {
 menu_ssh() {
     while true; do
         clear
-        echo "======================================"
-        echo "        GERENCIAMENTO SSH             "
-        echo "======================================"
+        echo "========================================="
+        echo "          CONFIGURAR O SSH             "
+        echo "========================================="
         echo "[1] Ver Status e Conexões"
         echo "[2] Mudar Porta SSH"
         echo "[3] Ativar/Desativar Login Root"
         echo "[4] Ativar/Desativar Login por Senha"
         echo "[5] Ver Logs de Acesso (Últimos 20)"
-        echo "[6] Voltar ao Menu Principal"
-        echo "======================================"
+        echo "[5] Retornar ao Menu Segurança de Rede"
+        echo "[6] Retornar ao Menu Principal"
+        echo "========================================="
         read -n 1 -p "Opção: " OPCAO
         echo ""
 
@@ -347,15 +348,15 @@ menu_ssh
             echo "======================================"
             echo "Seu usuário: $CURRENRT"
             echo ""
-            echo "[1] Configurar o Firewall"
-            echo "[2] Configurar o SSH"
-            echo "[3] Retornar ao Menu Gerenciar Rede"
-            echo "[4] Retornar ao Menu Principal"
+            echo "[1] Firewall"
+            echo "[2] SSH"
+            echo "[3] Retornar ao Menu Gerencia Rede"
+            echo "[4] Voltar ao Menu Principal"
             echo ""
             read -n 1 -p "Digite a opção desejada: " OPCAO
             echo ""
             case $OPCAO in
-                [1]) fire_config;;
+                [1]) config_firewall;;
                 [2]) ssh_config ;;
                 [3]) return ;;
                 [4])
