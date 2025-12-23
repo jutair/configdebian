@@ -12,6 +12,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+
 # --- CONFIGURAÇÃO DE CAMINHOS ---
 # O Angristan usa geralmente estes caminhos:
 INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
@@ -371,7 +372,6 @@ add_user() {
     fi
 
     # 2. Sincronização da Chave Mestra (Evita erro de TLS Unwrap)
-    # Garante que o script use a mesma chave que o serviço do servidor está lendo
     CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
     if [ ! -f "$CHAVE_MESTRA" ]; then
         if [ -f /etc/openvpn/tls-crypt.key ]; then
@@ -383,7 +383,7 @@ add_user() {
         sudo chmod 644 "$CHAVE_MESTRA"
     fi
 
-    # 3. Preparação do Template de Cliente (Limpo e sem espaços)
+    # 3. Preparação do Template de Cliente
     sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
 client
 dev tun
@@ -400,7 +400,7 @@ ignore-unknown-option block-outside-dns
 verb 3
 EOF"
 
-    # 4. Interface visual
+    # 4. Interface visual e variáveis de caminho
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     clear
     echo "======================================"
@@ -410,7 +410,6 @@ EOF"
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
     LOG_SISTEMA="/var/log/openvpn-install.log"
     
-    # Garante log persistente
     if [ ! -f "$LOG_SISTEMA" ]; then
         sudo touch "$LOG_SISTEMA"
         sudo chmod 664 "$LOG_SISTEMA"
@@ -422,6 +421,15 @@ EOF"
         sleep 2; return
     fi
 
+    # === BLOCO DE LIMPEZA PREVENTIVA (NOVO) ===
+    # Se o certificado já existe no banco do Easy-RSA, removemos antes de criar
+    if sudo ls /etc/openvpn/server/easy-rsa/pki/issued/ 2>/dev/null | grep -q "${CLIENT}.crt"; then
+        echo -e "${AMARELO}O nome '$CLIENT' já existe no banco de dados. Revogando antigo...${SEM_COR}"
+        # Revoga silenciosamente para permitir a nova criação sem erro de duplicata
+        sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
+    fi
+    # ==========================================
+
     echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     
     # 5. Execução do Instalador
@@ -432,10 +440,10 @@ EOF"
         ARQUIVO_GERADO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-            # Remove o "lixo" informativo do OpenSSL (Data, Version, Serial...)
+            # Remove metadados do OpenSSL (Data, Version, Serial...) para compatibilidade
             sudo sed -i '/Certificate:/,/-----BEGIN CERTIFICATE-----/{/-----BEGIN CERTIFICATE-----/!d}' "$ARQUIVO_GERADO"
             
-            # Validação final do conteúdo
+            # Validação final do conteúdo (Garante que o template funcionou)
             if sudo grep -q "remote $IP_EXT" "$ARQUIVO_GERADO"; then
                 echo -e "\n${VERDE}✅ Sucesso: Certificado gerado, limpo e validado para $CLIENT${SEM_COR}"
                 echo -e "${AZUL}Arquivo: $ARQUIVO_GERADO${SEM_COR}"
@@ -443,11 +451,13 @@ EOF"
                 echo -e "\n${VERMELHO}⚠️ ALERTA: Arquivo gerado está incompleto (falta remote).${SEM_COR}"
             fi
         else
-            echo -e "\n${VERMELHO}❌ ERRO: Arquivo .ovpn não encontrado.${SEM_COR}"
+            echo -e "\n${VERMELHO}❌ ERRO: Arquivo .ovpn não encontrado após a criação.${SEM_COR}"
         fi
     else
         echo -e "\n${VERMELHO}❌ ERRO: Falha crítica no instalador.${SEM_COR}"
-        echo "Verifique o log: tail -n 15 $LOG_SISTEMA"
+        echo "------------------------------------------------"
+        tail -n 10 "$LOG_SISTEMA"
+        echo "------------------------------------------------"
     fi
     
     echo -e "\nPressione ENTER para continuar..."
