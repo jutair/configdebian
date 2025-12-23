@@ -15,7 +15,7 @@ sudo apt update && sudo apt upgrade -y
 echo "=========================================================================="
 echo "Baixando scripts do GitHub..."
 echo "=========================================================================="
-sudo wget -O "/home/$NOME_USUARIO/main.zip" "https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
+sudo wget -p "/home/$NOME_USUARIO/" "https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
 echo "=========================================================================="
 echo "Extraindo os scripts para pasta do usuário..."
 echo "=========================================================================="
