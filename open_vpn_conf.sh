@@ -27,28 +27,37 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (MODO FORÇADO)    "
+    echo "      GERAR USUÁRIO (MODO EXPECT)     "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
 
-    echo -e "${AMARELO}Iniciando criação para: $CLIENT_NAME...${SEM_COR}"
+    echo -e "${AMARELO}Automatizando interação com o instalador...${SEM_COR}"
 
     # Entra na pasta de destino
     cd "$DESTINO" || exit
 
-    # EXPLICAÇÃO DO COMANDO ABAIXO:
-    # "1\n"         -> Seleciona opção 1 (Add User)
-    # "$CLIENT_NAME\n" -> Digita o nome do celular e dá ENTER
-    # "\n"          -> ENTER na validade (3650 dias)
-    # "\n"          -> ENTER em qualquer confirmação extra
+    # O script Expect simula você digitando
+    /usr/bin/expect <<EOD
+    set timeout 30
+    spawn sudo "$INSTALLER_PATH" interactive
     
-    printf "1\n$CLIENT_NAME\n\n\n" | sudo "$INSTALLER_PATH" interactive
+    expect "Select an option"
+    send "1\r"
+    
+    expect "Client name:"
+    send "$CLIENT_NAME\r"
+    
+    expect "Certificate validity"
+    send "\r"
+    
+    # Adicione mais "expect" e "send" se o seu script fizer mais perguntas
+    expect eof
+EOD
 
-    # Aguarda 2 segundos para o arquivo ser escrito no disco
     sleep 2
 
-    # Verifica se o arquivo apareceu na pasta atual ($DESTINO) ou no /root
+    # Verifica o local do arquivo
     if [ -f "${CLIENT_NAME}.ovpn" ]; then
         chown "$USER_ATUAL:$USER_ATUAL" "${CLIENT_NAME}.ovpn"
         chmod 644 "${CLIENT_NAME}.ovpn"
@@ -56,10 +65,9 @@ add_user() {
     elif [ -f "/root/${CLIENT_NAME}.ovpn" ]; then
         mv "/root/${CLIENT_NAME}.ovpn" "$DESTINO/"
         chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ SUCESSO! Movido de /root para: $DESTINO${SEM_COR}"
+        echo -e "\n${VERDE}✅ SUCESSO! Arquivo movido de /root.${SEM_COR}"
     else
-        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi gerado ou o script parou no meio.${SEM_COR}"
-        echo -e "${AMARELO}Se o erro persistir, pode ser necessário instalar o pacote 'expect'.${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi gerado.${SEM_COR}"
     fi
 
     cd - > /dev/null
