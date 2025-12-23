@@ -66,6 +66,61 @@ listar_online() {
     read -p " Pressione ENTER para retornar..." dummy
 }
 
+gerar_link_ovpn() {
+    clear
+    # Pega o IP Externo caso não esteja carregado
+    [ -z "$IP_EXT" ] && IP_EXT=$(curl -s ifconfig.me)
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}LINK PARA DOWNLOAD OVPN${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    # Busca usuários que possuem a pasta clientes_ovp
+    mapfile -t USERS_LIST < <(ls /home)
+    
+    echo -e "${AMARELO}Selecione o usuário dono do arquivo:${NC}"
+    for i in "${!USERS_LIST[@]}"; do
+        if [ -d "/home/${USERS_LIST[$i]}/clientes_ovp" ]; then
+            printf "  [%s] %s ${VERDE}(Arquivos disponíveis)${NC}\n" "$i" "${USERS_LIST[$i]}"
+        else
+            printf "  [%s] %s\n" "$i" "${USERS_LIST[$i]}"
+        fi
+    done
+    echo -e "---------------------------------------------------------------"
+    read -p " Digite o número: " US_INDEX
+    
+    USER_SEL=${USERS_LIST[$US_INDEX]}
+    CAMINHO_BUSCA="/home/$USER_SEL/clientes_ovp"
+
+    if [ ! -d "$CAMINHO_BUSCA" ]; then
+        echo -e "${VERMELHO}Erro: Este usuário não possui pasta 'clientes_ovp'.${NC}"
+        sleep 2; return
+    fi
+
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "    ${AMARELO}COMANDOS SCP PARA O USUÁRIO: ${NC}$USER_SEL"
+    echo -e "${AZUL}===============================================================${NC}"
+    
+    FILES=$(ls "$CAMINHO_BUSCA"/*.ovpn 2>/dev/null)
+
+    if [ -z "$FILES" ]; then
+        echo -e "${VERMELHO}Nenhum arquivo .ovpn encontrado na pasta.${NC}"
+    else
+        echo -e "Copie o comando abaixo e cole no terminal do seu ${VERDE}PC LOCAL${NC}:"
+        echo ""
+        for file in $FILES; do
+            FILENAME=$(basename "$file")
+            echo -e "${AMARELO}Arquivo:${NC} $FILENAME"
+            # Exibe o comando formatado para o usuário copiar
+            echo -e "${VERDE}scp root@$IP_EXT:$file ./ ${NC}"
+            echo -e "---------------------------------------------------------------"
+        done
+    fi
+    
+    read -p " Pressione ENTER para retornar..." dummy
+}
+
 menu_ovp() {
     while true; do
         # --- COLETA DE DADOS PARA O DASHBOARD ---
@@ -90,7 +145,7 @@ menu_ovp() {
         printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "CPU / RAM" "$CPU_USO / $MEM_USO"
         echo -e "${AZUL}===============================================================${NC}"
         echo -e "  [1] 👤 Gerenciar Usuários (Criar/Remover)"
-        echo -e "  [2] 📂 Listar Arquivos .ovpn Gerados"
+        echo -e "  [2] 📂 Baixar aquivo cliente ovpn"
         echo -e "  [3] 📊 Ver Detalhes dos Online & Consumo"
         echo -e "  [4] ⚡ Testar Velocidade da Internet"
         echo -e "  [5] 📈 Relatórios VnStat (Dia/Mês)"
@@ -107,9 +162,7 @@ menu_ovp() {
                 ;;
             2) 
                 clear
-                echo "Arquivos em: $DESTINO"
-                ls -1 "$DESTINO"
-                read -p "ENTER para voltar..." d 
+                gerar_link_ovpn   # <-- Chamada da nova função
                 ;;
             3) listar_online ;;
             4) clear; speedtest-cli --share; read -p "ENTER para voltar..." d ;;
