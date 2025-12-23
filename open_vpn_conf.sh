@@ -27,7 +27,7 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (FLUXO COMPLETO)  "
+    echo "      GERAR USUÁRIO (MODO AUTO-ENTER) "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
@@ -37,7 +37,6 @@ add_user() {
     # Entra na pasta de destino
     cd "$DESTINO" || exit
 
-    # O script Expect simula você digitando em cada etapa
     /usr/bin/expect <<EOD
     set timeout 60
     spawn sudo "$INSTALLER_PATH" interactive
@@ -50,7 +49,7 @@ add_user() {
     expect "Client name:"
     send "$CLIENT_NAME\r"
     
-    # 3. Enter na Validade (3650)
+    # 3. ENTER na Validade (3650)
     expect "Certificate validity"
     send "\r"
     
@@ -58,27 +57,29 @@ add_user() {
     expect "Select an option"
     send "1\r"
     
-    # Espera o processo de geração terminar (pode levar alguns segundos)
+    # 5. ENTERS extras para qualquer confirmação que aparecer depois
+    # Enviamos uma sequência de ENTERS para finalizar o processo
     expect {
+        "Confirm" { send "\r"; exp_continue }
+        "press any key" { send "\r"; exp_continue }
         "Finished!" { exp_continue }
-        "is available at:" { exp_continue }
         eof
     }
 EOD
 
     sleep 2
 
-    # Busca o arquivo final (o Angristan pode salvar em /root ou no diretório atual)
+    # Busca o arquivo (Angristan pode salvar em /root, na home ou na pasta atual)
     ARQUIVO_FINAL=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
 
     if [ -n "$ARQUIVO_FINAL" ] && [ -f "$ARQUIVO_FINAL" ]; then
         mv "$ARQUIVO_FINAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ SUCESSO! Arquivo: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+        echo -e "\n${VERDE}✅ SUCESSO! Arquivo disponível em: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
     else
         echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
-        echo -e "${AMARELO}Verifique se o processo terminou corretamente no log acima.${SEM_COR}"
+        echo -e "${AMARELO}Dica: Se o script parou, verifique se houve erro de Easy-RSA acima.${SEM_COR}"
     fi
 
     cd - > /dev/null
