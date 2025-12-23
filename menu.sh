@@ -1,5 +1,5 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS (Versão Final com CPU Precisa)
+# menu.sh - Painel de Gestão VPS (Versão Final com Backup Integrado)
 
 DIR_SCRIPTS="$HOME/configdebian-main"
 AZUL='\033[0;34m'
@@ -13,7 +13,6 @@ IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
 while true; do
     # --- DADOS DINÂMICOS ---
-    # Captura o usuário real (ignora o sudo)
     USUARIO_NOME=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
     
     # Extrai o IP de quem está acessando o SSH
@@ -23,7 +22,6 @@ while true; do
     USER_SSH=$(who | wc -l)
     
     # --- CÁLCULO DE CPU PRECISO ---
-    # Lê o /proc/stat para calcular o uso real instantâneo
     CPU_USO=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {printf "%.1f%%", usage}')
     
     MEM_LIVRE=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
@@ -59,8 +57,9 @@ while true; do
     echo -e "  [1] 🌐 Gerenciar VPN (OpenVPN)"
     echo -e "  [2] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
     echo -e "  [3] 👤 Gerenciar Usuários do Sistema"
-    echo -e "  [4] 🆙 Atualizar Sistema"
-    echo -e "  [5] ❌ Sair"
+    echo -e "  [4] 📦 Backup e Restauração"               # <-- NOVA OPÇÃO
+    echo -e "  [5] 🆙 Atualizar Sistema"
+    echo -e "  [6] ❌ Sair"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     
     read -n 1 -p " Digite a opção: " OPCAO
@@ -70,8 +69,9 @@ while true; do
         1) [ -f "$DIR_SCRIPTS/open_vpn_conf.sh" ] && sudo -E bash "$DIR_SCRIPTS/open_vpn_conf.sh" ;;
         2) [ -f "$DIR_SCRIPTS/gerencia_rede.sh" ] && sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh" ;;
         3) [ -f "$DIR_SCRIPTS/usuarios.sh" ] && sudo -E bash "$DIR_SCRIPTS/usuarios.sh" ;;
-        4) [ -f "$DIR_SCRIPTS/update_sistema.sh" ] && sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
-        5) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
+        4) [ -f "$DIR_SCRIPTS/backup.sh" ] && sudo -E bash "$DIR_SCRIPTS/backup.sh" ;; # <-- CHAMADA DO BACKUP
+        5) [ -f "$DIR_SCRIPTS/update_sistema.sh" ] && sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
+        6) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
 done
