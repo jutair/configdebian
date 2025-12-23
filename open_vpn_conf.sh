@@ -20,7 +20,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Instala dependências se faltarem
+# Instala dependências
 if ! command -v speedtest-cli &> /dev/null || ! command -v vnstat &> /dev/null; then
     echo -e "${AMARELO}Instalando ferramentas de monitoramento...${SEM_COR}"
     apt update && apt install speedtest-cli vnstat bc -y
@@ -32,10 +32,22 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 
 # --- FUNÇÕES ---
 
+organizar_arquivos() {
+    echo -e "${AMARELO}Sincronizando arquivos .ovpn para $DESTINO...${SEM_COR}"
+    # Busca arquivos .ovpn criados nos últimos 10 minutos em /root ou na home do usuário
+    find /root /home/$USER_ATUAL -maxdepth 1 -name "*.ovpn" -mmin -10 -exec mv {} "$DESTINO/" \; 2>/dev/null
+    sudo chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
+    sudo chmod -R 644 "$DESTINO"/*.ovpn 2>/dev/null
+}
+
 gerenciar_usuarios() {
-    # Chama o script do Angristan diretamente no modo interativo
-    # Isso permite adicionar, remover e listar certificados nativamente
-    sudo "$INSTALLER_PATH"
+    # Chama o script SEM o 'interactive' para você ter o controle total
+    sudo bash "$INSTALLER_PATH"
+    
+    # Após sair do script do Angristan, organiza os novos arquivos
+    organizar_arquivos
+    echo -e "${VERDE}Feito! Retornando ao menu principal...${SEM_COR}"
+    sleep 2
 }
 
 listar_arquivos_ovpn() {
@@ -43,19 +55,8 @@ listar_arquivos_ovpn() {
     echo "======================================"
     echo "      ARQUIVOS .OVPN DISPONÍVEIS      "
     echo "======================================"
-    echo -e "Pasta: $DESTINO"
-    echo "--------------------------------------"
     ls -1 "$DESTINO"
     echo "--------------------------------------"
-    read -p "Pressione ENTER para voltar..." dummy
-}
-
-teste_velocidade() {
-    clear
-    echo "======================================"
-    echo "    TESTE DE VELOCIDADE (SISTEMA)     "
-    echo "======================================"
-    speedtest-cli --share
     read -p "Pressione ENTER para voltar..." dummy
 }
 
@@ -134,7 +135,7 @@ menu_ovp() {
             1) gerenciar_usuarios ;;
             2) listar_arquivos_ovpn ;;
             3) listar_online ;;
-            4) teste_velocidade ;;
+            4) clear; speedtest-cli --share; read -p "ENTER..." d ;;
             5) trafego_acumulado ;;
             6) chamar_seguranca ;;
             7) exit 0 ;;
