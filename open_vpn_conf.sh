@@ -65,7 +65,10 @@ add_user() {
 
     echo "Gerando chaves para: $CLIENT..."
     
-    if sudo "$INSTALLER_PATH" client add "$CLIENT" --no-pass; then
+    # REMOVIDO O --no-pass QUE CAUSOU O ERRO
+    # O instalador CLI do Angristan por padrão gera sem senha.
+    if sudo "$INSTALLER_PATH" client add "$CLIENT"; then
+        
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
