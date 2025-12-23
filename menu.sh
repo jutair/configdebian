@@ -147,21 +147,26 @@ menu() {
         echo "[5] Fazer Backup             [9] Sair"
         echo ""
         
-        # REMOVIDO O -n 1 para aceitar apenas após o ENTER
-        echo -n "Digite a opção desejada (e aperte Enter): "
-        read -t 58 OPCAO
+        echo -n "Digite a opção desejada: "
+        # IMPORTANTE: Adicionamos o "|| true" para o read não encerrar o script em caso de timeout
+        read -t 58 OPCAO || true
 
+        # Usamos "$OPCAO" com aspas para garantir que o valor seja tratado como string única
         case "$OPCAO" in
             1) echo "Em desenvolvimento..." ; sleep 1 ;;
             2) gerencia_rede ;;
             6) ./usuarios.sh ;;
             7) update_sistema ;;
             8) ./open_vpn_conf.sh ;;
-            9) exit 0 ;;
-            "") # Caso o tempo de 58s acabe (variável vazia)
-                continue ;;
+            9) 
+                echo "Saindo..."
+                exit 0 
+                ;;
+            "") # Quando o tempo de 58s acaba, ele apenas reinicia o loop
+                continue 
+                ;;
             *) 
-                echo -e "\n\033[31mOpção inválida!\033[0m"
+                echo -e "\n\033[31mOpção inválida: '$OPCAO'\033[0m"
                 sleep 1 
                 ;;
         esac
