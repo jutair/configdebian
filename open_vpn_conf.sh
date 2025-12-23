@@ -13,23 +13,34 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# --- CONFIGURAÇÃO DE CAMINHOS ---
-INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
-[ ! -f "$INSTALLER_PATH" ] && INSTALLER_PATH="./openvpn-install.sh"
+# --- CONFIGURAÇÃO E DETECÇÃO DO INSTALADOR ---
+# Procura o instalador em locais comuns para evitar o erro de "não localizado"
+if [ -f "/home/$USER_ATUAL/configdebian-main/openvpn-install.sh" ]; then
+    INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
+elif [ -f "./openvpn-install.sh" ]; then
+    INSTALLER_PATH="./openvpn-install.sh"
+else
+    INSTALLER_PATH="/home/$USER_ATUAL/openvpn-install.sh"
+fi
+
+# Se não existir em nenhum lugar, baixa o oficial
+if [ ! -f "$INSTALLER_PATH" ]; then
+    echo -e "${AMARELO}[!] Instalador Angristan não localizado. Baixando...${SEM_COR}"
+    wget -O "$INSTALLER_PATH" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+    chmod +x "$INSTALLER_PATH"
+fi
 
 STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
 [ ! -f "$STATUS_FILE" ] && STATUS_FILE="/var/log/openvpn/openvpn-status.log"
-
 INDEX_FILE="/etc/openvpn/server/easy-rsa/pki/index.txt"
 
-# --- FUNÇÕES DE SINCRONIZAÇÃO ---
+# --- FUNÇÕES DE APOIO ---
 
 sincronizar_ovpns() {
     DESTINO="/home/$USER_ATUAL/clientes_ovp"
     mkdir -p "$DESTINO"
     ARQUIVOS=$(find /root /home -name "*.ovpn" ! -path "$DESTINO/*" 2>/dev/null)
     if [ -n "$ARQUIVOS" ]; then
-        echo "Sincronizando ficheiros .ovpn..."
         echo "$ARQUIVOS" | while read -r arq; do
             mv "$arq" "$DESTINO/"
             chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/$(basename "$arq")"
@@ -38,7 +49,7 @@ sincronizar_ovpns() {
     fi
 }
 
-# --- FUNÇÕES DE CONSUMO E STATUS (RESTAURADAS) ---
+# --- FUNÇÕES DE CONSUMO E STATUS ---
 
 user_consumo() {
     clear
@@ -51,13 +62,11 @@ user_consumo() {
     if [ ! -f "$STATUS_FILE" ]; then
         echo -e "${VERMELHO}Erro: Log de status não encontrado.${SEM_COR}"
     else
-        # Filtra CLIENT_LIST e processa os bytes
         grep "^CLIENT_LIST" "$STATUS_FILE" | grep -v "Common Name" | while read -r line; do
             USER=$(echo "$line" | cut -d',' -f2)
             RECV_B=$(echo "$line" | cut -d',' -f5)
             SENT_B=$(echo "$line" | cut -d',' -f6)
 
-            # Cálculo para MB (escala de 2 casas decimais)
             RECV_MB=$(echo "scale=2; $RECV_B/1024/1024" | bc 2>/dev/null || echo "0.00")
             SENT_MB=$(echo "scale=2; $SENT_B/1024/1024" | bc 2>/dev/null || echo "0.00")
             TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc 2>/dev/null || echo "0.00")
@@ -85,7 +94,7 @@ user_online() {
             printf "%-15s %-20s %-15s %-10s\n" "$USER" "$IP_R" "$IP_V" "$DESDE"
         done
     else
-        echo "Log não encontrado."
+        echo "Arquivo de log não encontrado."
     fi
     read -p "Pressione ENTER..." d
 }
@@ -103,13 +112,8 @@ listar_usuarios_pki() {
             DATA_BR="20${DATA_RAW:0:2}-${DATA_RAW:2:2}-${DATA_RAW:4:2}"
             printf "%-20s %-25s\n" "$USER" "$DATA_BR"
         done
-        echo -e "\n${VERMELHO}[ REVOGADOS ]${SEM_COR}"
-        grep "^R" "$INDEX_FILE" | while read -r line; do
-            USER=$(echo "$line" | awk -F'=' '{print $2}')
-            DATA_RAW=$(echo "$line" | awk '{print $3}')
-            DATA_BR="20${DATA_RAW:0:2}-${DATA_RAW:2:2}-${DATA_RAW:4:2}"
-            printf "%-20s %-25s\n" "$USER" "$DATA_BR"
-        done
+    else
+        echo "Banco de dados PKI não localizado."
     fi
     read -p "ENTER para voltar..." d
 }
@@ -117,51 +121,4 @@ listar_usuarios_pki() {
 # --- MENU PRINCIPAL VPN ---
 
 menu_ovp() {
-    IP_INT=$(hostname -I | awk '{print $1}')
-    IP_EXT=$(curl -4 -s ifconfig.me)
-
-    while true; do
-        clear
-        echo "================================================================="
-        echo "                      PAINEL OPEN VPN                            "
-        echo " IP Interno: $IP_INT | IP Externo: $IP_EXT"
-        echo "================================================================="
-        echo "[1] Usuários Online            [5] Monitorar Tráfego (Live)"
-        echo "[2] Gerenciar Usuários (Add/R) [6] Relatório de Consumo (MB)"
-        echo "[3] Lista Completa (PKI)       [7] Voltar ao Menu Principal"
-        echo "[4] Testar Velocidade tun0     [9] Sair do Sistema"
-        echo "================================================================="
-        read -n 1 -p "Opção: " OPCAO
-        echo ""
-
-        case $OPCAO in
-            1) user_online ;;
-            2) 
-               sudo "$INSTALLER_PATH"
-               sincronizar_ovpns
-               ;;
-            3) listar_usuarios_pki ;;
-            4) 
-               clear
-               IP_TUN0=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-               if [ -n "$IP_TUN0" ]; then
-                   speedtest-cli --source "$IP_TUN0" --simple
-               else
-                   echo "Erro: tun0 offline."
-               fi
-               read -p "ENTER..." d ;;
-            5) 
-               clear; trap '' INT
-               ( trap - INT; vnstat -l -i tun0 )
-               trap - INT; read -p "ENTER..." d ;;
-            6) user_consumo ;;
-            7) exec ./menu.sh ;;
-            9) kill -9 $(ps -o sess= -p $$) ;;
-            *) echo "Inválido"; sleep 1 ;;
-        esac
-    done
-}
-
-# --- INÍCIO ---
-sincronizar_ovpns
-menu_ovp
+    IP_
