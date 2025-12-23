@@ -1,7 +1,6 @@
 #!/bin/bash
 NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
-
 # Verifica se o script foi executado como root
 if [ "$EUID" -ne 0 ]; then
   echo -e "\033[31mPor favor execute esse script como sudo!\033[0m"
@@ -14,7 +13,7 @@ echo "==========================================================================
 echo "=========================================================================="
 echo "Baixando scripts do GitHub..."
 echo "=========================================================================="
-sudo wget -p "/home/$NOME_USUARIO/" "https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
+wget -O "/home/$NOME_USUARIO/main.zip" "https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
 echo "=========================================================================="
 echo "Extraindo os scripts para pasta do usuário..."
 echo "=========================================================================="
@@ -25,8 +24,8 @@ sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
 echo "=========================================================================="
 echo "Baixando o script do OpenVPN do Angristan..."
 echo "=========================================================================="
-sudo wget -P "/home/$USER_ATUAL/configdebian-main" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-chmod +x home/$USER_ATUAL/configdebian-main/openvpn-install.sh
+sudo wget -o "/home/$NOME_USUARIO/configdebian-main/openvpn-install.sh" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+chmod +x home/$NOME_USUARIO/configdebian-main/openvpn-install.sh
 sleep 10
 echo "=========================================================================="
 echo "Acessando os novos scripts na pasta do usuário..."
