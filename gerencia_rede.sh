@@ -302,7 +302,46 @@ alternar_root_login() {
     echo -e "\n${VERDE}Configuração aplicada!${SEM_COR}"
     sleep 2
 }
+#######################Funçaõ derrubar e revogar usuário######
+derruba_user_ssh() {
+    clear
+    echo "======================================"
+    echo "    DERRUBAR E REVOGAR ACESSO SSH     "
+    echo "======================================"
+    
+    # 1. Listar usuários reais logados (evita mostrar processos do sistema)
+    echo "Usuários conectados agora:"
+    who | awk '{print $1, "(" $5 ")"}' | sort | uniq
+    echo "--------------------------------------"
+    
+    read -p "Digite o NOME EXATO do usuário para expulsar: " USUARIO_ALVO
 
+    if [ -z "$USUARIO_ALVO" ]; then
+        echo -e "${VERMELHO}Nome inválido.${SEM_COR}"
+        sleep 2
+        return
+    fi
+
+    # Confirmar se o usuário existe no sistema
+    if ! id "$USUARIO_ALVO" >/dev/null 2>&1; then
+        echo -e "${VERMELHO}Erro: O usuário '$USUARIO_ALVO' não existe.${SEM_COR}"
+        sleep 2
+        return
+    fi
+
+    # 2. Bloquear o acesso (Revogar)
+    # Bloqueia a senha e impede novos logins via SSH
+    sudo usermod -L "$USUARIO_ALVO"
+    
+    # 3. Derrubar a conexão atual (Kill)
+    # O pkill -u mata todos os processos pertencentes àquele usuário
+    sudo pkill -u "$USUARIO_ALVO" -9
+
+    echo -e "${VERDE}Sucesso: Conexão de $USUARIO_ALVO encerrada e acesso bloqueado!${SEM_COR}"
+    echo "Nota: O usuário não conseguirá logar até ser desbloqueado."
+    sleep 3
+}
+######################Fim da função derruba ssh###############
 ############################ Menu ############################
 menu_ssh() {
     while true; do
@@ -315,8 +354,9 @@ menu_ssh() {
         echo "[3] Ativar/Desativar Login Root"
         echo "[4] Ativar/Desativar Login por Senha"
         echo "[5] Ver Logs de Acesso (Últimos 20)"
-        echo "[6] Retornar ao Menu Segurança de Rede"
-        echo "[7] Retornar ao Menu Principal"
+        echo "[6] Derrubar Conexão"
+        echo "[7] Retornar ao Menu Segurança de Rede"
+        echo "[8] Retornar ao Menu Principal"
         echo "========================================="
         read -n 1 -p "Opção: " OPCAO
         echo ""
@@ -327,8 +367,9 @@ menu_ssh() {
             3) alternar_root_login ;;
             4) alternar_senha_ssh ;;
             5) clear; tail -n 20 /var/log/auth.log | grep sshd; read -p "ENTER..." d ;;
-            6) return ;;
-            7) 
+            6) derruba_user_ssh ;;
+            7) return ;;
+            8) 
                 cd "/home/$USER_ATUAL/configdebian-main/" 2>/dev/null || cd "/home/$USER_ATUAL/"
                 exec sudo -E bash ./menu.sh 
                 ;;
