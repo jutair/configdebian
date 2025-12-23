@@ -1,4 +1,5 @@
 #!/bin/bash
+INSTALLER_PATH="/home/$NOME_USUARIO/configdebian-main/openvpn-install.sh"
 NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 
@@ -23,6 +24,10 @@ sudo unzip -o "/home/$NOME_USUARIO/main.zip" -d "/home/$NOME_USUARIO/"
 sudo rm "/home/$NOME_USUARIO/main.zip"
 # Arquivo gerado como sudo deve retornar ao usuário original
 sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
+echo "=========================================================================="
+echo "Baixando o script do OpenVPN do Angristan..."
+echo "=========================================================================="
+sudo wget -P "/home/$USER_ATUAL/configdebian-main" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
 echo "=========================================================================="
 echo "Acessando os novos scripts na pasta do usuário..."
 echo "=========================================================================="
