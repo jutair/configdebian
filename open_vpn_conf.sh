@@ -363,42 +363,33 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-    # 1. Configurações iniciais e IP
     IP_EXT=$(curl -4 -s ifconfig.me)
-    [ -z "$IP_EXT" ] && { echo -e "${VERMELHO}Erro ao obter IP externo${SEM_COR}"; return 1; }
+    [ -z "$IP_EXT" ] && { echo -e "Erro IP"; return 1; }
 
-    # 2. Sincroniza Chave Mestra
     CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
     [ ! -f "$CHAVE_MESTRA" ] && sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA" 2>/dev/null
 
-    # 3. Define o Instalador
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
     
     clear
-    echo "======================================"
-    echo "      ADICIONAR NOVO USUÁRIO          "
-    echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
-    # 4. Limpeza preventiva
     if sudo ls /etc/openvpn/server/easy-rsa/pki/issued/ 2>/dev/null | grep -q "${CLIENT}.crt"; then
         sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
     fi
 
-    echo -e "${AMARELO}Gerando certificado...${SEM_COR}"
+    echo "Gerando certificado..."
     cd /tmp
     if sudo bash "$INSTALLER" client add "$CLIENT" > /dev/null 2>&1; then
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
-            echo "Reconstruindo perfil (Fix Buffer Full)..."
+            echo "Reconstruindo perfil (Fix certReadError)..."
+            FINAL="/tmp/${CLIENT}_f.ovpn"
             
-            # CRIANDO UM NOVO ARQUIVO DO ZERO PARA EVITAR LIXO
-            FINAL="/tmp/${CLIENT}_final.ovpn"
-            
-            # A. Adiciona o Cabeçalho
+            # 1. Cabeçalho limpo
             sudo bash -c "cat << EOF > $FINAL
 client
 dev tun
@@ -415,36 +406,35 @@ ignore-unknown-option block-outside-dns
 verb 3
 EOF"
 
-            # B. Extrai o CA
+            # 2. Extração Dinâmica (Busca o conteúdo real entre as tags)
+            # Extrai o CA (primeiro certificado)
             echo "<ca>" >> "$FINAL"
-            sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$ARQUIVO_BRUTO" | head -n 22 >> "$FINAL"
+            sudo awk '/<ca>/{flag=1;next}/<\/ca>/{flag=0}flag' "$ARQUIVO_BRUTO" | sudo grep -v "Certificate:" | sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' >> "$FINAL"
             echo "</ca>" >> "$FINAL"
 
-            # C. Extrai o CERT (apenas o segundo bloco de certificado do arquivo bruto)
+            # Extrai o CERT (certificado do cliente)
             echo "<cert>" >> "$FINAL"
-            sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$ARQUIVO_BRUTO" | tail -n +23 >> "$FINAL"
+            sudo awk '/<cert>/{flag=1;next}/<\/cert>/{flag=0}flag' "$ARQUIVO_BRUTO" | sudo grep -v "Certificate:" | sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' >> "$FINAL"
             echo "</cert>" >> "$FINAL"
 
-            # D. Extrai a KEY
+            # Extrai a KEY
             echo "<key>" >> "$FINAL"
-            sudo sed -n '/-----BEGIN PRIVATE KEY-----/,/-----END PRIVATE KEY-----/p' "$ARQUIVO_BRUTO" >> "$FINAL"
+            sudo awk '/<key>/{flag=1;next}/<\/key>/{flag=0}flag' "$ARQUIVO_BRUTO" >> "$FINAL"
             echo "</key>" >> "$FINAL"
 
-            # E. Extrai APENAS A PRIMEIRA CHAVE TLS-CRYPT
+            # Extrai o TLS-CRYPT (apenas um bloco)
             echo "<tls-crypt>" >> "$FINAL"
-            sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' "$ARQUIVO_BRUTO" | head -n 18 >> "$FINAL"
+            sudo awk '/<tls-crypt>/{flag=1;next}/<\/tls-crypt>/{flag=0}flag' "$ARQUIVO_BRUTO" | sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' | head -n 18 >> "$FINAL"
             echo "</tls-crypt>" >> "$FINAL"
 
-            # F. Limpeza de caracteres invisíveis e substituição do original
+            # 3. Limpeza final e substituição
             sudo tr -d '\r' < "$FINAL" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
             sudo rm "$FINAL"
 
-            echo -e "\n${VERDE}✅ Sucesso: Perfil reconstruído sem erros para $CLIENT${SEM_COR}"
+            echo -e "\n✅ Sucesso: Perfil validado para $CLIENT"
         fi
     fi
-    
-    echo -e "\nPressione ENTER para continuar..."
-    read dummy
+    read -p "ENTER..." dummy
     atualiza_ovp
 }
 # Função para Remover Usuário
