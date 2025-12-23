@@ -8,7 +8,7 @@ menu() {
         clear
         HORA_ATUAL=$(date '+%H:%M:%S')
         DATA_ATUAL=$(date '+%d/%m/%Y')
-        
+      
         echo "================================================================="
         echo "                    MENU PRINCIPAL                               "
         echo "Usuário: $CURRENRT"
