@@ -363,17 +363,20 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-    # 1. Configurações iniciais e IP
+    # 1. Configurações iniciais e detecção de IP
     IP_EXT=$(curl -4 -s ifconfig.me)
-    [ -z "$IP_EXT" ] && { echo -e "${VERMELHO}Erro ao obter IP externo${SEM_COR}"; return 1; }
+    if [ -z "$IP_EXT" ]; then
+        echo -e "${VERMELHO}Erro: Não foi possível detectar o IP externo.${SEM_COR}"
+        sleep 2; return 1
+    fi
 
-    # 2. Sincroniza Chave Mestra para evitar TLS Error
+    # 2. Sincronização da Chave Mestra
     CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
     if [ ! -f "$CHAVE_MESTRA" ]; then
         sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA" 2>/dev/null
     fi
 
-    # 3. Garante o Template limpo (Sem espaços na margem esquerda)
+    # 3. Preparação do Template (Sem espaços à esquerda)
 sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
 client
 dev tun
@@ -390,58 +393,42 @@ ignore-unknown-option block-outside-dns
 verb 3
 EOF"
 
+    # 4. Interface e Definições
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
-    
+    LOG_SISTEMA="/var/log/openvpn-install.log"
+
     clear
     echo "======================================"
-    echo "      ADICIONAR NOVO USUÁRIO          "
+    echo "      ADICIONAR NOVO UTILIZADOR       "
     echo "======================================"
-    read -p "Digite o nome do usuário: " CLIENT
-    [ -z "$CLIENT" ] && return
+    read -p "Digite o nome do utilizador: " CLIENT
+    if [ -z "$CLIENT" ]; then return; fi
 
-    # 4. Limpeza preventiva no banco do Easy-RSA
+    # 5. Limpeza preventiva (Easy-RSA)
     if sudo ls /etc/openvpn/server/easy-rsa/pki/issued/ 2>/dev/null | grep -q "${CLIENT}.crt"; then
-        echo -e "${AMARELO}Limpando registro antigo de $CLIENT...${SEM_COR}"
+        echo -e "${AMARELO}O nome $CLIENT já existe. Revogando antigo...${SEM_COR}"
         sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
     fi
 
-    echo -e "${AMARELO}Gerando certificado...${SEM_COR}"
+    echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     cd /tmp
-    if sudo bash "$INSTALLER" client add "$CLIENT" > /dev/null 2>&1; then
+    if sudo bash "$INSTALLER" client add "$CLIENT" > "$LOG_SISTEMA" 2>&1; then
+        
         ARQUIVO_GERADO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-            echo "Otimizando sintaxe do arquivo..."
+            echo "A aplicar correção de chaves duplicadas (Anti-Buffer-Full)..."
 
-            # --- TRATAMENTO ANTI-CORRUPÇÃO (Fix Buffer_Full) ---
+            # --- CORREÇÃO CIRÚRGICA ---
             
-            # A. Remove lixo descritivo dentro da tag <cert>
+            # A. Remove lixo informativo dentro da tag <cert>
             sudo sed -i '/<cert>/,/-----BEGIN CERTIFICATE-----/{/<cert>/b; /-----BEGIN CERTIFICATE-----/b; d}' "$ARQUIVO_GERADO"
-            
-            # B. Remove linhas em branco (Culpado principal do buffer_full)
-            sudo sed -i '/^$/d' "$ARQUIVO_GERADO"
 
-            # C. Corrige fechamento duplicado de tags (O erro do seu arquivo anterior)
-            # Remove a segunda ocorrência de </tls-crypt> se ela existir colada na primeira
-            sudo sed -i 'N; s/<\/tls-crypt>\n<\/tls-crypt>/<\/tls-crypt>/; P; D' "$ARQUIVO_GERADO"
-            
-            # D. Remove espaços e caracteres de controle invisíveis
-            sudo sed -i 's/^[[:space:]]*//;s/[[:space:]]*$//' "$ARQUIVO_GERADO"
-            sudo tr -d '\r' < "$ARQUIVO_GERADO" | sudo tr -cd '\11\12\15\40-\176' | sudo tee "${ARQUIVO_GERADO}.tmp" > /dev/null
-            sudo mv "${ARQUIVO_GERADO}.tmp" "$ARQUIVO_GERADO"
-
-            echo -e "\n${VERDE}✅ Sucesso: Perfil $CLIENT pronto para uso!${SEM_COR}"
-            echo -e "${AZUL}Arquivo: $ARQUIVO_GERADO${SEM_COR}"
-        fi
-    else
-        echo -e "${VERMELHO}❌ Erro no instalador.${SEM_COR}"
-    fi
-    
-    echo -e "\nPressione ENTER para continuar..."
-    read dummy
-    atualiza_ovp
-}
+            # B. REMOVE A SEGUNDA CHAVE TLS-CRYPT (O problema do teu log)
+            # Este comando apaga tudo entre o segundo "BEGIN OpenVPN Static" e o segundo "END"
+            sudo sed -i '/-----BEGIN OpenVPN Static key V1-----/ {
+                :a; n; /
 # Função para Remover Usuário
 remove_user() {
 USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
