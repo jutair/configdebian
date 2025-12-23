@@ -160,7 +160,7 @@ menu() {
             8) ./open_vpn_conf.sh ;;
             9) 
                 echo "Saindo..."
-                exit 0 
+                kill -9
                 ;;
             "") # Quando o tempo de 58s acaba, ele apenas reinicia o loop
                 continue 
