@@ -369,10 +369,8 @@ add_user() {
     echo "======================================"
     
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
-    # Definimos o caminho fixo e persistente do LOG
     LOG_SISTEMA="/var/log/openvpn-install.log"
     
-    # Garante que o arquivo de log exista e seja gravável
     if [ ! -f "$LOG_SISTEMA" ]; then
         sudo touch "$LOG_SISTEMA"
         sudo chmod 664 "$LOG_SISTEMA"
@@ -385,6 +383,7 @@ add_user() {
         else
             echo -e "${AMARELO}Gerando tls-crypt.key ausente...${SEM_COR}"
             sudo openvpn --genkey --secret /etc/openvpn/server/tls-crypt.key
+            sudo chmod 644 /etc/openvpn/server/tls-crypt.key
         fi
     fi
 
@@ -396,24 +395,36 @@ add_user() {
 
     echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     
-    # Executamos o instalador. 
-    # Dica: Se o instalador não aceitar o caminho do log via parâmetro, 
-    # podemos usar um redirecionamento, mas o script do Angristan costuma 
-    # gerar o log no diretório onde ele é chamado. 
-    # Por isso, entramos na pasta /tmp para rodar, mantendo sua home limpa.
-    
+    # Execução no /tmp para manter logs e arquivos temporários organizados
     cd /tmp
     if sudo bash "$INSTALLER" client add "$CLIENT" > "$LOG_SISTEMA" 2>&1; then
-        echo -e "\n${VERDE}✅ Sucesso: Certificado gerado para $CLIENT${SEM_COR}"
+        
+        # --- BLOCO DE VALIDAÇÃO DO ARQUIVO GERADO ---
+        # Procura o arquivo .ovpn recém criado (geralmente em /root ou /home/usuário)
+        ARQUIVO_GERADO=$(sudo find /root /home/$USER_ATUAL -name "${CLIENT}.ovpn" | head -n 1)
+
+        if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
+            # Verifica se a linha 'remote' existe (se não existir, o arquivo está quebrado)
+            if sudo grep -q "remote " "$ARQUIVO_GERADO"; then
+                echo -e "\n${VERDE}✅ Sucesso: Certificado gerado e validado para $CLIENT${SEM_COR}"
+            else
+                echo -e "\n${VERMELHO}⚠️ ALERTA: Arquivo gerado está incompleto (falta opção remote).${SEM_COR}"
+                echo -e "${AMARELO}Dica: Verifique se /etc/openvpn/server/client-template.txt está correto.${SEM_COR}"
+            fi
+        else
+            echo -e "\n${VERMELHO}❌ ERRO: Arquivo .ovpn não foi encontrado após a criação.${SEM_COR}"
+        fi
+        # --------------------------------------------
+
     else
-        echo -e "\n${VERMELHO}❌ ERRO: Falha ao gerar o arquivo .ovpn${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ ERRO: Falha crítica no instalador.${SEM_COR}"
         echo "Verifique o log persistente em: $LOG_SISTEMA"
         echo "------------------------------------------------"
         tail -n 15 "$LOG_SISTEMA"
         echo "------------------------------------------------"
     fi
     
-    echo "Pressione ENTER para continuar..."
+    echo -e "\nPressione ENTER para continuar..."
     read dummy
     atualiza_ovp
 }
