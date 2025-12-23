@@ -85,7 +85,55 @@ ssh_config() {
         esac
     done
 }
+restaura_seguranca() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "          ${AMARELO}RESTAURANDO CONFIGURAÇÕES DE SEGURANÇA${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    
+    # 1. Resetar Firewall
+    echo -e "${AMARELO}[1/5]${NC} Resetando regras do UFW..."
+    ufw --force reset > /dev/null
+    ufw default deny incoming > /dev/null
+    ufw default allow outgoing > /dev/null
 
+    # 2. Reaplicar Portas Essenciais
+    echo -e "${AMARELO}[2/5]${NC} Aplicando portas padrão (SSH e VPN)..."
+    # Detecta porta SSH atual para não te trancar fora
+    PORTA_SSH=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}')
+    [ -z "$PORTA_SSH" ] && PORTA_SSH="22"
+    
+    ufw allow "$PORTA_SSH"/tcp
+    ufw allow 1194/udp
+    ufw allow 80/tcp
+    ufw allow 443/tcp
+    
+    # 3. Otimização de Rede (BBR e Proteção Spoofing)
+    echo -e "${AMARELO}[3/5]${NC} Otimizando Kernel (BBR & Anti-Spoofing)..."
+    sed -i '/net.ipv4.conf.all.rp_filter/d' /etc/sysctl.conf
+    echo "net.ipv4.conf.all.rp_filter=1" >> /etc/sysctl.conf
+    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+    sysctl -p > /dev/null 2>&1
+
+    # 4. Configurações Recomendadas de SSH
+    echo -e "${AMARELO}[4/5]${NC} Aplicando Hardening no SSH..."
+    sed -i '/PermitRootLogin/d' /etc/ssh/sshd_config
+    sed -i '/MaxAuthTries/d' /etc/ssh/sshd_config
+    echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+    echo "MaxAuthTries 5" >> /etc/ssh/sshd_config
+    systemctl restart ssh
+
+    # 5. Ativar Firewall e Fail2Ban
+    echo -e "${AMARELO}[5/5]${NC} Ativando serviços de proteção..."
+    ufw --force enable > /dev/null
+    systemctl restart fail2ban > /dev/null 2>&1
+    
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "          ${VERDE}SEGURANÇA RESTAURADA COM SUCESSO!${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    sleep 3
+}
 # --- MENU PRINCIPAL DO MÓDULO ---
 
 while true; do
@@ -133,10 +181,7 @@ while true; do
         4)  
             while true; do
                 # --- COLETA DE DADOS DE SEGURANÇA ---
-                # Conta tentativas de login falhas (indicador de ataques brute-force)
                 ATAQUES=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l)
-                
-                # Lista portas abertas no UFW (apenas as únicas e limpas)
                 PORTAS_ABERTAS=$(ufw status | grep "ALLOW" | awk '{print $1}' | sort -u | tr '\n' ' ' | sed 's/ $//')
                 [ -z "$PORTAS_ABERTAS" ] && PORTAS_ABERTAS="Nenhuma (Bloqueio Total)"
 
@@ -151,7 +196,8 @@ while true; do
                 echo -e "  [2] 🚫 Ver IPs Banidos (Fail2Ban)"
                 echo -e "  [3] 🔓 Abrir Nova Porta"
                 echo -e "  [4] 🧹 Limpar Log de Ataques"
-                echo -e "  [5] ⬅️  Voltar"
+                echo -e "  [5] 🛡️  RESTAURAR SEGURANÇA PADRÃO"
+                echo -e "  [6] ⬅️  Voltar"
                 echo -e "${AZUL}---------------------------------------------------------------${NC}"
                 read -n 1 -p " Digite a opção: " FO; echo ""
 
@@ -159,15 +205,8 @@ while true; do
                     1) ufw status numbered; read -p " ENTER para voltar..." d ;;
                     2) monitora_banidos ;;
                     3) read -p " Porta: " P; ufw allow "$P"; echo -e "${VERDE}Porta $P aberta!${NC}"; sleep 2 ;;
-                    4) 
-                       # Opcional: Limpa o log para zerar o contador de ataques
-                       echo "" > /var/log/auth.log
-                       echo -e "${VERDE}Contador de ataques resetado!${NC}"; sleep 2 ;;
-                    5) break ;;
+                    4) echo "" > /var/log/auth.log; echo -e "${VERDE}Contador de ataques resetado!${NC}"; sleep 2 ;;
+                    5) restaura_seguranca ;; # <--- CHAMADA DA FUNÇÃO AQUI
+                    6) break ;;
                 esac
             done ;;
-        5) ssh_config ;;
-        6) exit 0 ;;
-        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
-    esac
-done
