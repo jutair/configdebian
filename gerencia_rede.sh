@@ -315,8 +315,8 @@ menu_ssh() {
         echo "[3] Ativar/Desativar Login Root"
         echo "[4] Ativar/Desativar Login por Senha"
         echo "[5] Ver Logs de Acesso (Últimos 20)"
-        echo "[5] Retornar ao Menu Segurança de Rede"
-        echo "[6] Retornar ao Menu Principal"
+        echo "[6] Retornar ao Menu Segurança de Rede"
+        echo "[7] Retornar ao Menu Principal"
         echo "========================================="
         read -n 1 -p "Opção: " OPCAO
         echo ""
@@ -327,7 +327,8 @@ menu_ssh() {
             3) alternar_root_login ;;
             4) alternar_senha_ssh ;;
             5) clear; tail -n 20 /var/log/auth.log | grep sshd; read -p "ENTER..." d ;;
-            6) 
+            6) return ;;
+            7) 
                 cd "/home/$USER_ATUAL/configdebian-main/" 2>/dev/null || cd "/home/$USER_ATUAL/"
                 exec sudo -E bash ./menu.sh 
                 ;;
