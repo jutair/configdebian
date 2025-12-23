@@ -140,6 +140,28 @@ banir_ip() {
     echo -e "${AMARELO}---------------------------------------------------------------${NC}"
     sleep 2
 }
+diagnostico_ataques() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "          ${VERMELHO}RANKING DE IPS AGRESSORES (TOP 10)${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "${AMARELO}Analisando logs de autenticação...${NC}\n"
+    
+    # Extrai IPs que falharam no login, conta a frequência e mostra o Top 10
+    RANKING=$(grep "Failed password" /var/log/auth.log 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="from") print $(i+1)}' | sort | uniq -c | sort -nr | head -n 10)
+    
+    if [ -z "$RANKING" ]; then
+        echo -e "  ${VERDE}Nenhuma tentativa de ataque detectada nos logs.${NC}"
+    else
+        echo "$RANKING" | while read count ip; do
+            printf "  ${VERMELHO}%-5s${NC} tentativas vindas de: ${AMARELO}%-15s${NC}\n" "$count" "$ip"
+        done
+    fi
+    
+    echo -e "\n${AZUL}---------------------------------------------------------------${NC}"
+    echo -e "Dica: Identifique os IPs acima e use a opção [4] para banir."
+    read -p " Pressione ENTER para retornar..." dummy
+}
 # --- MENU PRINCIPAL DO MÓDULO ---
 
 while true; do
@@ -185,6 +207,7 @@ while true; do
             done ;;
         4)  
             while true; do
+                # Dados para o Dashboard de Segurança
                 ATAQUES=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l)
                 PORTAS_ABERTAS=$(ufw status | grep "ALLOW" | awk '{print $1}' | sort -u | tr '\n' ' ' | sed 's/ $//')
                 [ -z "$PORTAS_ABERTAS" ] && PORTAS_ABERTAS="Nenhuma (Bloqueio Total)"
@@ -198,9 +221,9 @@ while true; do
                 echo -e "${AZUL}===============================================================${NC}"
                 echo -e "  [1] 📋 Ver Regras Detalhadas (UFW)"
                 echo -e "  [2] 🚫 Ver IPs Banidos (Fail2Ban)"
-                echo -e "  [3] 🔓 Abrir Nova Porta"
-                echo -e "  [4] 🔨 BANIR IP MANUALMENTE" # <-- Nova Opção
-                echo -e "  [5] 🧹 Limpar Log de Ataques"
+                echo -e "  [3] 🔍 Ranking de IPs Agressores (Top 10)" # <-- NOVA FUNÇÃO
+                echo -e "  [4] 🔨 Banir um IP Manualmente"            # <-- NOVA FUNÇÃO
+                echo -e "  [5] 🔓 Abrir Nova Porta"
                 echo -e "  [6] 🛡️  RESTAURAR SEGURANÇA PADRÃO"
                 echo -e "  [7] ⬅️  Voltar"
                 echo -e "${AZUL}---------------------------------------------------------------${NC}"
@@ -209,11 +232,12 @@ while true; do
                 case $FO in
                     1) ufw status numbered; read -p " ENTER para voltar..." d ;;
                     2) monitora_banidos ;;
-                    3) read -p " Porta: " P; ufw allow "$P"; echo -e "${VERDE}Porta $P aberta!${NC}"; sleep 2 ;;
-                    4) banir_ip ;; # <-- Chamada da nova função
-                    5) echo "" > /var/log/auth.log; echo -e "${VERDE}Contador de ataques resetado!${NC}"; sleep 2 ;;
+                    3) diagnostico_ataques ;; # Chamada da função de Ranking
+                    4) banir_ip ;;           # Chamada da função de Banimento
+                    5) read -p " Porta: " P; ufw allow "$P"; echo -e "${VERDE}Porta $P aberta!${NC}"; sleep 2 ;;
                     6) restaura_seguranca ;;
                     7) break ;;
+                    *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
                 esac
             done ;;
         5) ssh_config ;;
