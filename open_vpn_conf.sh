@@ -363,21 +363,43 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-    # 1. Configurações iniciais e detecção de IP
+    # 1. Configurações iniciais e IP
     IP_EXT=$(curl -4 -s ifconfig.me)
-    if [ -z "$IP_EXT" ]; then
-        echo -e "${VERMELHO}Erro: Não foi possível detectar o IP externo.${SEM_COR}"
-        sleep 2; return 1
-    fi
+    [ -z "$IP_EXT" ] && { echo -e "${VERMELHO}Erro ao obter IP externo${SEM_COR}"; return 1; }
 
-    # 2. Sincronização da Chave Mestra
+    # 2. Sincroniza Chave Mestra
     CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
-    if [ ! -f "$CHAVE_MESTRA" ]; then
-        sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA" 2>/dev/null
+    [ ! -f "$CHAVE_MESTRA" ] && sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA" 2>/dev/null
+
+    # 3. Define o Instalador
+    USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
+    INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
+    
+    clear
+    echo "======================================"
+    echo "      ADICIONAR NOVO USUÁRIO          "
+    echo "======================================"
+    read -p "Digite o nome do usuário: " CLIENT
+    [ -z "$CLIENT" ] && return
+
+    # 4. Limpeza preventiva
+    if sudo ls /etc/openvpn/server/easy-rsa/pki/issued/ 2>/dev/null | grep -q "${CLIENT}.crt"; then
+        sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
     fi
 
-    # 3. Preparação do Template (Sem espaços à esquerda)
-sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
+    echo -e "${AMARELO}Gerando certificado...${SEM_COR}"
+    cd /tmp
+    if sudo bash "$INSTALLER" client add "$CLIENT" > /dev/null 2>&1; then
+        ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
+
+        if [ -f "$ARQUIVO_BRUTO" ]; then
+            echo "Reconstruindo perfil (Fix Buffer Full)..."
+            
+            # CRIANDO UM NOVO ARQUIVO DO ZERO PARA EVITAR LIXO
+            FINAL="/tmp/${CLIENT}_final.ovpn"
+            
+            # A. Adiciona o Cabeçalho
+            sudo bash -c "cat << EOF > $FINAL
 client
 dev tun
 proto udp
@@ -393,60 +415,32 @@ ignore-unknown-option block-outside-dns
 verb 3
 EOF"
 
-    # 4. Interface e Definições
-    USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
-    INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
-    LOG_SISTEMA="/var/log/openvpn-install.log"
+            # B. Extrai o CA
+            echo "<ca>" >> "$FINAL"
+            sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$ARQUIVO_BRUTO" | head -n 22 >> "$FINAL"
+            echo "</ca>" >> "$FINAL"
 
-    clear
-    echo "======================================"
-    echo "      ADICIONAR NOVO UTILIZADOR       "
-    echo "======================================"
-    read -p "Digite o nome do utilizador: " CLIENT
-    if [ -z "$CLIENT" ]; then return; fi
+            # C. Extrai o CERT (apenas o segundo bloco de certificado do arquivo bruto)
+            echo "<cert>" >> "$FINAL"
+            sudo sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$ARQUIVO_BRUTO" | tail -n +23 >> "$FINAL"
+            echo "</cert>" >> "$FINAL"
 
-    # 5. Limpeza preventiva (Easy-RSA)
-    if sudo ls /etc/openvpn/server/easy-rsa/pki/issued/ 2>/dev/null | grep -q "${CLIENT}.crt"; then
-        echo -e "${AMARELO}O nome $CLIENT já existe. Revogando antigo...${SEM_COR}"
-        sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
-    fi
+            # D. Extrai a KEY
+            echo "<key>" >> "$FINAL"
+            sudo sed -n '/-----BEGIN PRIVATE KEY-----/,/-----END PRIVATE KEY-----/p' "$ARQUIVO_BRUTO" >> "$FINAL"
+            echo "</key>" >> "$FINAL"
 
-    echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
-    cd /tmp
-    if sudo bash "$INSTALLER" client add "$CLIENT" > "$LOG_SISTEMA" 2>&1; then
-        
-        ARQUIVO_GERADO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
+            # E. Extrai APENAS A PRIMEIRA CHAVE TLS-CRYPT
+            echo "<tls-crypt>" >> "$FINAL"
+            sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' "$ARQUIVO_BRUTO" | head -n 18 >> "$FINAL"
+            echo "</tls-crypt>" >> "$FINAL"
 
-        if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-            echo "A aplicar correção de chaves duplicadas (Anti-Buffer-Full)..."
+            # F. Limpeza de caracteres invisíveis e substituição do original
+            sudo tr -d '\r' < "$FINAL" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
+            sudo rm "$FINAL"
 
-            # --- CORREÇÃO CIRÚRGICA ---
-            
-            # A. Remove lixo informativo dentro da tag <cert>
-            sudo sed -i '/<cert>/,/-----BEGIN CERTIFICATE-----/{/<cert>/b; /-----BEGIN CERTIFICATE-----/b; d}' "$ARQUIVO_GERADO"
-
-            # B. REMOVE A SEGUNDA CHAVE TLS-CRYPT (O problema do teu log)
-            # Este comando apaga tudo entre o segundo "BEGIN OpenVPN Static" e o segundo "END"
-            sudo sed -i '/-----BEGIN OpenVPN Static key V1-----/ {
-                :a; n; /-----END OpenVPN Static key V1-----/! ba; n;
-                :b; /-----BEGIN OpenVPN Static key V1-----/ { :c; n; /-----END OpenVPN Static key V1-----/! bc; d }; n; b b
-            }' "$ARQUIVO_GERADO"
-
-            # C. Remove tags duplicadas e linhas em branco
-            sudo sed -i '/^$/d' "$ARQUIVO_GERADO"
-            sudo sed -i 's/^[[:space:]]*//;s/[[:space:]]*$//' "$ARQUIVO_GERADO"
-            
-            # D. Garante que a tag </tls-crypt> feche apenas uma vez no fim
-            sudo sed -i 'N; s/<\/tls-crypt>\n<\/tls-crypt>/<\/tls-crypt>/; P; D' "$ARQUIVO_GERADO"
-
-            # E. Limpeza final de caracteres invisíveis
-            sudo tr -d '\r' < "$ARQUIVO_GERADO" | sudo tr -cd '\11\12\15\40-\176' | sudo tee "${ARQUIVO_GERADO}.tmp" > /dev/null
-            sudo mv "${ARQUIVO_GERADO}.tmp" "$ARQUIVO_GERADO"
-
-            echo -e "\n${VERDE}✅ Sucesso: Perfil $CLIENT corrigido e validado!${SEM_COR}"
+            echo -e "\n${VERDE}✅ Sucesso: Perfil reconstruído sem erros para $CLIENT${SEM_COR}"
         fi
-    else
-        echo -e "\n${VERMELHO}❌ Erro crítico no instalador. Verifica o log.${SEM_COR}"
     fi
     
     echo -e "\nPressione ENTER para continuar..."
