@@ -27,63 +27,64 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (MODO AUTO-ENTER) "
+    echo "      GERAR USUÁRIO (MODO SINCRONIZADO)"
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
 
-    echo -e "${AMARELO}Automatizando interação com o instalador...${SEM_COR}"
+    echo -e "${AMARELO}O robô está digitando para você, aguarde...${SEM_COR}"
 
-    # Entra na pasta de destino
     cd "$DESTINO" || exit
 
     /usr/bin/expect <<EOD
     set timeout 60
     spawn sudo "$INSTALLER_PATH" interactive
     
-    # 1. Seleciona Add New User
+    # 1. Escolhe adicionar usuário
     expect "Select an option"
+    sleep 1
     send "1\r"
     
-    # 2. Digita o Nome
+    # 2. Digita o nome
     expect "Client name:"
+    sleep 1
     send "$CLIENT_NAME\r"
     
-    # 3. ENTER na Validade (3650)
+    # 3. ENTER na validade
     expect "Certificate validity"
+    sleep 1
     send "\r"
     
-    # 4. Seleciona Passwordless (Opção 1)
+    # 4. Escolhe sem senha
     expect "Select an option"
+    sleep 1
     send "1\r"
     
-    # 5. ENTERS extras para qualquer confirmação que aparecer depois
-    # Enviamos uma sequência de ENTERS para finalizar o processo
+    # 5. Espera o final do script e envia ENTERS se sobrar perguntas
     expect {
         "Confirm" { send "\r"; exp_continue }
-        "press any key" { send "\r"; exp_continue }
-        "Finished!" { exp_continue }
+        "Select an option" { send "1\r"; exp_continue }
         eof
     }
 EOD
 
     sleep 2
 
-    # Busca o arquivo (Angristan pode salvar em /root, na home ou na pasta atual)
+    # Busca o arquivo final (Varre as pastas prováveis)
     ARQUIVO_FINAL=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
 
     if [ -n "$ARQUIVO_FINAL" ] && [ -f "$ARQUIVO_FINAL" ]; then
         mv "$ARQUIVO_FINAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ SUCESSO! Arquivo disponível em: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+        echo -e "\n${VERDE}✅ SUCESSO! Arquivo salvo em: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
     else
-        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
-        echo -e "${AMARELO}Dica: Se o script parou, verifique se houve erro de Easy-RSA acima.${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi encontrado.${SEM_COR}"
+        echo -e "${AMARELO}Dica: Se o nome já existia, o OpenVPN não gera um novo arquivo.${SEM_COR}"
     fi
 
     cd - > /dev/null
-    read -p "Pressione ENTER para voltar ao menu..." dummy
+    read -p "Pressione ENTER para voltar..." dummy
 }
 remove_user() {
     clear
