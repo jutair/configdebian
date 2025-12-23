@@ -362,7 +362,23 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-# Se o template estiver vazio, restaura o básico
+      sudo bash -c "cat <<EOF > /etc/openvpn/server/client-template.txt
+      client
+      dev tun
+      proto udp
+      remote $IP_EXTERNO 1194
+      resolv-retry infinite
+      nobind
+      persist-key
+      persist-tun
+      remote-cert-tls server
+      auth SHA512
+      cipher AES-256-GCM
+      ignore-unknown-option block-outside-dns
+      verb 3
+      <ca>
+      EOF"
+      # Se o template estiver vazio, restaura o básico
     if [ ! -s /etc/openvpn/server/client-template.txt ]; then
         echo -e "${AMARELO}Restaurando template de cliente corrompido...${SEM_COR}"
         IP_PUB=$(curl -s ifconfig.me)
