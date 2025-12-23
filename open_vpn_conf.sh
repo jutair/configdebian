@@ -364,32 +364,36 @@ SEM_COR='\033[0m'
 # Função para Adicionar Usuário
 add_user() {
     IP_EXT=$(curl -4 -s ifconfig.me)
-    USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
-    INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
-    
+    # Caminhos padrão do Easy-RSA no OpenVPN
+    EASYRSA_DIR="/etc/openvpn/easy-rsa"
+    [ ! -d "$EASYRSA_DIR" ] && EASYRSA_DIR="/usr/share/easy-rsa" # fallback comum
+
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (MODO COMPAT)     "
+    echo "      GERAR USUÁRIO (VIA EASY-RSA)    "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
-    echo "Gerando chaves (pode levar alguns segundos)..."
+    echo "Gerando chaves e certificados para: $CLIENT..."
+
+    # 1. Entrar no diretório do Easy-RSA e gerar o par de chaves
+    cd "$EASYRSA_DIR" || { echo "Erro: Pasta Easy-RSA não encontrada"; return 1; }
     
-    # Esta linha simula você digitando as opções no instalador:
-    # 1 (Adicionar), Nome do Cliente, 1 (Sem senha)
-    # Usamos o 'expect' ou apenas o redirecionamento de strings:
-    printf "1\n$CLIENT\n1\n" | sudo bash "$INSTALLER" > /tmp/vpn_install.log 2>&1
+    # Gera o certificado sem pedir senha (nopass)
+    sudo ./easyrsa build-client-full "$CLIENT" nopass > /tmp/easyrsa.log 2>&1
 
-    # Localiza o arquivo .ovpn gerado (o instalador costuma salvar no /root ou home)
-    ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
+    # 2. Verificar se as chaves foram criadas
+    if [ ! -f "pki/issued/$CLIENT.crt" ]; then
+        echo "Erro ao gerar certificados. Verifique /tmp/easyrsa.log"
+        cd - > /dev/null
+        return 1
+    fi
 
-    if [ -f "$ARQUIVO_BRUTO" ]; then
-        echo "Formatando para compatibilidade total..."
-        
-        TEMP="/tmp/limpo.ovpn"
-        # Mantemos o cabeçalho idêntico ao 'jutair' que funciona
-        sudo bash -c "cat << EOF > $TEMP
+    # 3. Montar o arquivo .ovpn final (usando o modelo do jutair)
+    FINAL_OVPN="/root/${CLIENT}.ovpn"
+    
+    sudo bash -c "cat << EOF > $FINAL_OVPN
 client
 dev tun
 proto udp
@@ -402,24 +406,26 @@ remote-cert-tls server
 auth SHA512
 ignore-unknown-option block-outside-dns
 verb 3
+<ca>
+\$(cat pki/ca.crt)
+</ca>
+<cert>
+\$(openssl x509 -in pki/issued/$CLIENT.crt)
+</cert>
+<key>
+\$(cat pki/private/$CLIENT.key)
+</key>
+<tls-crypt>
+\$(cat /etc/openvpn/server/tc.key 2>/dev/null || cat /etc/openvpn/tc.key)
+</tls-crypt>
 EOF"
 
-        # Anexa os certificados originais gerados pelo instalador
-        # O comando sed abaixo remove o cabeçalho do arquivo bruto e pega as tags <ca>, <cert>, etc.
-        sudo sed -n '/<ca>/,$p' "$ARQUIVO_BRUTO" >> "$TEMP"
-        
-        # Limpa caracteres invisíveis e salva no destino final
-        sudo tr -d '\r' < "$TEMP" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
-        sudo rm "$TEMP"
-
-        echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
-        echo "Configuração: $ARQUIVO_BRUTO"
-    else
-        echo -e "\n❌ FALHA AO GERAR ARQUIVO"
-        echo "O instalador não criou o arquivo .ovpn. Verifique se o nome já existe."
-        echo "Dica: Tente remover o usuário antes com a opção 2 do menu do instalador."
-    fi
-
+    sudo tr -d '\r' < "$FINAL_OVPN" | sudo tee "$FINAL_OVPN" > /dev/null
+    
+    echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
+    echo "Arquivo disponível em: $FINAL_OVPN"
+    
+    cd - > /dev/null
     read -p "Pressione ENTER para voltar..." dummy
     atualiza_ovp
 }
