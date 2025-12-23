@@ -21,6 +21,26 @@ INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
 STATUS_FILE="/etc/openvpn/server/openvpn-status.log"
 [ ! -f "$STATUS_FILE" ] && STATUS_FILE="/var/log/openvpn/openvpn-status.log"
 
+ARQUIVO="/etc/openvpn/clientes_ovp/ips_conectados.txt"
+
+# $script_type é uma variável do OpenVPN (client-connect ou client-disconnect)
+case "$script_type" in
+    client-connect)
+        # Adiciona o IP na lista se não existir
+        if ! grep -q "$trusted_ip" "$ARQUIVO"; then
+            echo "$trusted_ip" >> "$ARQUIVO"
+            # Aplica regra no Firewall imediatamente
+            sudo ufw allow from "$trusted_ip" to any
+        fi
+        ;;
+    client-disconnect)
+        # Remove o IP da lista
+        sed -i "/$trusted_ip/d" "$ARQUIVO"
+        # Remove a regra do Firewall
+        sudo ufw delete allow from "$trusted_ip" to any
+        ;;
+esac
+
 # --- FUNÇÕES ---
 veri_openvpn () {
 USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
