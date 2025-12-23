@@ -22,4 +22,5 @@ chmod +x configura_sistema.sh
 chmod +x menu.sh
 chmod +x open_vpn_conf.sh
 chmod +x usuarios.sh
+chmod +x gerencia_rede.sh
 exec sudo -E bash ./configura_sistema.sh
