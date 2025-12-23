@@ -135,10 +135,10 @@ menu_ovp() {
             5) trafego_acumulado ;;
             6) chamar_seguranca ;;
             7) 
-                trap - SIGINT # Restaura o CTRL+C antes de sair
-                clear
-                echo "Encerrando sessão..."
-                exit 0 
+                echo -e "${AMARELO}Retornando ao Menu Principal...${SEM_COR}"
+                sleep 1
+                return 0 2>/dev/null || exit 0
+                ;;
                 ;;
             *) echo -e "${VERMELHO}Opção inválida!${SEM_COR}"; sleep 1 ;;
         esac
