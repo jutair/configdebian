@@ -33,8 +33,7 @@ veri_openvpn () {
             chmod +x "$INSTALLER_PATH"
         fi
 
-        # Comando de instalação Silenciosa para a nova versão CLI
-        # --server-port 1194 --server-proto udp --dns 1 (Google)
+        # Comando de instalação Silenciosa
         sudo "$INSTALLER_PATH" install --server-port 1194 --server-proto udp --dns 1 --no-log
         
         echo -e "${VERDE}[OK] OpenVPN instalado via CLI.${SEM_COR}"
@@ -43,7 +42,6 @@ veri_openvpn () {
     # 3. Validação das chaves de criptografia
     if [ ! -f "/etc/openvpn/tls-crypt.key" ] && [ ! -f "/etc/openvpn/server/tc.key" ]; then
         echo -e "${AMARELO}Ajustando chaves de segurança...${SEM_COR}"
-        # Se o instalador novo não gerou no local padrão, forçamos a detecção
         [ -f "/etc/openvpn/tc.key" ] && cp /etc/openvpn/tc.key /etc/openvpn/server/tc.key 2>/dev/null
     fi
 
@@ -67,17 +65,13 @@ add_user() {
 
     echo "Gerando chaves para: $CLIENT..."
     
-    # Comando Novo: client add --no-pass (não pede senha para o .ovpn)
     if sudo "$INSTALLER_PATH" client add "$CLIENT" --no-pass; then
-        
-        # O Angristan CLI costuma salvar na home do usuário que executa ou em /root
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
             echo "Formatando arquivo e injetando chaves..."
             TEMP="/tmp/corrigido.ovpn"
             
-            # Cabeçalho padrão
             sudo bash -c "cat << EOF > $TEMP
 client
 dev tun
@@ -92,10 +86,8 @@ auth SHA512
 ignore-unknown-option block-outside-dns
 verb 3
 EOF"
-            # Extrai blocos CA, CERT e KEY
             sudo sed -n '/<ca>/,/<\/key>/p' "$ARQUIVO_BRUTO" >> "$TEMP"
 
-            # Inserção da Chave TLS (Onde o erro ocorria)
             echo "<tls-crypt>" >> "$TEMP"
             if [ -f "/etc/openvpn/server/tc.key" ]; then
                 sudo cat "/etc/openvpn/server/tc.key" >> "$TEMP"
@@ -104,12 +96,10 @@ EOF"
             elif [ -f "/etc/openvpn/tc.key" ]; then
                 sudo cat "/etc/openvpn/tc.key" >> "$TEMP"
             else
-                # Busca a chave estática dentro do próprio arquivo bruto se não achar no sistema
                 sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' "$ARQUIVO_BRUTO" >> "$TEMP"
             fi
             echo "</tls-crypt>" >> "$TEMP"
 
-            # Limpa caracteres Windows e salva
             sudo tr -d '\r' < "$TEMP" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
             sudo rm "$TEMP"
 
@@ -130,7 +120,6 @@ remove_user() {
     read -p "Digite o nome exato para remover: " CLIENT
     [ -z "$CLIENT" ] && return
 
-    # Comando Novo: client revoke
     if sudo "$INSTALLER_PATH" client revoke "$CLIENT"; then
         sudo rm -f "/root/$CLIENT.ovpn"
         sudo rm -f "/home/$USER_ATUAL/clientes_ovp/$CLIENT.ovpn"
@@ -149,7 +138,6 @@ mover_ovp() {
     DESTINO="/home/$NOME_USUARIO/clientes_ovp"
     mkdir -p "$DESTINO"
     
-    # Busca e move qualquer .ovpn perdido para a pasta correta
     ARQUIVOS=$(find /root /home -name "*.ovpn" ! -path "$DESTINO/*" 2>/dev/null)
     if [ -n "$ARQUIVOS" ]; then
         echo "$ARQUIVOS" | while read -r arq; do
@@ -180,6 +168,7 @@ user_gerencia() {
             1) add_user ;;
             2) remove_user ;;
             3) return ;;
+            *) echo "Opção inválida"; sleep 1 ;;
         esac
     done
 }
@@ -196,4 +185,18 @@ menu_ovp() {
         echo "================================================================="
         read -n 1 -p "Opção: " OPCAO
         echo ""
-        case
+        case $OPCAO in
+            1) clear; speedtest-cli --simple; read -p "Pressione ENTER..." dummy ;;
+            2) # Aqui você pode inserir sua lógica de grep no log de status
+               echo "Verificando usuários online..." ; sleep 1 ;;
+            3) # Aqui você pode inserir sua lógica de bc para consumo
+               echo "Calculando consumo..." ; sleep 1 ;;
+            4) user_gerencia ;;
+            5) cd "/home/$USER_ATUAL/configdebian-main/" && exec sudo -E bash ./menu.sh ;;
+            *) echo "Opção inválida"; sleep 1 ;;
+        esac
+    done
+}
+
+# Início do Script
+veri_openvpn
