@@ -130,17 +130,40 @@ while true; do
                     3) break ;;
                 esac
             done ;;
-        4) 
+        4)  
             while true; do
+                # --- COLETA DE DADOS DE SEGURANÇA ---
+                # Conta tentativas de login falhas (indicador de ataques brute-force)
+                ATAQUES=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l)
+                
+                # Lista portas abertas no UFW (apenas as únicas e limpas)
+                PORTAS_ABERTAS=$(ufw status | grep "ALLOW" | awk '{print $1}' | sort -u | tr '\n' ' ' | sed 's/ $//')
+                [ -z "$PORTAS_ABERTAS" ] && PORTAS_ABERTAS="Nenhuma (Bloqueio Total)"
+
                 clear
-                echo "=== Segurança e Firewall ==="
-                echo "[1] Ver Regras UFW  [2] IPs Banidos  [3] Abrir Porta  [4] Voltar"
-                read -n 1 -p "Opção: " FO; echo ""
+                echo -e "${AZUL}===============================================================${NC}"
+                echo -e "                ${VERMELHO}DASHBOARD DE SEGURANÇA E FIREWALL${NC}"
+                echo -e "${AZUL}===============================================================${NC}"
+                printf "  ${AZUL}%-18s :${NC} ${VERMELHO}%-20s${NC}\n" "TENTATIVAS ATAQUE" "$ATAQUES (Log atual)"
+                printf "  ${AZUL}%-18s :${NC} ${VERDE}%-20s${NC}\n" "PORTAS ABERTAS" "$PORTAS_ABERTAS"
+                echo -e "${AZUL}===============================================================${NC}"
+                echo -e "  [1] 📋 Ver Regras Detalhadas (UFW)"
+                echo -e "  [2] 🚫 Ver IPs Banidos (Fail2Ban)"
+                echo -e "  [3] 🔓 Abrir Nova Porta"
+                echo -e "  [4] 🧹 Limpar Log de Ataques"
+                echo -e "  [5] ⬅️  Voltar"
+                echo -e "${AZUL}---------------------------------------------------------------${NC}"
+                read -n 1 -p " Digite a opção: " FO; echo ""
+
                 case $FO in
-                    1) ufw status numbered; read -p "ENTER..." d ;;
+                    1) ufw status numbered; read -p " ENTER para voltar..." d ;;
                     2) monitora_banidos ;;
-                    3) read -p "Porta: " P; ufw allow "$P"; echo "Porta $P aberta!"; sleep 2 ;;
-                    4) break ;;
+                    3) read -p " Porta: " P; ufw allow "$P"; echo -e "${VERDE}Porta $P aberta!${NC}"; sleep 2 ;;
+                    4) 
+                       # Opcional: Limpa o log para zerar o contador de ataques
+                       echo "" > /var/log/auth.log
+                       echo -e "${VERDE}Contador de ataques resetado!${NC}"; sleep 2 ;;
+                    5) break ;;
                 esac
             done ;;
         5) ssh_config ;;
