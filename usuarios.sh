@@ -207,7 +207,7 @@ echo "[1] Casdastrar"
 echo "[2] Remover"
 echo "[3] Alterar senha"
 echo "[4] Promover a usuário root"
-echo "[5] Sair"
+echo "[5] Retornar ao Menu Principal"
 read -n 1 -p "Digite a opção desejada: " OPCAO
 echo ""
 case $OPCAO in
