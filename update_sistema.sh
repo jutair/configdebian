@@ -1,5 +1,7 @@
 #!/bin/bash
 NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
+echo "$NOME_USUARIO"
+sleep 5
 DESTINO="/home/$NOME_USUARIO/configdebian-main"
 # Verifica se o script foi executado como root
 if [ "$EUID" -ne 0 ]; then
