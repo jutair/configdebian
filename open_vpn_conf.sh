@@ -362,6 +362,16 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
+# Se o template estiver vazio, restaura o básico
+    if [ ! -s /etc/openvpn/server/client-template.txt ]; then
+        echo -e "${AMARELO}Restaurando template de cliente corrompido...${SEM_COR}"
+        IP_PUB=$(curl -s ifconfig.me)
+        echo "client" | sudo tee /etc/openvpn/server/client-template.txt > /dev/null
+        echo "dev tun" | sudo tee -a /etc/openvpn/server/client-template.txt > /dev/null
+        echo "proto udp" | sudo tee -a /etc/openvpn/server/client-template.txt > /dev/null
+        echo "remote $IP_PUB 1194" | sudo tee -a /etc/openvpn/server/client-template.txt > /dev/null
+        # ... adicione as outras linhas se desejar ...
+    fi
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     clear
     echo "======================================"
