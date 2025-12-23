@@ -1,12 +1,15 @@
 #!/bin/bash
-# Identifica o usuário real (não o root) para as pastas
-USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
+# open_vpn_conf.sh - Gerenciador OpenVPN Profissional
 
-# Cores para o Menu
+# Identifica o usuário real para caminhos de arquivos
+USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
+
+# --- CORES ---
+AZUL='\033[0;34m'
 VERDE='\033[0;32m'
-VERMELHO='\033[31m'
 AMARELO='\033[1;33m'
-SEM_COR='\033[0m'
+VERMELHO='\033[0;31m'
+NC='\033[0m'
 
 # --- CONFIGURAÇÃO DE CAMINHOS ---
 INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
@@ -14,136 +17,118 @@ DESTINO="/home/$USER_ATUAL/clientes_ovp"
 STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
 SCRIPT_REDE="/home/$USER_ATUAL/configdebian-main/gerencia_rede.sh"
 
-# Verifica se o script está rodando como ROOT
+# Verifica ROOT
 if [ "$EUID" -ne 0 ]; then
-  echo -e "${VERMELHO}Por favor, execute como sudo!${SEM_COR}"
+  echo -e "${VERMELHO}Erro: Execute com sudo!${NC}"
   exit 1
 fi
 
-# Garante que o script ignore o CTRL+C para evitar saída acidental
-# Se quiser permitir o CTRL+C para sair, remova a linha abaixo
+# Bloqueia CTRL+C para manter a integridade do menu
 trap '' SIGINT
 
-# --- FUNÇÕES ---
+# --- FUNÇÕES DE APOIO ---
 
 organizar_arquivos() {
-    echo -e "${AMARELO}Sincronizando arquivos .ovpn...${SEM_COR}"
+    [ ! -d "$DESTINO" ] && mkdir -p "$DESTINO"
     find /root /home/$USER_ATUAL -maxdepth 1 -name "*.ovpn" -exec mv {} "$DESTINO/" \; 2>/dev/null
-    sudo chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
-    sudo chmod -R 644 "$DESTINO"/*.ovpn 2>/dev/null
+    chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 }
 
-gerenciar_usuarios() {
-    clear
-    echo -e "${AMARELO}Abrindo o Gerenciador Nativo...${SEM_COR}"
-    sleep 1
-    sudo bash "$INSTALLER_PATH" interactive
-    organizar_arquivos
-    echo -e "${VERDE}Retornando ao menu principal...${SEM_COR}"
-    sleep 2
-    # Apenas termina a função, o loop 'while' do menu_ovp assume de volta
-}
-
-listar_arquivos_ovpn() {
-    clear
-    echo "======================================"
-    echo "      ARQUIVOS .OVPN DISPONÍVEIS      "
-    echo "======================================"
-    ls -1 "$DESTINO"
-    echo "--------------------------------------"
-    read -p "Pressione ENTER para retornar ao menu principal..." dummy
-}
+# --- FUNÇÕES DO MENU ---
 
 listar_online() {
     clear
-    echo "=========================================================================="
-    echo "                 USUÁRIOS ONLINE E TRÁFEGO (MB)                           "
-    echo "=========================================================================="
+    echo -e "${AZUL}==========================================================================${NC}"
+    echo -e "                ${VERDE}DETALHAMENTO DE USUÁRIOS VPN ONLINE${NC}"
+    echo -e "${AZUL}==========================================================================${NC}"
     if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}Arquivo de log não encontrado em: $STATUS_LOG${SEM_COR}"
+        echo -e "${VERMELHO}Erro: Log da VPN não encontrado.${NC}"
     else
-        printf "${VERDE}%-15s %-15s %-12s %-12s %-15s${SEM_COR}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
+        printf "${AZUL}%-15s %-15s %-12s %-12s %-15s${NC}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
         echo "--------------------------------------------------------------------------"
         grep "^CLIENT_LIST" "$STATUS_LOG" | while read -r line; do
-            if [[ "$line" == *","* ]]; then SEP=","; else SEP="\t"; fi
+            # Detecta se o separador é vírgula ou tab
+            SEP=$( [[ "$line" == *","* ]] && echo "," || echo $'\t' )
             USER=$(echo "$line" | cut -d"$SEP" -f2)
             IP=$(echo "$line" | cut -d"$SEP" -f3 | cut -d':' -f1)
-            RECV_BYTES=$(echo "$line" | cut -d"$SEP" -f5)
-            SENT_BYTES=$(echo "$line" | cut -d"$SEP" -f6)
+            RECV=$(echo "$line" | cut -d"$SEP" -f5)
+            SENT=$(echo "$line" | cut -d"$SEP" -f6)
             DATA=$(echo "$line" | cut -d"$SEP" -f8)
-            RECV_MB=$(echo "scale=2; $RECV_BYTES/1048576" | bc)
-            SENT_MB=$(echo "scale=2; $SENT_BYTES/1048576" | bc)
+            
+            # Conversão para MB
+            RECV_MB=$(echo "scale=2; $RECV/1048576" | bc)
+            SENT_MB=$(echo "scale=2; $SENT/1048576" | bc)
+            
             printf "%-15s %-15s %-12s %-12s %-15s\n" "$USER" "$IP" "${RECV_MB}MB" "${SENT_MB}MB" "$DATA"
         done
     fi
-    echo "--------------------------------------------------------------------------"
-    read -p "Pressione ENTER para retornar ao menu principal..." dummy
-}
-
-trafego_acumulado() {
-    while true; do
-        clear
-        echo "======================================"
-        echo "    RELATÓRIO DE TRÁFEGO (VNSTAT)     "
-        echo "======================================"
-        echo " [1] Relatório Diário"
-        echo " [2] Relatório Mensal"
-        echo " [3] Relatório Anual"
-        echo " [4] Voltar ao Menu Principal"
-        echo "--------------------------------------"
-        read -p "Escolha: " PERIODO
-        IFACE="eth0"; ip link show tun0 > /dev/null 2>&1 && IFACE="tun0"
-        case $PERIODO in
-            1) clear; vnstat -i "$IFACE" -d; read -p "ENTER para voltar..." d ;;
-            2) clear; vnstat -i "$IFACE" -m; read -p "ENTER para voltar..." d ;;
-            3) clear; vnstat -i "$IFACE" -y; read -p "ENTER para voltar..." d ;;
-            4) return ;; # Sai do loop interno e volta para o menu_ovp
-            *) echo -e "${VERMELHO}Opção inválida!${SEM_COR}"; sleep 1 ;;
-        esac
-    done
-}
-
-chamar_seguranca() {
-    if [ -f "$SCRIPT_REDE" ]; then
-        bash "$SCRIPT_REDE"
-    else
-        echo -e "${VERMELHO}Script gerencia_rede.sh não encontrado!${SEM_COR}"
-        sleep 2
-    fi
+    echo -e "${AZUL}--------------------------------------------------------------------------${NC}"
+    read -p " Pressione ENTER para retornar..." dummy
 }
 
 menu_ovp() {
     while true; do
+        # --- COLETA DE DADOS PARA O DASHBOARD ---
+        # Conta usuários VPN ativos no log do servidor
+        VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
+        
+        # Uso de CPU e RAM
+        CPU_USO=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {printf "%.1f%%", usage}')
+        MEM_USO=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
+        
+        # Tráfego do dia na interface tun0 (VPN)
+        BANDA_VPN=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
+        [ -z "$BANDA_VPN" ] || [[ "$BANDA_VPN" == *"No data"* ]] && BANDA_VPN="0.00 MB"
+
         clear
-        echo -e "${AMARELO}=================================================================${SEM_COR}"
-        echo -e "                GERENCIADOR OPENVPN - DIGITALOCE                 "
-        echo -e "${AMARELO}=================================================================${SEM_COR}"
-        echo -e " [1] Gerenciar Usuários (Nativo Angristan)"
-        echo -e " [2] Listar Arquivos .ovpn Gerados"
-        echo -e " [3] Ver Usuários Online & Consumo"
-        echo -e " [4] Testar Velocidade da Internet"
-        echo -e " [5] Ver Tráfego Acumulado (VnStat)"
-        echo -e " [6] Gerenciamento de Rede & Segurança"
-        echo -e " [7] Retornar ao Menu Principal"
-        echo -e "${AMARELO}=================================================================${SEM_COR}"
-        read -p "Escolha uma opção: " OPCAO
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "            ${VERDE}GERENCIADOR OPENVPN - DIGITALOCE${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "STATUS SERVIÇO" "Ativo (tun0)"
+        printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "USUÁRIOS VPN" "$VPN_ONLINE Conectados"
+        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "TRÁFEGO VPN" "$BANDA_VPN (Hoje)"
+        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "CPU / RAM" "$CPU_USO / $MEM_USO"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "  [1] 👤 Gerenciar Usuários (Criar/Remover)"
+        echo -e "  [2] 📂 Listar Arquivos .ovpn Gerados"
+        echo -e "  [3] 📊 Ver Detalhes dos Online & Consumo"
+        echo -e "  [4] ⚡ Testar Velocidade da Internet"
+        echo -e "  [5] 📈 Relatórios VnStat (Dia/Mês)"
+        echo -e "  [6] 🛡️ Segurança e Firewall"
+        echo -e "  [7] ⬅️  Retornar ao Menu Principal"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Digite a opção: " OPCAO
+        echo ""
 
         case $OPCAO in
-            1) gerenciar_usuarios ;;
-            2) listar_arquivos_ovpn ;;
-            3) listar_online ;;
-            4) clear; speedtest-cli --share; read -p "Pressione ENTER para retornar..." d ;;
-            5) trafego_acumulado ;;
-            6) chamar_seguranca ;;
-            7) 
-                echo -e "${VERDE}Retornando ao Menu Principal...${SEM_COR}"
-                sleep 1
-                exit 0 # Encerra este script e volta para o menu.sh
+            1) 
+                sudo bash "$INSTALLER_PATH"
+                organizar_arquivos
                 ;;
-            *) echo -e "${VERMELHO}Opção inválida!${SEM_COR}"; sleep 1 ;;
+            2) 
+                clear
+                echo "Arquivos em: $DESTINO"
+                ls -1 "$DESTINO"
+                read -p "ENTER para voltar..." d 
+                ;;
+            3) listar_online ;;
+            4) clear; speedtest-cli --share; read -p "ENTER para voltar..." d ;;
+            5) 
+                clear
+                vnstat -i tun0 -d
+                echo ""
+                read -p "ENTER para voltar..." d 
+                ;;
+            6) [ -f "$SCRIPT_REDE" ] && bash "$SCRIPT_REDE" || echo "Script não encontrado";;
+            7) 
+                echo -e "${VERDE}Saindo do módulo VPN...${NC}"
+                sleep 1
+                exit 0
+                ;;
+            *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
         esac
     done
 }
 
-# Inicia o Menu
+# Inicia o menu
 menu_ovp
