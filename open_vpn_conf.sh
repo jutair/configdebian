@@ -362,17 +362,28 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-    # 1. Primeiro capturamos o IP
+    # 1. Configurações iniciais e detecção de IP
     IP_EXT=$(curl -4 -s ifconfig.me)
 
-    # 2. Agora verificamos se ele não veio vazio
     if [ -z "$IP_EXT" ]; then
         echo -e "${VERMELHO}Erro: Não foi possível detectar o IP externo.${SEM_COR}"
         sleep 2; return 1
     fi
-    
-    # 3. Gravamos o template usando aspas duplas em "EOF" para permitir a variável $IP_EXT
-    # Nota: Alinhado à esquerda para evitar espaços indesejados no arquivo
+
+    # 2. Sincronização da Chave Mestra (Evita erro de TLS Unwrap)
+    # Garante que o script use a mesma chave que o serviço do servidor está lendo
+    CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
+    if [ ! -f "$CHAVE_MESTRA" ]; then
+        if [ -f /etc/openvpn/tls-crypt.key ]; then
+            sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA"
+        else
+            echo -e "${AMARELO}Gerando nova tls-crypt.key...${SEM_COR}"
+            sudo openvpn --genkey --secret "$CHAVE_MESTRA"
+        fi
+        sudo chmod 644 "$CHAVE_MESTRA"
+    fi
+
+    # 3. Preparação do Template de Cliente (Limpo e sem espaços)
     sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
 client
 dev tun
@@ -389,6 +400,7 @@ ignore-unknown-option block-outside-dns
 verb 3
 EOF"
 
+    # 4. Interface visual
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     clear
     echo "======================================"
@@ -398,20 +410,10 @@ EOF"
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
     LOG_SISTEMA="/var/log/openvpn-install.log"
     
+    # Garante log persistente
     if [ ! -f "$LOG_SISTEMA" ]; then
         sudo touch "$LOG_SISTEMA"
         sudo chmod 664 "$LOG_SISTEMA"
-    fi
-
-    # --- CORREÇÃO DE SEGURANÇA (TLS) ---
-    if [ ! -f /etc/openvpn/server/tls-crypt.key ]; then
-        if [ -f /etc/openvpn/tls-crypt.key ]; then
-            sudo ln -s /etc/openvpn/tls-crypt.key /etc/openvpn/server/tls-crypt.key
-        else
-            echo -e "${AMARELO}Gerando tls-crypt.key ausente...${SEM_COR}"
-            sudo openvpn --genkey --secret /etc/openvpn/server/tls-crypt.key
-            sudo chmod 644 /etc/openvpn/server/tls-crypt.key
-        fi
     fi
 
     read -p "Digite o nome do usuário: " CLIENT
@@ -422,28 +424,30 @@ EOF"
 
     echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     
+    # 5. Execução do Instalador
     cd /tmp
     if sudo bash "$INSTALLER" client add "$CLIENT" > "$LOG_SISTEMA" 2>&1; then
         
-        # --- BLOCO DE VALIDAÇÃO E LIMPEZA ---
+        # 6. Pós-Processamento: Localização, Limpeza e Validação
         ARQUIVO_GERADO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-            # Remove lixo informativo do certificado
+            # Remove o "lixo" informativo do OpenSSL (Data, Version, Serial...)
             sudo sed -i '/Certificate:/,/-----BEGIN CERTIFICATE-----/{/-----BEGIN CERTIFICATE-----/!d}' "$ARQUIVO_GERADO"
             
-            # Valida se o comando remote está presente
-            if sudo grep -q "remote " "$ARQUIVO_GERADO"; then
+            # Validação final do conteúdo
+            if sudo grep -q "remote $IP_EXT" "$ARQUIVO_GERADO"; then
                 echo -e "\n${VERDE}✅ Sucesso: Certificado gerado, limpo e validado para $CLIENT${SEM_COR}"
+                echo -e "${AZUL}Arquivo: $ARQUIVO_GERADO${SEM_COR}"
             else
-                echo -e "\n${VERMELHO}⚠️ ALERTA: Arquivo gerado está incompleto.${SEM_COR}"
+                echo -e "\n${VERMELHO}⚠️ ALERTA: Arquivo gerado está incompleto (falta remote).${SEM_COR}"
             fi
         else
             echo -e "\n${VERMELHO}❌ ERRO: Arquivo .ovpn não encontrado.${SEM_COR}"
         fi
     else
         echo -e "\n${VERMELHO}❌ ERRO: Falha crítica no instalador.${SEM_COR}"
-        tail -n 15 "$LOG_SISTEMA"
+        echo "Verifique o log: tail -n 15 $LOG_SISTEMA"
     fi
     
     echo -e "\nPressione ENTER para continuar..."
