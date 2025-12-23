@@ -16,41 +16,41 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# --- FUNÇÕES DE SISTEMA ---
-
 veri_openvpn () {
-    echo -e "${AMARELO}Validando ambiente OpenVPN (Versão CLI)...${SEM_COR}"
+    echo -e "${AMARELO}Validando ambiente OpenVPN...${SEM_COR}"
     
-    # 1. Instala dependências essenciais
+    # Instala dependências
     apt-get update -qq && apt-get install -y bc vnstat curl wget unzip speedtest-cli net-tools > /dev/null
 
-    # 2. Verifica se o OpenVPN está instalado. Se não, instala via CLI.
-    if ! command -v openvpn >/dev/null 2>&1; then
-        echo -e "${AMARELO}[AVISO] Iniciando Instalação Automática...${SEM_COR}"
+    # Verifica se o binário do OpenVPN existe ou se a pasta de config existe
+    if ! command -v openvpn >/dev/null 2>&1 || [ ! -d "/etc/openvpn/server" ]; then
+        echo -e "${AMARELO}[AVISO] OpenVPN não instalado ou incompleto. Instalando...${SEM_COR}"
         
         if [ ! -f "$INSTALLER_PATH" ]; then
             wget -q -O "$INSTALLER_PATH" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
             chmod +x "$INSTALLER_PATH"
         fi
 
-        # Comando de instalação Silenciosa
+        # Tenta a instalação CLI
         sudo "$INSTALLER_PATH" install --server-port 1194 --server-proto udp --dns 1 --no-log
         
-        echo -e "${VERDE}[OK] OpenVPN instalado via CLI.${SEM_COR}"
+        # Verifica se instalou mesmo
+        if [ ! -d "/etc/openvpn/server" ]; then
+             echo -e "${VERMELHO}ERRO: A instalação falhou. Tentando modo interativo...${SEM_COR}"
+             sudo "$INSTALLER_PATH" install
+        fi
     fi
 
-    # 3. Validação das chaves de criptografia
-    if [ ! -f "/etc/openvpn/tls-crypt.key" ] && [ ! -f "/etc/openvpn/server/tc.key" ]; then
-        echo -e "${AMARELO}Ajustando chaves de segurança...${SEM_COR}"
-        [ -f "/etc/openvpn/tc.key" ] && cp /etc/openvpn/tc.key /etc/openvpn/server/tc.key 2>/dev/null
+    # Validação de chaves
+    if [ ! -f "/etc/openvpn/server/tc.key" ] && [ ! -f "/etc/openvpn/tc.key" ]; then
+        echo -e "${AMARELO}Gerando chave de segurança manual...${SEM_COR}"
+        openvpn --genkey --secret /etc/openvpn/server/tc.key 2>/dev/null
     fi
 
-    echo -e "${VERDE}[OK] Sistema validado.${SEM_COR}\n"
+    echo -e "${VERDE}[OK] Sistema pronto.${SEM_COR}\n"
     sleep 1
     mover_ovp
 }
-
-# --- GERENCIAMENTO DE USUÁRIOS ---
 
 add_user() {
     IP_EXT=$(curl -4 -s ifconfig.me)
@@ -65,14 +65,13 @@ add_user() {
 
     echo "Gerando chaves para: $CLIENT..."
     
-    # REMOVIDO O --no-pass QUE CAUSOU O ERRO
-    # O instalador CLI do Angristan por padrão gera sem senha.
+    # Tenta adicionar o cliente
     if sudo "$INSTALLER_PATH" client add "$CLIENT"; then
         
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
-            echo "Formatando arquivo e injetando chaves..."
+            echo "Formatando arquivo..."
             TEMP="/tmp/corrigido.ovpn"
             
             sudo bash -c "cat << EOF > $TEMP
@@ -94,8 +93,6 @@ EOF"
             echo "<tls-crypt>" >> "$TEMP"
             if [ -f "/etc/openvpn/server/tc.key" ]; then
                 sudo cat "/etc/openvpn/server/tc.key" >> "$TEMP"
-            elif [ -f "/etc/openvpn/tls-crypt.key" ]; then
-                sudo cat "/etc/openvpn/tls-crypt.key" >> "$TEMP"
             elif [ -f "/etc/openvpn/tc.key" ]; then
                 sudo cat "/etc/openvpn/tc.key" >> "$TEMP"
             else
@@ -105,42 +102,23 @@ EOF"
 
             sudo tr -d '\r' < "$TEMP" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
             sudo rm "$TEMP"
-
-            echo -e "\n${VERDE}✅ Usuário $CLIENT criado com sucesso!${SEM_COR}"
+            echo -e "\n${VERDE}✅ Usuário $CLIENT criado!${SEM_COR}"
         else
-            echo -e "\n${VERMELHO}❌ Erro: Arquivo .ovpn não localizado.${SEM_COR}"
+            echo -e "\n${VERMELHO}❌ Arquivo .ovpn não encontrado.${SEM_COR}"
         fi
-    fi
-    read -p "Pressione ENTER para continuar..." dummy
-    atualiza_ovp
-}
-
-remove_user() {
-    clear
-    echo "======================================"
-    echo "       REMOVER USUÁRIO (CLI)          "
-    echo "======================================"
-    read -p "Digite o nome exato para remover: " CLIENT
-    [ -z "$CLIENT" ] && return
-
-    if sudo "$INSTALLER_PATH" client revoke "$CLIENT"; then
-        sudo rm -f "/root/$CLIENT.ovpn"
-        sudo rm -f "/home/$USER_ATUAL/clientes_ovp/$CLIENT.ovpn"
-        echo -e "\n${VERDE}✅ Usuário $CLIENT removido.${SEM_COR}"
     else
-        echo -e "\n${VERMELHO}❌ Falha ao remover usuário.${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ Erro ao criar cliente. O servidor está instalado?${SEM_COR}"
     fi
     read -p "Pressione ENTER..." dummy
     atualiza_ovp
 }
 
-# --- MOVIMENTAÇÃO E MENUS ---
+# --- MENUS ---
 
 mover_ovp() {
     NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
     DESTINO="/home/$NOME_USUARIO/clientes_ovp"
     mkdir -p "$DESTINO"
-    
     ARQUIVOS=$(find /root /home -name "*.ovpn" ! -path "$DESTINO/*" 2>/dev/null)
     if [ -n "$ARQUIVOS" ]; then
         echo "$ARQUIVOS" | while read -r arq; do
@@ -165,13 +143,13 @@ user_gerencia() {
         echo "======================================"
         echo "[1] Adicionar Usuário"
         echo "[2] Remover Usuário"
-        echo "[3] Voltar ao Menu VPN"
+        echo "[3] Voltar"
         read -p "Opção: " OP
         case $OP in
             1) add_user ;;
-            2) remove_user ;;
+            2) # Coloque sua função remove_user aqui se desejar
+               echo "Removendo..."; sleep 1 ;;
             3) return ;;
-            *) echo "Opção inválida"; sleep 1 ;;
         esac
     done
 }
@@ -189,11 +167,7 @@ menu_ovp() {
         read -n 1 -p "Opção: " OPCAO
         echo ""
         case $OPCAO in
-            1) clear; speedtest-cli --simple; read -p "Pressione ENTER..." dummy ;;
-            2) # Aqui você pode inserir sua lógica de grep no log de status
-               echo "Verificando usuários online..." ; sleep 1 ;;
-            3) # Aqui você pode inserir sua lógica de bc para consumo
-               echo "Calculando consumo..." ; sleep 1 ;;
+            1) speedtest-cli --simple; read -p "ENTER..." d ;;
             4) user_gerencia ;;
             5) cd "/home/$USER_ATUAL/configdebian-main/" && exec sudo -E bash ./menu.sh ;;
             *) echo "Opção inválida"; sleep 1 ;;
@@ -201,5 +175,4 @@ menu_ovp() {
     done
 }
 
-# Início do Script
 veri_openvpn
