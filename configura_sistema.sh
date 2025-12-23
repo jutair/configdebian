@@ -43,10 +43,35 @@ export PASS="1"
 
 # 4. OTIMIZAÇÃO DE LOGS (MONITOR DE MB)
 echo -e "${AMARELO}Otimizando logs para monitoramento em tempo real...${NC}"
-sed -i 's|^status .*|status /etc/openvpn/server/openvpn-status.log 5|' /etc/openvpn/server/server.conf
-if ! grep -q "status-version" /etc/openvpn/server/server.conf; then
-    echo "status-version 2" >> /etc/openvpn/server/server.conf
+
+CONF_FILE="/etc/openvpn/server/server.conf"
+LOG_FILE="/etc/openvpn/server/openvpn-status.log"
+
+if [ -f "$CONF_FILE" ]; then
+    # 1. Remove qualquer linha de status ou status-version existente para evitar conflito
+    sed -i '/^status /d' "$CONF_FILE"
+    sed -i '/^status-version/d' "$CONF_FILE"
+    
+    # 2. Adiciona as configurações otimizadas
+    # O '5' no final indica que o log será atualizado a cada 5 segundos
+    echo "status $LOG_FILE 5" >> "$CONF_FILE"
+    echo "status-version 2" >> "$CONF_FILE"
+    
+    # 3. Garante que o arquivo de log exista e tenha permissões
+    touch "$LOG_FILE"
+    chmod 644 "$LOG_FILE"
+    
+    # 4. Reinicia o serviço para aplicar
+    systemctl restart openvpn-server@server
+    echo -e "${VERDE}✅ Logs do OpenVPN configurados com sucesso!${NC}"
+else
+    echo -e "${VERMELHO}❌ Erro: Arquivo $CONF_FILE não encontrado.${NC}"
 fi
+
+# Extra: Garantir que o VnStat monitore a interface correta desde o início
+echo -e "${AMARELO}Iniciando monitoramento de tráfego (VnStat)...${NC}"
+systemctl enable vnstat
+systemctl start vnstat
 systemctl restart openvpn-server@server
 
 # 5. CONFIGURAÇÃO DE FIREWALL (UFW)
