@@ -1,5 +1,5 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS Corrigido
+# menu.sh - Painel de Gestão VPS (Resiliente e Auto-configurável)
 
 DIR_SCRIPTS="$HOME/configdebian-main"
 AZUL='\033[0;34m'
@@ -8,6 +8,7 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
+# Coleta o IP Externo uma vez (timeout de 2s)
 IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Erro ao obter IP")
 
 while true; do
@@ -17,13 +18,19 @@ while true; do
     DISCO=$(df -h / | awk '/\// { print $5 }')
     UPTIME=$(uptime -p | sed 's/up //')
     
-    # Lógica inteligente de Banda:
-    # 1. Tenta pegar tun0. Se der erro ou não existir, pega eth0.
+    # --- LÓGICA DE BANDA INTELIGENTE ---
     IFACE="eth0"
     if ip link show tun0 > /dev/null 2>&1; then
-        # Tenta extrair dados da tun0, se o vnstat falhar (banco vazio), volta pra eth0
+        # Se tun0 existe mas não está no vnstat, adiciona-a
+        if ! vnstat --dbiflist | grep -q "tun0"; then
+            sudo vnstat -i tun0 --add > /dev/null 2>&1
+            systemctl restart vnstat > /dev/null 2>&1
+        fi
+        
         BANDA_HOJE=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
-        if [ -z "$BANDA_HOJE" ] || [[ "$BANDA_HOJE" == *"Error"* ]]; then
+        
+        # Se a tun0 ainda estiver vazia no banco, usa eth0 como fallback
+        if [ -z "$BANDA_HOJE" ] || [[ "$BANDA_HOJE" == *"Error"* ]] || [[ "$BANDA_HOJE" == "0.00 MB" ]]; then
             BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
             IFACE="eth0"
         else
@@ -34,7 +41,6 @@ while true; do
         IFACE="eth0"
     fi
 
-    # Limpeza final caso o vnstat ainda esteja inicializando
     [ -z "$BANDA_HOJE" ] && BANDA_HOJE="Calculando..."
 
     clear
