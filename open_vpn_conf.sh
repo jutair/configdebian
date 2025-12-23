@@ -417,7 +417,26 @@ EOF"
                 sudo cat "/etc/openvpn/tls-crypt.key" >> "$TEMP"
             else
                 # Se não achar no servidor, tenta pegar a segunda ocorrência do bruto (que é a funcional)
-                sudo sed -n '/-----BEGIN OpenVPN Static key V1
+                sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' "$ARQUIVO_BRUTO" | tail -n 17 >> "$TEMP"
+            fi
+            echo "</tls-crypt>" >> "$TEMP"
+
+            # 6. Sobrescreve o arquivo final limpando caracteres Windows (\r)
+            sudo tr -d '\r' < "$TEMP" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
+            sudo rm "$TEMP"
+
+            echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
+            echo "Arquivo corrigido (sem duplicidade): $ARQUIVO_BRUTO"
+        else
+            echo -e "\n❌ Erro: Arquivo .ovpn não encontrado."
+        fi
+    else
+        echo -e "\n❌ Erro ao executar o comando de adição."
+    fi
+
+    read -p "Pressione ENTER para voltar..." dummy
+    atualiza_ovp
+}
 # Função para Remover Usuário
 remove_user() {
 USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
