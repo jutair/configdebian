@@ -33,13 +33,8 @@ veri_openvpn () {
             chmod +x "$INSTALLER_PATH"
         fi
 
-        # FLAGS CORRIGIDAS PARA CLI 2.0
-        sudo "$INSTALLER_PATH" install \
-            --port 1194 \
-            --protocol udp \
-            --dns cloudflare \
-            --client vpn_admin \
-            --no-log
+        # COMANDO SIMPLIFICADO (SEM --no-log E SEM QUEBRAS DE LINHA)
+        sudo "$INSTALLER_PATH" install --port 1194 --protocol udp --dns cloudflare --client vpn_admin
         
         sleep 2
     fi
@@ -201,5 +196,5 @@ menu_ovp() {
     done
 }
 
-# Execução
+# Início
 veri_openvpn
