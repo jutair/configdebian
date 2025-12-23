@@ -85,24 +85,33 @@ remove_user() {
     echo "        REMOVER USUÁRIO (REVOKE)      "
     echo "======================================"
     
-    echo -e "${AMARELO}1. O robô vai selecionar a opção 3.${SEM_COR}"
-    echo -e "${AMARELO}2. Quando a lista aparecer, DIGITE O NÚMERO e dê ENTER.${SEM_COR}"
-    sleep 2
+    # 1. Mostramos a lista primeiro para você ver os números
+    echo -e "${AMARELO}Consultando lista de clientes atuais...${SEM_COR}"
+    # Este comando apenas exibe a lista e sai
+    printf "3\n" | sudo "$INSTALLER_PATH" interactive | sed -n '/Select the existing/,/Select one client/p'
+    
+    echo ""
+    read -p "Digite o NÚMERO do cliente que deseja remover: " NUM_CLIENTE
+    
+    if [ -z "$NUM_CLIENTE" ]; then
+        echo "Operação cancelada."
+        return
+    fi
 
+    echo -e "${AMARELO}O robô está revogando o acesso do cliente nº $NUM_CLIENTE...${SEM_COR}"
+
+    # 2. Agora o robô entra com o número já definido
     /usr/bin/expect <<EOD
     set timeout 60
     spawn sudo "$INSTALLER_PATH" interactive
     
-    # Robô digita 3 e ENTER
     expect "Select an option"
     send "3\r"
     
-    # Robô espera a lista e te dá o controle
-    # O comando 'return' faz o expect reassumir após você dar o ENTER
     expect "Select one client"
-    interact \r return
+    send "$NUM_CLIENTE\r"
     
-    # Agora o robô reassume e dá ENTER nas confirmações finais
+    # Se o script pedir confirmação (Y/n), ele dá ENTER no padrão
     expect {
         "Continue?" { send "\r"; exp_continue }
         "Confirm"  { send "\r"; exp_continue }
@@ -110,7 +119,7 @@ remove_user() {
     }
 EOD
 
-    echo -e "\n${VERDE}✅ Revogação finalizada no servidor!${SEM_COR}"
+    echo -e "\n${VERDE}✅ Revogação concluída!${SEM_COR}"
     read -p "Pressione ENTER para voltar ao menu..." dummy
 }
 listar_online() {
