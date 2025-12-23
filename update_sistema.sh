@@ -28,6 +28,7 @@ echo "==========================================================================
 echo "Baixando o script do OpenVPN do Angristan..."
 echo "=========================================================================="
 sudo wget -P "/home/$USER_ATUAL/configdebian-main" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
+chmod +x INSTALLER_PATH
 echo "=========================================================================="
 echo "Acessando os novos scripts na pasta do usuário..."
 echo "=========================================================================="
