@@ -157,13 +157,12 @@ menu() {
             7) update_sistema ;;
             8) exec ./open_vpn_conf.sh ;;
             9) 
-                clear
-                echo -e "\n\033[1;33m[!] Encerrando sessões e limpando memória...\033[0m"
+                clearclear
+                echo -e "\033[1;33m[!] Encerrando painel e voltando ao terminal...\033[0m"
                 sleep 1
-                echo -e "\033[1;32mObrigado por usar o painel. Até logo!\033[0m"
-                sleep 0.5
-                # O comando abaixo mata o processo líder da sessão e todos os seus filhos
-                kill -9 $(ps -o sess= -p $$)
+                # Mata apenas o grupo de processos do script, preservando o SSH
+                kill -TERM -$(ps -o pgid= -p $$ | grep -o '[0-9]*')
+                exit 0
                 ;;
             "") 
                 continue 
