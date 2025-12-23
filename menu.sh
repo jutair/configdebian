@@ -155,12 +155,13 @@ menu() {
         case "$OPCAO" in
             1) echo "Em desenvolvimento..." ; sleep 1 ;;
             2) gerencia_rede ;;
-            6) ./usuarios.sh ;;
+            6) exec ./usuarios.sh ;;
             7) update_sistema ;;
-            8) ./open_vpn_conf.sh ;;
+            8) exec ./open_vpn_conf.sh ;;
             9) 
-                echo "Saindo..."
-                kill -9
+                echo "Encerrando sistema..."
+                kill -TERM -$(ps -o pgid= $PPID | grep -o '[0-9]*')
+                exit 0
                 sleep 10
                 ;;
             "") # Quando o tempo de 58s acaba, ele apenas reinicia o loop
