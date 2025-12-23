@@ -393,7 +393,7 @@ menu_ssh
             [1]) testa_velocidade ;;
             [2]) monitora_placa ;;
             [3]) relatorio_consumo ;;
-            [4]) menu_seg_rede ;;
+            [4]) menu_seg_rede ;; #Invertido os menus
             [5]) 
                  echo "Retornando ao menu principal..."
                  # Garante que estamos na pasta certa e substitui o processo atual pelo menu principal
