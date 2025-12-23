@@ -124,9 +124,10 @@ menu_ovp() {
         echo -e " [4] Testar Velocidade da Internet"
         echo -e " [5] Ver Tráfego Acumulado (VnStat)"
         echo -e " [6] Gerenciamento de Rede & Segurança"
-        echo -e " [7] Sair do Sistema"
+        echo -e " [7] Retornar ao Menu Principal"
         echo -e "${AMARELO}=================================================================${SEM_COR}"
         read -p "Escolha uma opção: " OPCAO
+
         case $OPCAO in
             1) gerenciar_usuarios ;;
             2) listar_arquivos_ovpn ;;
@@ -135,10 +136,9 @@ menu_ovp() {
             5) trafego_acumulado ;;
             6) chamar_seguranca ;;
             7) 
-                echo -e "${AMARELO}Retornando ao Menu Principal...${SEM_COR}"
+                echo -e "${VERDE}Retornando ao Menu Principal...${SEM_COR}"
                 sleep 1
-                return 0 2>/dev/null || exit 0
-                ;;
+                exit 0 # Encerra este script e volta para o menu.sh
                 ;;
             *) echo -e "${VERMELHO}Opção inválida!${SEM_COR}"; sleep 1 ;;
         esac
