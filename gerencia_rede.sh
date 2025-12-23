@@ -392,8 +392,8 @@ menu_ssh
         case $OPCAO in
             [1]) testa_velocidade ;;
             [2]) monitora_placa ;;
-            [3]) menu_seg_rede ;;
-            [4]) relatorio_consumo ;;
+            [3]) relatorio_consumo ;;
+            [4]) menu_seg_rede ;;
             [5]) 
                  echo "Retornando ao menu principal..."
                  # Garante que estamos na pasta certa e substitui o processo atual pelo menu principal
