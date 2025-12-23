@@ -439,36 +439,44 @@ EOF"
 }
 # Função para Remover Usuário
 remove_user() {
-USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
+    USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
+    INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
+    
     clear
     echo "======================================"
-    echo "      REMOVER USUÁRIO EXISTENTE       "
+    echo "      REMOVER USUÁRIO (BANIMENTO)     "
     echo "======================================"
     
-    # Lista os usuários existentes (PKI do Easy-RSA)
+    # Lista usuários ativos (V = Válido)
     if [ -f /etc/openvpn/server/easy-rsa/pki/index.txt ]; then
-        echo "Usuários encontrados:"
+        echo "Usuários ativos no sistema:"
         grep "^V" /etc/openvpn/server/easy-rsa/pki/index.txt | awk -F'=' '{print $2}'
         echo "--------------------------------------"
-    else
-        echo "Nenhum usuário listado no sistema."
     fi
 
-    read -p "Digite o nome exato do usuário para REMOVER: " CLIENT
-    
-    if [ -z "$CLIENT" ]; then
-        return
-    fi
+    read -p "Digite o nome exato do usuário para BANIR: " CLIENT
+    [ -z "$CLIENT" ] && return
 
-    # Nova sintaxe do Angristan: client revoke <nome>
-    sudo "$INSTALLER" client revoke "$CLIENT"
-    sudo rm /home/$USER_ATUAL/clientes_ovp/$CLIENT.ovpn
-    echo -e "\n${VERMELHO}Processo de revogação finalizado: $CLIENT${SEM_COR}"
-    echo "Pressione ENTER para voltar..."
-    read dummy
+    echo "Revogando certificado..."
+    # 1. Revoga via script (isso gera o novo crl.pem)
+    sudo bash "$INSTALLER" client revoke "$CLIENT"
+
+    # 2. Garante que o servidor OpenVPN releia a lista de revogação
+    sudo systemctl restart openvpn-server@server
+
+    # 3. Derruba a conexão atual se ele estiver online (via Management Interface)
+    # Enviamos o comando 'kill' para o terminal de gerenciamento do OpenVPN
+    echo "kill $CLIENT" | nc -w 1 127.0.0.1 7505 > /dev/null 2>&1
+
+    # 4. Remove arquivos físicos
+    sudo rm -f "/root/$CLIENT.ovpn"
+    sudo rm -f "/home/$USER_ATUAL/$CLIENT.ovpn"
+    sudo rm -f "/home/$USER_ATUAL/clientes_ovp/$CLIENT.ovpn"
+
+    echo -e "\n✅ Usuário $CLIENT foi desconectado e banido com sucesso!"
+    read -p "Pressione ENTER para voltar..." dummy
     atualiza_ovp
 }
-
 # Menu de Gerenciamento
 while true; do
     clear
