@@ -24,47 +24,63 @@ mkdir -p "$DESTINO"
 chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 
 # --- FUNÇÕES ---
-remove_user() {
+add_user() {
     clear
     echo "======================================"
-    echo "        REMOVER USUÁRIO (REVOKE)      "
+    echo "      GERAR USUÁRIO (AJUSTE FINO)     "
     echo "======================================"
-    read -p "Digite o nome exato do usuário para remover: " CLIENT_NAME
+    read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
 
-    echo -e "${AMARELO}Revogando certificado para: $CLIENT_NAME...${SEM_COR}"
+    echo -e "${AMARELO}O robô está processando, aguarde a conclusão...${SEM_COR}"
+
+    cd "$DESTINO" || exit
 
     /usr/bin/expect <<EOD
     set timeout 60
+    # Desativa o echo para evitar duplicidade de caracteres (o erro do 11)
+    stty -echo
     spawn sudo "$INSTALLER_PATH" interactive
     
-    # 1. Seleciona a opção 3 (Revoke existing user)
+    # 1. Seleciona Add New User
     expect "Select an option"
     sleep 1
-    send -- "3\r"
+    send -- "1\r"
     
-    # 2. O script vai perguntar qual usuário. 
-    # Como o seu menu pede o nome ou número, enviamos o nome direto.
-    expect "Select the client"
+    # 2. Digita o Nome
+    expect "Client name:"
     sleep 1
     send -- "$CLIENT_NAME\r"
     
-    # 3. Confirmação de revogação (se o script pedir Y/n)
-    expect {
-        "Continue?" { send -- "y\r"; exp_continue }
-        "Confirm" { send -- "y\r"; exp_continue }
-        eof
-    }
+    # 3. ENTER na Validade
+    expect "Certificate validity"
+    sleep 1
+    send -- "\r"
+    
+    # 4. Seleciona Passwordless
+    # Aqui usamos uma espera mais específica para evitar o "11"
+    expect -re "Select an option.*1-2.*:" 
+    sleep 2
+    send -- "1\r"
+    
+    expect eof
 EOD
 
-    # Remove o arquivo físico para não ocupar espaço
-    if [ -f "$DESTINO/${CLIENT_NAME}.ovpn" ]; then
-        rm -f "$DESTINO/${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ Arquivo .ovpn removido da pasta de clientes.${SEM_COR}"
+    sleep 2
+    # [O restante da lógica de busca e movimentação de arquivo continua igual]
+    ARQUIVO_FINAL=\$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
+
+    if [ -n "\$ARQUIVO_FINAL" ] && [ -f "\$ARQUIVO_FINAL" ]; then
+        mv "\$ARQUIVO_FINAL" "$DESTINO/${CLIENT_NAME}.ovpn"
+        chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
+        chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
+        echo -e "\n${VERDE}✅ SUCESSO! Arquivo: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+    else
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
     fi
 
-    echo -e "\n${VERDE}✅ Usuário $CLIENT_NAME revogado com sucesso!${SEM_COR}"
-    read -p "Pressione ENTER para voltar ao menu..." dummy
+    cd - > /dev/null
+    read -p "Pressione ENTER para voltar..." dummy
 }
 remove_user() {
     clear
