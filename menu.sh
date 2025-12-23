@@ -149,9 +149,11 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         case $OPCAO in
             [1]) echo "Em desenvolvimento..." ; sleep 1 ;;
             [2]) gerencia_rede ;;
-            [6]) exec sudo -E bash ./usuarios.sh ;;
+            [6]) cd /home/$CURRENRT/configdebian-main/
+                 exec sudo -E bash ./usuarios.sh ;;
             [7]) update_sistema ;;
-            [8]) exec sudo -E bash ./open_vpn_conf.sh ;;
+            [8])  cd /home/$CURRENRT/configdebian-main/
+                  exec sudo -E bash ./open_vpn_conf.sh ;;
             [9]) 
                  clear
                  echo "Saindo do sistema..."
