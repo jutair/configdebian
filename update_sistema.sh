@@ -39,4 +39,4 @@ echo "==========================================================================
 echo "Atualização concluída! Iniciando o sistema..."
 echo "=========================================================================="
 sleep 2
-sudo ./menu.sh
+exec sudo -E bash ./menu.sh
