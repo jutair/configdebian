@@ -14,7 +14,6 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # --- CONFIGURAÇÃO E DETECÇÃO DO INSTALADOR ---
-# Procura o instalador em locais comuns para evitar o erro de "não localizado"
 if [ -f "/home/$USER_ATUAL/configdebian-main/openvpn-install.sh" ]; then
     INSTALLER_PATH="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
 elif [ -f "./openvpn-install.sh" ]; then
@@ -66,11 +65,9 @@ user_consumo() {
             USER=$(echo "$line" | cut -d',' -f2)
             RECV_B=$(echo "$line" | cut -d',' -f5)
             SENT_B=$(echo "$line" | cut -d',' -f6)
-
             RECV_MB=$(echo "scale=2; $RECV_B/1024/1024" | bc 2>/dev/null || echo "0.00")
             SENT_MB=$(echo "scale=2; $SENT_B/1024/1024" | bc 2>/dev/null || echo "0.00")
             TOTAL_MB=$(echo "scale=2; ($RECV_B+$SENT_B)/1024/1024" | bc 2>/dev/null || echo "0.00")
-
             printf "%-15s %-12s %-12s %-12s\n" "$USER" "${RECV_MB}MB" "${SENT_MB}MB" "${TOTAL_MB}MB"
         done
     fi
@@ -121,4 +118,47 @@ listar_usuarios_pki() {
 # --- MENU PRINCIPAL VPN ---
 
 menu_ovp() {
-    IP_
+    IP_INT=$(hostname -I | awk '{print $1}')
+    IP_EXT=$(curl -4 -s ifconfig.me)
+
+    while true; do
+        clear
+        echo "================================================================="
+        echo "                      PAINEL OPEN VPN                            "
+        echo " IP Interno: $IP_INT | IP Externo: $IP_EXT"
+        echo "================================================================="
+        echo "[1] Usuários Online            [5] Monitorar Tráfego (Live)"
+        echo "[2] Gerenciar Usuários (Add/R) [6] Relatório de Consumo (MB)"
+        echo "[3] Lista Completa (PKI)       [7] Voltar ao Menu Principal"
+        echo "[4] Testar Velocidade tun0     [9] Sair do Sistema"
+        echo "================================================================="
+        read -n 1 -p "Opção: " OPCAO
+        echo ""
+
+        case $OPCAO in
+            1) user_online ;;
+            2) sudo "$INSTALLER_PATH"; sincronizar_ovpns ;;
+            3) listar_usuarios_pki ;;
+            4) 
+               clear
+               IP_TUN0=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+               if [ -n "$IP_TUN0" ]; then
+                   speedtest-cli --source "$IP_TUN0" --simple
+               else
+                   echo "Erro: tun0 offline."
+               fi
+               read -p "ENTER..." d ;;
+            5) 
+               clear; trap '' INT
+               ( trap - INT; vnstat -l -i tun0 )
+               trap - INT; read -p "ENTER..." d ;;
+            6) user_consumo ;;
+            7) exec sudo ./menu.sh ;;
+            9) kill -TERM -$(ps -o pgid= -p $$ | grep -o '[0-9]*'); exit 0 ;;
+            *) echo "Opção Inválida"; sleep 1 ;;
+        esac
+    done
+}
+# --- INÍCIO DO SCRIPT ---
+sincronizar_ovpns
+menu_ovp
