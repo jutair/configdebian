@@ -39,8 +39,10 @@ chmod +x configura_sistema.sh menu.sh open_vpn_conf.sh usuarios.sh update_sistem
 echo "=========================================================================="
 echo "Atualização concluída! Reiniciando o painel..."
 echo "=========================================================================="
-sleep 2
+sleep 1
 
-# A MUDANÇA CHAVE: exec substitui o script de update pelo menu.
-# Isso limpa a pilha de processos e evita que o menu fique "preso"
-exec sudo ./menu.sh
+# Em vez de exec sudo, usamos o caminho completo e limpamos o ambiente
+# Isso evita o conflito de permissões que gera o 'Connection reset'
+cd "$DESTINO"
+sudo -u root ./menu.sh & 
+exit
