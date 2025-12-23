@@ -161,6 +161,7 @@ menu() {
             9) 
                 echo "Saindo..."
                 kill -9
+                sleep 10
                 ;;
             "") # Quando o tempo de 58s acaba, ele apenas reinicia o loop
                 continue 
