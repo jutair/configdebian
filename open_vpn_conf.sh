@@ -364,41 +364,34 @@ SEM_COR='\033[0m'
 # Função para Adicionar Usuário
 add_user() {
     IP_EXT=$(curl -4 -s ifconfig.me)
-    [ -z "$IP_EXT" ] && { echo -e "Erro ao obter IP"; return 1; }
-
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
     
-    if [ ! -f "$INSTALLER" ]; then
-        echo "Erro: Instalador não encontrado em $INSTALLER"
-        return 1
-    fi
-
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO COMPATÍVEL        "
+    echo "      GERAR USUÁRIO (DEBUG MODE)      "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT
     [ -z "$CLIENT" ] && return
 
-    # Revoga se já existir para evitar conflitos
-    sudo bash "$INSTALLER" revoke "$CLIENT" > /dev/null 2>&1
+    echo "Tentando gerar chaves..."
+    
+    # Tentativa 1: Formato padrão (MENU_OPTION=1 é 'Adicionar Usuário' na maioria dos scripts)
+    # Se falhar, ele tentará o formato de argumento direto
+    if ! sudo MENU_OPTION=1 CLIENT="$CLIENT" PASS=1 bash "$INSTALLER" > /tmp/vpn_err.log 2>&1; then
+        sudo bash "$INSTALLER" add "$CLIENT" >> /tmp/vpn_err.log 2>&1
+    fi
 
-    echo "Gerando chaves e certificados..."
-    # O instalador do Angristan/Nyr já gera o arquivo .ovpn completo
-    if sudo bash "$INSTALLER" add "$CLIENT" > /dev/null 2>&1; then
-        # Localiza o arquivo gerado (geralmente em /root ou na home do usuário)
-        ARQUIVO_BRUTO=$(sudo find /root /home/$USER_ATUAL -name "${CLIENT}.ovpn" | head -n 1)
+    # Verificação se o arquivo .ovpn foi de fato criado
+    ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
-        if [ -f "$ARQUIVO_BRUTO" ]; then
-            echo "Ajustando parâmetros de estabilidade..."
-            
-            # Criamos um arquivo temporário
-            TEMP_OVPN="/tmp/${CLIENT}_temp.ovpn"
-            
-            # 1. Copiamos o cabeçalho funcional (baseado no seu 'jutair')
-            # Removido 'cipher AES-256-GCM' para permitir negociação automática (NCP)
-            sudo bash -c "cat << EOF > $TEMP_OVPN
+    if [ -f "$ARQUIVO_BRUTO" ]; then
+        echo "Arquivo encontrado! Formatando..."
+        
+        # Otimização: Vamos apenas garantir que o cabeçalho seja idêntico ao 'jutair'
+        # mas manter os certificados que o script acabou de gerar.
+        TEMP="/tmp/final.ovpn"
+        sudo bash -c "cat << EOF > $TEMP
 client
 dev tun
 proto udp
@@ -412,44 +405,18 @@ auth SHA512
 ignore-unknown-option block-outside-dns
 verb 3
 EOF"
-
-            # 2. Extraímos os blocos de certificados DIRETAMENTE do arquivo bruto
-            # Isso evita erros de "END marker missing" e garante a integridade
-            for tag in "ca" "cert" "key" "tls-crypt"; do
-                echo "<$tag>" >> "$TEMP_OVPN"
-                # Extrai apenas o conteúdo entre os delimitadores BEGIN e END da tag correspondente
-                if [ "$tag" == "tls-crypt" ]; then
-                    sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' "$ARQUIVO_BRUTO" >> "$TEMP_OVPN"
-                elif [ "$tag" == "key" ]; then
-                    sudo sed -n '/-----BEGIN PRIVATE KEY-----/,/-----END PRIVATE KEY-----/p' "$ARQUIVO_BRUTO" >> "$TEMP_OVPN"
-                else
-                    # Para CA e CERT, pegamos os blocos de certificado
-                    # O 'cert' do cliente é sempre o que contém 'Subject: CN=nome_do_cliente'
-                    # Mas no .ovpn bruto, a ordem padrão é segura para extração direta:
-                    if [ "$tag" == "ca" ]; then
-                        # Pega o primeiro certificado (CA)
-                        sudo awk '/BEGIN CERTIFICATE/{i++} i==1{print} /END CERTIFICATE/{if(i==1)exit}' "$ARQUIVO_BRUTO" >> "$TEMP_OVPN"
-                    else
-                        # Pega o segundo certificado (Client Cert)
-                        sudo awk '/BEGIN CERTIFICATE/{i++} i==2{print} /END CERTIFICATE/{if(i==2)exit}' "$ARQUIVO_BRUTO" >> "$TEMP_OVPN"
-                    fi
-                fi
-                echo "</$tag>" >> "$TEMP_OVPN"
-            done
-
-            # 3. Limpeza final (caracteres Windows e sobrescrita)
-            sudo tr -d '\r' < "$TEMP_OVPN" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
-            sudo rm "$TEMP_OVPN"
-
-            echo -e "\n✅ Usuário $CLIENT criado com sucesso!"
-            echo "Configuração otimizada para Android (Protocolo identico ao jutair)."
-            echo "Local: $ARQUIVO_BRUTO"
-        fi
+        # Extrai os certificados do arquivo que o instalador gerou
+        sudo sed -n '/<ca>/,/<\/tls-crypt>/p' "$ARQUIVO_BRUTO" >> "$TEMP"
+        sudo tr -d '\r' < "$TEMP" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
+        
+        echo -e "\n✅ Usuário $CLIENT criado com sucesso em: $ARQUIVO_BRUTO"
     else
-        echo "Erro ao executar o instalador."
+        echo -e "\n❌ ERRO CRÍTICO: O instalador falhou."
+        echo "Log de erro do sistema:"
+        cat /tmp/vpn_err.log | tail -n 5
     fi
-    
-    read -p "Pressione ENTER para voltar ao menu..." dummy
+
+    read -p "Pressione ENTER para voltar..." dummy
     atualiza_ovp
 }
 # Função para Remover Usuário
