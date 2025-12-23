@@ -342,27 +342,15 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
+USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
     clear
     echo "======================================"
     echo "      ADICIONAR NOVO USUÁRIO          "
     echo "======================================"
     
-    # 1. Garante que o caminho do instalador está correto
-    # Se a variável $INSTALLER estiver vazia, tentamos o caminho padrão
-    [ -z "$INSTALLER" ] && INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
+    # Define o caminho
+    INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
     
-    # 2. Verifica se o arquivo físico existe antes de chamar o sudo
-    if [ ! -f "$INSTALLER" ]; then
-        # Se não achar no caminho longo, tenta na pasta atual
-        if [ -f "./openvpn-install.sh" ]; then
-            INSTALLER="./openvpn-install.sh"
-        else
-            echo -e "${VERMELHO}Erro: Instalador não encontrado em: $INSTALLER${SEM_COR}"
-            sleep 3
-            return
-        fi
-    fi
-
     read -p "Digite o nome do usuário: " CLIENT
     
     if [ -z "$CLIENT" ]; then
@@ -371,18 +359,17 @@ add_user() {
         return
     fi
 
-    # 3. Execução com o caminho validado
-    # Note: O script do Angristan aceita variáveis de ambiente para automação
     echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
     
-    MENU_OPTION="1" CLIENT="$CLIENT" PASS="1" sudo -E bash "$INSTALLER"
+    # AJUSTE AQUI: A nova sintaxe exige 'client add'
+    # Usamos o interpretador bash diretamente para garantir a execução
+    sudo bash "$INSTALLER" client add "$CLIENT"
     
     echo -e "\n${VERDE}Processo finalizado para: $CLIENT${SEM_COR}"
     echo "Pressione ENTER para voltar..."
     read dummy
     atualiza_ovp
 }
-
 # Função para Remover Usuário
 remove_user() {
 USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
