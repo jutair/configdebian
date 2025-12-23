@@ -179,7 +179,7 @@ while true; do
                 esac
             done ;;
         4)  
-            while true; do
+           while true; do
                 # --- COLETA DE DADOS DE SEGURANÇA ---
                 ATAQUES=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l)
                 PORTAS_ABERTAS=$(ufw status | grep "ALLOW" | awk '{print $1}' | sort -u | tr '\n' ' ' | sed 's/ $//')
