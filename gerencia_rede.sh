@@ -78,7 +78,6 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 ############################ Funções de Instalação ############################
-
 instalar_dependencias() {
     clear
     echo -e "${AMARELO}A verificar dependências...${SEM_COR}"
@@ -113,6 +112,47 @@ ver_status() {
     read -p "Pressione ENTER..." d
 }
 
+monitora_banidos() {
+    clear
+    echo "==============================================================="
+    echo "          RELATÓRIO DE INVASÕES E BANIMENTOS (Fail2Ban)        "
+    echo "==============================================================="
+    
+    # Verifica se o fail2ban está instalado
+    if ! command -v fail2ban-client >/dev/null 2>&1; then
+        echo -e "\033[31mErro: Fail2Ban não está instalado.\033[0m"
+        read -p "Pressione ENTER para voltar..." dummy
+        return
+    fi
+
+    # Lista os 'jails' ativos (ex: sshd)
+    JAILS=$(fail2ban-client status | grep "Jail list" | sed 's/.*list://' | tr -d ',')
+
+    echo "Status Geral:"
+    for jail in $JAILS; do
+        # Extrai total de banidos e IPs banidos agora
+        TOTAL_BAN=$(fail2ban-client status "$jail" | grep "Total banned" | awk '{print $4}')
+        IP_BANIDOS=$(fail2ban-client status "$jail" | grep "Banned IP list" | sed 's/.*list://')
+        
+        echo -e "\n[\033[1;33m$jail\033[0m]"
+        echo "Total histórico de banimentos: $TOTAL_BAN"
+        echo -e "IPs banidos no momento: \033[31m${IP_BANIDOS:-Nenhum}\033[0m"
+    done
+
+    echo "---------------------------------------------------------------"
+    echo "Últimas 10 tentativas de login falhas (Log de Segurança):"
+    echo "---------------------------------------------------------------"
+    # Busca por 'Failed password' no log de autenticação
+    if [ -f /var/log/auth.log ]; then
+        grep "Failed password" /var/log/auth.log | tail -n 10 | awk '{print $1" "$2" "$3" - IP: "$11" (Usuário: "$9")"}'
+    else
+        echo "Log /var/log/auth.log não disponível."
+    fi
+
+    echo "==============================================================="
+    echo "Pressione ENTER para voltar ao menu..."
+    read dummy
+}
 gerenciar_fail2ban() {
     clear
     echo "======================================"
@@ -156,6 +196,48 @@ bloquear_ip() {
         echo -e "${VERMELHO}IP $IP_ALVO bloqueado permanentemente.${SEM_COR}"
     fi
     sleep 2
+}
+
+monitora_banidos() {
+    clear
+    echo "==============================================================="
+    echo "          RELATÓRIO DE INVASÕES E BANIMENTOS (Fail2Ban)        "
+    echo "==============================================================="
+    
+    # Verifica se o fail2ban está instalado
+    if ! command -v fail2ban-client >/dev/null 2>&1; then
+        echo -e "\033[31mErro: Fail2Ban não está instalado.\033[0m"
+        read -p "Pressione ENTER para voltar..." dummy
+        return
+    fi
+
+    # Lista os 'jails' ativos (ex: sshd)
+    JAILS=$(fail2ban-client status | grep "Jail list" | sed 's/.*list://' | tr -d ',')
+
+    echo "Status Geral:"
+    for jail in $JAILS; do
+        # Extrai total de banidos e IPs banidos agora
+        TOTAL_BAN=$(fail2ban-client status "$jail" | grep "Total banned" | awk '{print $4}')
+        IP_BANIDOS=$(fail2ban-client status "$jail" | grep "Banned IP list" | sed 's/.*list://')
+        
+        echo -e "\n[\033[1;33m$jail\033[0m]"
+        echo "Total histórico de banimentos: $TOTAL_BAN"
+        echo -e "IPs banidos no momento: \033[31m${IP_BANIDOS:-Nenhum}\033[0m"
+    done
+
+    echo "---------------------------------------------------------------"
+    echo "Últimas 10 tentativas de login falhas (Log de Segurança):"
+    echo "---------------------------------------------------------------"
+    # Busca por 'Failed password' no log de autenticação
+    if [ -f /var/log/auth.log ]; then
+        grep "Failed password" /var/log/auth.log | tail -n 10 | awk '{print $1" "$2" "$3" - IP: "$11" (Usuário: "$9")"}'
+    else
+        echo "Log /var/log/auth.log não disponível."
+    fi
+
+    echo "==============================================================="
+    echo "Pressione ENTER para voltar ao menu..."
+    read dummy
 }
 
 ############################ Menu ############################
