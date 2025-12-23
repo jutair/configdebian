@@ -1,258 +1,183 @@
 #!/bin/bash
-clear
-echo -e "\033[0m"
-ORIGEM="/home/jutair/.ssh/authorized_keys"
-############################Funções######################
-###################################################################
-function cadastrar_user {
-clear
-# Verifica se o script foi executado como root
-if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[31mPor favor execute esse script somo sudo!"
-  echo -e "\033[0m"
-  exit 1
-fi
-ORIGEM="root/.ssh/authorized_keys"
-echo "======================================"
-echo "    CADASTRO DE USUÁRIOS              "
-echo "======================================"
-# 1. Solicita a entrada de texto (palavra completa)
-read -p "Digite o nome do novo usuário: " NOME_USUARIO
-sudo useradd -G sudo -m $NOME_USUARIO -s /bin/bash
-sudo mkdir -p "/home/$NOME_USUARIO/.ssh"
-# 3. Tenta copiar a chave do root, mas verifica se ela existe primeiro
-if [ -f /root/.ssh/authorized_keys ]; then
-    sudo cp /root/.ssh/authorized_keys /home/jutair/.ssh/
-    echo "✅ Chaves copiadas com sucesso de /root"
-else
-    echo "⚠️  Aviso: /root/.ssh/authorized_keys não existe. Criando arquivo vazio."
-    sudo touch /home/$NOME_USUARIO/.ssh/authorized_keys
-fi
-sudo cp "$ORIGEM" "/home/$NOME_USUARIO/.ssh/authorized_keys"
-sudo mkdir -p "/home/$NOME_USUARIO/.ssh"
-sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "/home/$NOME_USUARIO/.ssh"
-sudo chmod 700 "/home/$NOME_USUARIO/.ssh"
-sudo chmod 600 "/home/$NOME_USUARIO/.ssh/authorized_keys"
-#####################Cria a pasta transfer para o usuário################
-sudo mkdir -p "/home/$NOME_USUARIO/transfer"
-sudo passwd $NOME_USUARIO
-# 2. Solicita o toque de alguma tecla
-echo "Usurário $NOME_USUARIO criado!"
-# Loop infinito que só para quando encontrar o 'break'
-while true; do
-    read -n 1 -p "Deseja promover o usuário $NOME_USUARIO a root? [s/n]: " USEROOT
-    echo "" # Pula linha após o caractere
 
-    case $USEROOT in
-        [sS])
-            sudo usermod -aG sudo "$NOME_USUARIO"
-            clear
-            echo "Usuário $NOME_USUARIO promovido ao grupo sudo (root)!"
-            break # Sai do loop while
-            ;;
-        [nN])
-            echo "O usuário $NOME_USUARIO não terá privilégios root."
-            break # Sai do loop while
-            ;;
-        *)
-            # Se digitar qualquer outra coisa (e, r, 5, etc)
-            echo -e "\033[31mOpção inválida!\033[0m Por favor, digite apenas 's' para Sim ou 'n' para Não."
-            ;;
-    esac
-done
-REPO_URL="https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
-HOME_USER="/home/$NOME_USUARIO"
-echo "Baixando scripts de gerenciamento para: $HOME_USER"
-sudo wget -O "$HOME_USER/main.zip" "$REPO_URL"
-sudo unzip -o "$HOME_USER/main.zip" -d "$HOME_USER/"
-sudo rm "$HOME_USER/main.zip"
-sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER/configdebian-main"
-sudo chmod -R 700 "$HOME_USER/configdebian-main"
-echo "✅ Processo concluído com sucesso para $NOME_USUARIO!"
-echo -e "\033[0m"
-sleep 2
-}
-################################################################
-function remove_user {
-clear
-echo "======================================"
-echo "    USUÁRIOS CADASTRADOS:              "
-echo "$LIST"
-echo "======================================"
-echo ""
-LIST=$(ls /home)
-# Verifica se o script foi executado como root
-if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[31mPor favor execute esse script somo sudo!"
-  sleep 2
-  echo -e "\033[0m"
-  gerencia_user
-  #exit 1
-fi
-
-# Pede o nome do usuário a ser removido
-read -p "Digite o nome do usuário a ser removido: " username
-
-# Verifica se o usuário existe
-if id "$username" &>/dev/null; then
-  echo "Removendo usuário '$username' e seu diretório home..."
-  # Comando para remover usuário e diretório home
-  # Use 'userdel -r' ou 'deluser --remove-home'
-  userdel -r "$username"
-  # Ou: deluser --remove-home "$username"
-
-  if [ $? -eq 0 ]; then
-    clear
-    echo "Usuário '$username' removido com sucesso."
-    sleep 2
-    gerencia_user
-  else
-    echo -e "\033[31mErro ao remover o usuário '$username'."
-    sleep 2
-    echo -e "\033[0m"
-  fi
-else
-  echo -e "\033[31mUsuário '$username' não encontrado!."
-  sleep 2
-  echo -e "\033[0m"
-fi
-}
-################################################################
-function promover_root {
-clear
-echo "======================================"
-echo "    USUÁRIOS CADASTRADOS:              "
-echo "$LIST"
-echo "======================================"
-echo ""
-LIST=$(ls /home)
-# Verifica se o script foi executado como root
-if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[31mPor favor execute esse script somo sudo!"
-  echo -e "\033[0m"
-  exit 1
-fi
-
-# Pede o nome do usuário a ser removido
-read -p "Digite o nome do usuário a ser promovido a root: " username
-clear
-
-# Verifica se o usuário existe
-if id "$username" &>/dev/null; then
-  sudo usermod -aG sudo "$username"
-  if [ $? -eq 0 ]; then
-    clear
-    echo "Agora o usuário '$username' tem privilégio root."
-    sleep 2
-    clear
-  else
-    echo -e "\033[31mErro ao promover o usuário '$username'."
-    echo -e "\033[0m"
-  fi
-else
-  echo -e "\033[31mUsuário '$username' não encontrado!."
-  echo -e "\033[0m"
-fi
-}
-##################################################################
-function altera_senha {
-clear
-echo "======================================"
-echo "    USUÁRIOS CADASTRADOS:              "
-echo "$LIST"
-echo "======================================"
-echo ""
-LIST=$(ls /home)
-# Verifica se o script foi executado como root
-if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[31mPor favor execute esse script somo sudo!"
-  echo -e "\033[0m"
-  exit 1
-fi
-
-# Pede o nome do usuário a ser removido
-read -p "Digite o nome do usuário para alterar a senha: " username
-clear
-
-# Verifica se o usuário existe
-if id "$username" &>/dev/null; then
-  sudo passwd "$username"
-  if [ $? -eq 0 ]; then
-    clear
-    echo "Foi alterada a senha para o usuário '$username'"
-    sleep 2
-    clear
-  else
-    echo -e "\033[31mErro ao trocar a senha do usuário '$username'."
-    echo -e "\033[0m"
-  fi
-else
-  echo -e "\033[31mUsuário '$username' não encontrado!."
-  echo -e "\033[0m"
-fi
-}
-############################Fim das funções######################
-function gerencia_user {
-clear
-while true; do
+# --- CONFIGURAÇÃO DE AMBIENTE ---
+# Detecta o usuário atual para navegação
 CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
-LIST=$(ls /home)
-echo "======================================"
-echo "    GERENCIAR USUÁRIOS:              "
-echo "$LIST"
-echo "======================================"
-echo "Seu usuário: $CURRENRT"
-echo ""
-echo "[1] Casdastrar"
-echo "[2] Remover"
-echo "[3] Alterar senha"
-echo "[4] Promover a usuário root"
-echo "[5] Retornar ao Menu Principal"
-read -n 1 -p "Digite a opção desejada: " OPCAO
-echo ""
-case $OPCAO in
-        [1])
-            echo ""
-            echo "echo "Você digitou a opção [1]""
-            #sleep 1
-            cadastrar_user
-            ;;
-        [2])
-            echo ""
-            echo "Você digitou a opção [2]"
-            #sleep 1
-            remove_user
-            ;;
-        [3])
-            echo ""
-            echo "Você digitou a opção [3]"
-            #sleep 1
-            altera_senha
-            #break # Sai do loop while
-            ;;
-        [4])
-            echo ""
-            echo "Você digitou a opção [4]"
-            #sleep 1
-            promover_root
-            ;;
-        [5])
-            echo "Retornando ao menu principal..."
-            # Garante que estamos na pasta certa e substitui o processo atual pelo menu principal
-            cd "/home/$CURRENRT/configdebian-main/"
-            exec sudo -E bash ./menu.sh
-            #exit
-            ;;
-        *)
-            # Se digitar qualquer outra coisa (e, r, 5, etc)
-            clear
-            echo -e "\033[31mOpção inválida!\033[0m Por favor, digite apenas 's' para Sim ou 'n' para Não."
-            echo ""
-            ;;
-    esac
-done
 
-echo "Processo concluído para o usuário $NOME_USUARIO!"
-clear
+############################ FUNÇÕES ############################
+
+function cadastrar_user {
+    clear
+    # Verifica se o script foi executado como root
+    if [ "$EUID" -ne 0 ]; then
+        echo -e "\033[31mPor favor, execute este script como sudo!\033[0m"
+        sleep 2
+        return
+    fi
+
+    echo "======================================"
+    echo "      CADASTRO DE NOVOS USUÁRIOS      "
+    echo "======================================"
+    
+    read -p "Digite o nome do novo usuário: " NOME_USUARIO
+
+    # 1. Cria o usuário com a home e shell padrão
+    sudo useradd -m -s /bin/bash "$NOME_USUARIO"
+    
+    # 2. Configuração do diretório SSH e chaves
+    HOME_USER="/home/$NOME_USUARIO"
+    sudo mkdir -p "$HOME_USER/.ssh"
+    
+    if [ -f /root/.ssh/authorized_keys ]; then
+        sudo cp /root/.ssh/authorized_keys "$HOME_USER/.ssh/authorized_keys"
+        echo "✅ Chaves copiadas com sucesso de /root"
+    else
+        echo "⚠️  Aviso: /root/.ssh/authorized_keys não existe. Criando arquivo vazio."
+        sudo touch "$HOME_USER/.ssh/authorized_keys"
+    fi
+
+    # 3. CRIAÇÃO DAS PASTAS PADRÃO (O que você solicitou)
+    echo "Configurando pastas Backup, clientes_ovp e transfer..."
+    sudo mkdir -p "$HOME_USER/Backup"
+    sudo mkdir -p "$HOME_USER/clientes_ovp"
+    sudo mkdir -p "$HOME_USER/transfer"
+
+    # 4. BACKUP INICIAL DE CONFIGURAÇÕES PARA O NOVO USUÁRIO
+    [ -f /etc/ssh/sshd_config ] && sudo cp /etc/ssh/sshd_config "$HOME_USER/Backup/sshd_config.bak"
+    [ -f /etc/samba/smb.conf ] && sudo cp /etc/samba/smb.conf "$HOME_USER/Backup/smb.conf.bak"
+
+    # 5. DOWNLOAD DOS SCRIPTS DO REPOSITÓRIO
+    REPO_URL="https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
+    echo "Baixando scripts de gerenciamento para: $HOME_USER"
+    sudo wget -qO "$HOME_USER/main.zip" "$REPO_URL"
+    sudo unzip -qo "$HOME_USER/main.zip" -d "$HOME_USER/"
+    sudo rm "$HOME_USER/main.zip"
+
+    # 6. AJUSTE DE PERMISSÕES E DONO (CRÍTICO)
+    sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER"
+    sudo chmod 700 "$HOME_USER/.ssh"
+    sudo chmod 600 "$HOME_USER/.ssh/authorized_keys"
+    sudo chmod -R +x "$HOME_USER/configdebian-main"/*.sh
+
+    # 7. DEFINIÇÃO DE SENHA
+    sudo passwd "$NOME_USUARIO"
+
+    # 8. PERMISSÃO SUDO (OPCIONAL)
+    while true; do
+        read -n 1 -p "Deseja promover o usuário $NOME_USUARIO a root? [s/n]: " USEROOT
+        echo ""
+        case $USEROOT in
+            [sS])
+                sudo usermod -aG sudo "$NOME_USUARIO"
+                echo "Usuário $NOME_USUARIO promovido ao grupo sudo!"
+                break
+                ;;
+            [nN])
+                echo "O usuário $NOME_USUARIO não terá privilégios root."
+                # Adiciona permissão apenas para rodar o menu via sudo (limitação de segurança)
+                echo "$NOME_USUARIO ALL=(ALL) NOPASSWD: /home/$NOME_USUARIO/configdebian-main/*.sh" | sudo tee -a /etc/sudoers > /dev/null
+                break
+                ;;
+            *)
+                echo -e "\033[31mOpção inválida!\033[0m Digite 's' ou 'n'."
+                ;;
+        esac
+    done
+
+    echo "✅ Processo concluído com sucesso para $NOME_USUARIO!"
+    sleep 2
 }
-gerencia_user ###Chama a função principal!
+
+function remove_user {
+    clear
+    LIST=$(ls /home)
+    echo "======================================"
+    echo "        USUÁRIOS CADASTRADOS:         "
+    echo "$LIST"
+    echo "======================================"
+    read -p "Digite o nome do usuário a ser removido: " username
+
+    if id "$username" &>/dev/null; then
+        # Proteção para não remover a si mesmo ou root
+        if [ "$username" == "root" ] || [ "$username" == "$CURRENRT" ]; then
+            echo -e "\033[31mErro: Você não pode remover o usuário logado ou o root!\033[0m"
+            sleep 2
+            return
+        fi
+        sudo userdel -r "$username"
+        echo "Usuário '$username' removido com sucesso."
+    else
+        echo -e "\033[31mUsuário '$username' não encontrado!\033[0m"
+    fi
+    sleep 2
+}
+
+function promover_root {
+    clear
+    LIST=$(ls /home)
+    echo "======================================"
+    echo "        USUÁRIOS CADASTRADOS:         "
+    echo "$LIST"
+    echo "======================================"
+    read -p "Digite o nome do usuário a ser promovido: " username
+    if id "$username" &>/dev/null; then
+        sudo usermod -aG sudo "$username"
+        echo "Agora o usuário '$username' tem privilégio root."
+    else
+        echo -e "\033[31mUsuário não encontrado!\033[0m"
+    fi
+    sleep 2
+}
+
+function altera_senha {
+    clear
+    LIST=$(ls /home)
+    echo "======================================"
+    echo "        USUÁRIOS CADASTRADOS:         "
+    echo "$LIST"
+    echo "======================================"
+    read -p "Digite o usuário para alterar a senha: " username
+    if id "$username" &>/dev/null; then
+        sudo passwd "$username"
+    else
+        echo -e "\033[31mUsuário não encontrado!\033[0m"
+    fi
+    sleep 2
+}
+
+############################ MENU PRINCIPAL ############################
+
+function gerencia_user {
+    while true; do
+        clear
+        CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
+        LIST=$(ls /home)
+        echo "======================================"
+        echo "         GERENCIAR USUÁRIOS:          "
+        echo "$LIST"
+        echo "======================================"
+        echo "Seu usuário: $CURRENRT"
+        echo ""
+        echo "[1] Cadastrar Novo"
+        echo "[2] Remover Usuário"
+        echo "[3] Alterar Senha"
+        echo "[4] Promover a Root"
+        echo "[5] Retornar ao Menu Principal"
+        echo ""
+        read -n 1 -p "Digite a opção desejada: " OPCAO
+        echo ""
+        case $OPCAO in
+            1) cadastrar_user ;;
+            2) remove_user ;;
+            3) altera_senha ;;
+            4) promover_root ;;
+            5) 
+                cd "/home/$CURRENRT/configdebian-main/" 2>/dev/null || cd "$HOME/configdebian-main/"
+                exec sudo -E bash ./menu.sh
+                ;;
+            *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
+        esac
+    done
+}
+
+gerencia_user
