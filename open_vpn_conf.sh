@@ -27,56 +27,61 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (AJUSTE FINO)     "
+    echo "      GERAR USUÁRIO (VERSÃO FINAL)    "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
-    [ -z "$CLIENT_NAME" ] && return
+    
+    # Validação simples
+    if [ -z "$CLIENT_NAME" ]; then
+        echo "Nome vazio!"
+        return
+    fi
 
-    echo -e "${AMARELO}O robô está processando, aguarde a conclusão...${SEM_COR}"
+    echo -e "${AMARELO}O robô está processando, aguarde...${SEM_COR}"
 
+    # Garante que estamos na pasta de destino
     cd "$DESTINO" || exit
 
+    # Usamos <<'EOD' (com aspas) se não quisermos que o bash mexa em nada,
+    # mas como precisamos da variável $CLIENT_NAME, usamos <<EOD e cuidamos dos nomes.
     /usr/bin/expect <<EOD
     set timeout 60
-    # Desativa o echo para evitar duplicidade de caracteres (o erro do 11)
-    stty -echo
     spawn sudo "$INSTALLER_PATH" interactive
     
-    # 1. Seleciona Add New User
     expect "Select an option"
     sleep 1
-    send -- "1\r"
+    send "1\r"
     
-    # 2. Digita o Nome
     expect "Client name:"
     sleep 1
-    send -- "$CLIENT_NAME\r"
+    send "$CLIENT_NAME\r"
     
-    # 3. ENTER na Validade
     expect "Certificate validity"
     sleep 1
-    send -- "\r"
+    send "\r"
     
-    # 4. Seleciona Passwordless
-    # Aqui usamos uma espera mais específica para evitar o "11"
-    expect -re "Select an option.*1-2.*:" 
+    expect "Select an option"
     sleep 2
-    send -- "1\r"
+    send "1\r"
     
     expect eof
 EOD
 
+    echo -e "${AMARELO}Buscando arquivo gerado...${SEM_COR}"
     sleep 2
-    # [O restante da lógica de busca e movimentação de arquivo continua igual]
-    ARQUIVO_FINAL=\$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
 
-    if [ -n "\$ARQUIVO_FINAL" ] && [ -f "\$ARQUIVO_FINAL" ]; then
-        mv "\$ARQUIVO_FINAL" "$DESTINO/${CLIENT_NAME}.ovpn"
-        chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
-        chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
+    # BUSCA CORRIGIDA: Sem as barras invertidas inúteis
+    ARQUIVO_FINAL=$(find /root /home -name "${CLIENT_NAME}.ovpn" -mmin -2 2>/dev/null | head -n 1)
+
+    if [ -n "$ARQUIVO_FINAL" ] && [ -f "$ARQUIVO_FINAL" ]; then
+        # Move para a pasta final (DESTINO)
+        sudo mv "$ARQUIVO_FINAL" "$DESTINO/${CLIENT_NAME}.ovpn"
+        sudo chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
+        sudo chmod 644 "$DESTINO/${CLIENT_NAME}.ovpn"
         echo -e "\n${VERDE}✅ SUCESSO! Arquivo: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
     else
-        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado.${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado em /root ou /home.${SEM_COR}"
+        echo -e "${AMARELO}Dica: Verifique se o instalador emitiu algum erro de 'Easy-RSA'.${SEM_COR}"
     fi
 
     cd - > /dev/null
