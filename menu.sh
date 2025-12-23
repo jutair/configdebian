@@ -149,9 +149,9 @@ CURRENRT=$(logname 2>/dev/null || echo $SUDO_USER)
         case $OPCAO in
             [1]) echo "Em desenvolvimento..." ; sleep 1 ;;
             [2]) gerencia_rede ;;
-            [6]) ./usuarios.sh ;;
+            [6]) exec sudo -E bash ./usuarios.sh ;;
             [7]) update_sistema ;;
-            [8]) ./open_vpn_conf.sh ;;
+            [8]) exec sudo -E bash ./open_vpn_conf.sh ;;
             [9]) exit 0 ;;
             *) echo -e "\033[31mOpção inválida!\033[0m"; sleep 1 ;;
         esac
