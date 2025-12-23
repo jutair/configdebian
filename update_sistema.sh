@@ -33,7 +33,7 @@ echo "==========================================================================
 cd "$DESTINO" || exit
 
 ################ Abre a permissão para os arquivos ################################
-chmod +x configura_sistema.sh menu.sh open_vpn_conf.sh usuarios.sh update_sistema.sh gerencia_rede.sh
+chmod +x configura_sistema.sh menu.sh open_vpn_conf.sh usuarios.sh update_sistema.sh gerencia_rede.sh setup_vps.sh
 
 echo "=========================================================================="
 echo "Atualização concluída! Iniciando o sistema..."
