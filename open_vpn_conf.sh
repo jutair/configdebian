@@ -428,7 +428,31 @@ EOF"
             # B. REMOVE A SEGUNDA CHAVE TLS-CRYPT (O problema do teu log)
             # Este comando apaga tudo entre o segundo "BEGIN OpenVPN Static" e o segundo "END"
             sudo sed -i '/-----BEGIN OpenVPN Static key V1-----/ {
-                :a; n; /
+                :a; n; /-----END OpenVPN Static key V1-----/! ba; n;
+                :b; /-----BEGIN OpenVPN Static key V1-----/ { :c; n; /-----END OpenVPN Static key V1-----/! bc; d }; n; b b
+            }' "$ARQUIVO_GERADO"
+
+            # C. Remove tags duplicadas e linhas em branco
+            sudo sed -i '/^$/d' "$ARQUIVO_GERADO"
+            sudo sed -i 's/^[[:space:]]*//;s/[[:space:]]*$//' "$ARQUIVO_GERADO"
+            
+            # D. Garante que a tag </tls-crypt> feche apenas uma vez no fim
+            sudo sed -i 'N; s/<\/tls-crypt>\n<\/tls-crypt>/<\/tls-crypt>/; P; D' "$ARQUIVO_GERADO"
+
+            # E. Limpeza final de caracteres invisíveis
+            sudo tr -d '\r' < "$ARQUIVO_GERADO" | sudo tr -cd '\11\12\15\40-\176' | sudo tee "${ARQUIVO_GERADO}.tmp" > /dev/null
+            sudo mv "${ARQUIVO_GERADO}.tmp" "$ARQUIVO_GERADO"
+
+            echo -e "\n${VERDE}✅ Sucesso: Perfil $CLIENT corrigido e validado!${SEM_COR}"
+        fi
+    else
+        echo -e "\n${VERMELHO}❌ Erro crítico no instalador. Verifica o log.${SEM_COR}"
+    fi
+    
+    echo -e "\nPressione ENTER para continuar..."
+    read dummy
+    atualiza_ovp
+}
 # Função para Remover Usuário
 remove_user() {
 USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
