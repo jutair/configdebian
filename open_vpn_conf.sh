@@ -541,4 +541,3 @@ menu_ovp() {
 # --- INÍCIO ---
 clear
 veri_openvpn
-Implemente aqui também
