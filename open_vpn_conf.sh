@@ -517,6 +517,7 @@ atualiza_ovp() {
 ###########################Fim da função atualiza ovp##############################
 ##################################################################################
 menu_ovp() {
+        USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
         IP_INT=$(hostname -I | awk '{print $1}')
         IP_EXT=$(curl -4 -s ifconfig.me)
     while true; do
@@ -539,7 +540,12 @@ menu_ovp() {
             4) user_consumo ;;
             5) vnstat -l -i tun0 ;;
             6) atualiza_ovp ;;
-            7) exit 0 ;;
+            7) 
+            echo "Retornando ao menu principal..."
+            # Garante que estamos na pasta certa e substitui o processo atual pelo menu principal
+            cd "/home/$USER_ATUAL/configdebian-main/"
+            exec sudo bash ./menu.sh
+            ;;
         esac
     done
 }
