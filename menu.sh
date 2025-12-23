@@ -1,5 +1,5 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS (Monitoramento Completo + IP de Conexão)
+# menu.sh - Painel de Gestão VPS (Correção de Identidade de Usuário)
 
 DIR_SCRIPTS="$HOME/configdebian-main"
 AZUL='\033[0;34m'
@@ -8,13 +8,15 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-# Coleta o IP Externo do SERVIDOR uma vez na abertura
+# Coleta o IP Externo do SERVIDOR uma vez
 IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
 while true; do
     # --- DADOS DINÂMICOS ---
-    USUARIO_NOME=$(whoami)
-    # Extrai o IP de quem está acessando o SSH (IP do seu PC)
+    # Captura o usuário real que fez o login, não o usuário do sudo
+    USUARIO_NOME=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
+    
+    # Extrai o IP de quem está acessando o SSH
     IP_CONEXAO=$(echo $SSH_CLIENT | awk '{print $1}')
     [ -z "$IP_CONEXAO" ] && IP_CONEXAO="Local/Terminal"
 
@@ -36,13 +38,11 @@ while true; do
         BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
     fi
 
-    if [[ -z "$BANDA_HOJE" ]] || [[ "$BANDA_HOJE" == *"Error"* ]] || [[ "$BANDA_HOJE" == *"No data"* ]]; then
-        BANDA_HOJE="0.00 MB"
-    fi
+    [ -z "$BANDA_HOJE" ] || [[ "$BANDA_HOJE" == *"No data"* ]] && BANDA_HOJE="0.00 MB"
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          ${VERDE}"PAINEL DE GESTÃO VPS - $USUARIO_NOME"${NC}"
+    echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DIGITALOCE${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     
     printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "IP SERVIDOR" "$IP_EXT"
