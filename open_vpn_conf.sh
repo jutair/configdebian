@@ -26,7 +26,7 @@ veri_openvpn () {
 
     # 2. Verifica instalação
     if ! command -v openvpn >/dev/null 2>&1 || [ ! -d "/etc/openvpn/server" ]; then
-        echo -e "${AMARELO}[AVISO] OpenVPN não detectado. Iniciando instalação limpa...${SEM_COR}"
+        echo -e "${AMARELO}[AVISO] OpenVPN não detectado. Instalando...${SEM_COR}"
         
         if [ ! -f "$INSTALLER_PATH" ]; then
             wget -q -O "$INSTALLER_PATH" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
@@ -34,9 +34,6 @@ veri_openvpn () {
         fi
 
         # FLAGS CORRIGIDAS PARA CLI 2.0
-        # --port 1194 (em vez de --server-port)
-        # --protocol (em vez de --server-proto)
-        # --dns cloudflare (em vez de número)
         sudo "$INSTALLER_PATH" install \
             --port 1194 \
             --protocol udp \
@@ -47,9 +44,8 @@ veri_openvpn () {
         sleep 2
     fi
 
-    # 3. Sincronização de Chaves para evitar erro de 'static key parse'
+    # 3. Sincronização de Chaves TLS
     if [ ! -f "/etc/openvpn/server/tc.key" ]; then
-        echo -e "${AMARELO}Sincronizando chaves TLS...${SEM_COR}"
         if [ -f "/etc/openvpn/tls-crypt.key" ]; then
             cp /etc/openvpn/tls-crypt.key /etc/openvpn/server/tc.key
         else
@@ -77,16 +73,13 @@ add_user() {
 
     echo "Gerando chaves para: $CLIENT..."
     
-    # No Angristan 2.0, o comando 'client add' gera sem senha por padrão se não houver flags extras
     if sudo "$INSTALLER_PATH" client add "$CLIENT"; then
-        
         ARQUIVO_BRUTO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
         if [ -f "$ARQUIVO_BRUTO" ]; then
             echo "Formatando arquivo e injetando segurança..."
             TEMP="/tmp/corrigido.ovpn"
             
-            # Reconstrói o cabeçalho para garantir compatibilidade
             sudo bash -c "cat << EOF > $TEMP
 client
 dev tun
@@ -101,12 +94,112 @@ auth SHA512
 ignore-unknown-option block-outside-dns
 verb 3
 EOF"
-            # Extrai CA, CERT e KEY do arquivo original
             sudo sed -n '/<ca>/,/<\/key>/p' "$ARQUIVO_BRUTO" >> "$TEMP"
 
-            # Injeção SEGURA da chave TLS
             echo "<tls-crypt>" >> "$TEMP"
             if [ -f "/etc/openvpn/server/tc.key" ]; then
                 sudo cat "/etc/openvpn/server/tc.key" >> "$TEMP"
             elif [ -f "/etc/openvpn/tc.key" ]; then
-                sudo cat "/etc/openvpn/
+                sudo cat "/etc/openvpn/tc.key" >> "$TEMP"
+            else
+                sudo sed -n '/-----BEGIN OpenVPN Static key V1-----/,/-----END OpenVPN Static key V1-----/p' "$ARQUIVO_BRUTO" >> "$TEMP"
+            fi
+            echo "</tls-crypt>" >> "$TEMP"
+
+            sudo tr -d '\r' < "$TEMP" | sudo tee "$ARQUIVO_BRUTO" > /dev/null
+            sudo rm "$TEMP"
+            echo -e "\n${VERDE}✅ Usuário $CLIENT criado com sucesso!${SEM_COR}"
+        else
+            echo -e "\n${VERMELHO}❌ Erro: Arquivo não localizado.${SEM_COR}"
+        fi
+    fi
+    read -p "Pressione ENTER para continuar..." dummy
+    atualiza_ovp
+}
+
+remove_user() {
+    clear
+    echo "======================================"
+    echo "       REMOVER USUÁRIO (CLI)          "
+    echo "======================================"
+    read -p "Digite o nome para remover: " CLIENT
+    [ -z "$CLIENT" ] && return
+
+    if sudo "$INSTALLER_PATH" client revoke "$CLIENT"; then
+        sudo rm -f "/root/$CLIENT.ovpn"
+        sudo rm -f "/home/$USER_ATUAL/clientes_ovp/$CLIENT.ovpn"
+        echo -e "\n${VERDE}✅ Usuário $CLIENT removido.${SEM_COR}"
+    else
+        echo -e "\n${VERMELHO}❌ Erro ao remover usuário.${SEM_COR}"
+    fi
+    read -p "Pressione ENTER..." dummy
+    atualiza_ovp
+}
+
+# --- ORGANIZAÇÃO E MENUS ---
+
+mover_ovp() {
+    NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
+    DESTINO="/home/$NOME_USUARIO/clientes_ovp"
+    mkdir -p "$DESTINO"
+    
+    ARQUIVOS=$(find /root /home -name "*.ovpn" ! -path "$DESTINO/*" 2>/dev/null)
+    if [ -n "$ARQUIVOS" ]; then
+        echo "$ARQUIVOS" | while read -r arq; do
+            mv "$arq" "$DESTINO/"
+            chown "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO/$(basename "$arq")"
+            chmod 644 "$DESTINO/$(basename "$arq")"
+        done
+    fi
+    menu_ovp
+}
+
+atualiza_ovp() {
+    mover_ovp
+    user_gerencia
+}
+
+user_gerencia() {
+    while true; do
+        clear
+        echo "======================================"
+        echo "      GERENCIAMENTO DE USUÁRIOS       "
+        echo "======================================"
+        echo "[1] Adicionar Usuário"
+        echo "[2] Remover Usuário"
+        echo "[3] Voltar"
+        read -p "Opção: " OP
+        case $OP in
+            1) add_user ;;
+            2) remove_user ;;
+            3) return ;;
+        esac
+    done
+}
+
+menu_ovp() {
+    while true; do
+        clear
+        echo "================================================================="
+        echo "                       Menu Open VPN                             "
+        echo "================================================================="
+        echo "[1] Testar velocidade      [4] Gerenciar Usuários"
+        echo "[2] Usuários Online        [5] Sair"
+        echo "[3] Consumo de Dados"
+        echo "================================================================="
+        read -n 1 -p "Opção: " OPCAO
+        echo ""
+        case $OPCAO in
+            1) clear; speedtest-cli --simple; read -p "ENTER..." dummy ;;
+            2) clear; echo "--- Usuários Online ---"; 
+               grep "CLIENT_LIST" /etc/openvpn/server/openvpn-status.log 2>/dev/null || echo "Log não disponível"; 
+               read -p "ENTER..." dummy ;;
+            4) user_gerencia ;;
+            5) cd "/home/$USER_ATUAL/configdebian-main/" && exec sudo -E bash ./menu.sh ;;
+            *) echo "Inválido"; sleep 1 ;;
+        esac
+    done
+}
+
+# Execução
+veri_openvpn
