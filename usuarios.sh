@@ -235,12 +235,10 @@ case $OPCAO in
             promover_root
             ;;
         [5])
-            echo ""
-            echo "Você digitou a opção [5]"
-            echo "Saindo..."
-            sleep 1
-            clear
-            ./menu.sh
+            echo "Retornando ao menu principal..."
+            # Garante que estamos na pasta certa e substitui o processo atual pelo menu principal
+            cd "/home/$USER_ATUAL/configdebian-main/"
+            exec sudo bash ./menu.sh
             #exit
             ;;
         *)
