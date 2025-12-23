@@ -27,40 +27,43 @@ chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO"
 add_user() {
     clear
     echo "======================================"
-    echo "      GERAR USUÁRIO (MODO INTERATIVO) "
+    echo "      GERAR USUÁRIO (MODO AUTO-ENTER) "
     echo "======================================"
     read -p "Digite o nome do usuário: " CLIENT_NAME
     [ -z "$CLIENT_NAME" ] && return
 
-    echo -e "${AMARELO}Enviando comandos para o instalador...${SEM_COR}"
+    echo -e "${AMARELO}Iniciando criação para: $CLIENT_NAME...${SEM_COR}"
 
-    # Entra na pasta de destino para o arquivo nascer lá
+    # Entra na pasta de destino para tentar capturar o arquivo lá
     cd "$DESTINO" || exit
 
-    # O segredo está aqui: enviamos as respostas (1, nome, 1) em sequência
-    # 1 -> Add a new user
-    # $CLIENT_NAME -> Nome do usuário
-    # 1 -> No password
-    sudo "$INSTALLER_PATH" <<EOF
+    # O bloco abaixo faz o seguinte:
+    # 1 -> Seleciona "Add a new user"
+    # $CLIENT_NAME -> Digita o nome
+    # (Linha em branco) -> ENTER para Validade (3650 dias)
+    # (Linha em branco) -> ENTER para qualquer outra pergunta extra
+    sudo "$INSTALLER_PATH" interactive <<EOF
 1
 $CLIENT_NAME
-1
+
+
 EOF
 
-    # Pequena pausa para o sistema de arquivos sincronizar
     sleep 2
 
-    # Verifica se o arquivo apareceu (Angristan pode salvar na pasta atual ou /root)
+    # O Angristan geralmente salva na pasta onde o script foi chamado
+    # ou na pasta /root. Vamos verificar ambos:
     if [ -f "${CLIENT_NAME}.ovpn" ]; then
         chown "$USER_ATUAL:$USER_ATUAL" "${CLIENT_NAME}.ovpn"
         chmod 644 "${CLIENT_NAME}.ovpn"
-        echo -e "\n${VERDE}✅ SUCESSO! Criado em: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
+        echo -e "\n${VERDE}✅ SUCESSO! Arquivo: $DESTINO/${CLIENT_NAME}.ovpn${SEM_COR}"
     elif [ -f "/root/${CLIENT_NAME}.ovpn" ]; then
         mv "/root/${CLIENT_NAME}.ovpn" "$DESTINO/"
         chown "$USER_ATUAL:$USER_ATUAL" "$DESTINO/${CLIENT_NAME}.ovpn"
         echo -e "\n${VERDE}✅ SUCESSO! Movido de /root para: $DESTINO${SEM_COR}"
     else
-        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi gerado mesmo no modo interativo.${SEM_COR}"
+        echo -e "\n${VERMELHO}❌ Erro: O arquivo não foi localizado após o processo.${SEM_COR}"
+        echo -e "${AMARELO}Dica: Verifique se o nome '$CLIENT_NAME' já não existia.${SEM_COR}"
     fi
 
     cd - > /dev/null
