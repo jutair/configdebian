@@ -60,12 +60,15 @@ while true; do
             ;;
     esac
 done
-echo "Baixando os scripts de gerenciamento do sistema na pasta /home/${NOME_USUARIO}/configdebian-main"
-sudo wget -P /home/${NOME_USUARIO} https://github.com/jutair/configdebian/archive/refs/heads/main.zip
-sudo unzip /home/${NOME_USUARIO}/main.zip -d /home/$NOME_USUARIO
-sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "/home/$NOME_USUARIO/configdebian"
-sudo chmod 600 "/home/$NOME_USUARIO/configdebian"
-echo "Processo concluído para o usuário $NOME_USUARIO!"
+REPO_URL="https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
+HOME_USER="/home/$NOME_USUARIO"
+echo "Baixando scripts de gerenciamento para: $HOME_USER"
+sudo wget -O "$HOME_USER/main.zip" "$REPO_URL"
+sudo unzip -o "$HOME_USER/main.zip" -d "$HOME_USER/"
+sudo rm "$HOME_USER/main.zip"
+sudo chown -R "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER/configdebian-main"
+sudo chmod -R 700 "$HOME_USER/configdebian-main"
+echo "✅ Processo concluído com sucesso para $NOME_USUARIO!"
 echo -e "\033[0m"
 sleep 2
 }
