@@ -363,27 +363,14 @@ SEM_COR='\033[0m'
 
 # Função para Adicionar Usuário
 add_user() {
-    # 1. Configurações iniciais e detecção de IP
     IP_EXT=$(curl -4 -s ifconfig.me)
+    [ -z "$IP_EXT" ] && { echo "Erro IP"; return 1; }
 
-    if [ -z "$IP_EXT" ]; then
-        echo -e "${VERMELHO}Erro: Não foi possível detectar o IP externo.${SEM_COR}"
-        sleep 2; return 1
-    fi
-
-    # 2. Sincronização da Chave Mestra
+    # 1. Sincroniza Chave
     CHAVE_MESTRA="/etc/openvpn/server/tls-crypt.key"
-    if [ ! -f "$CHAVE_MESTRA" ]; then
-        if [ -f /etc/openvpn/tls-crypt.key ]; then
-            sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA"
-        else
-            echo -e "${AMARELO}Gerando nova tls-crypt.key...${SEM_COR}"
-            sudo openvpn --genkey --secret "$CHAVE_MESTRA"
-        fi
-        sudo chmod 644 "$CHAVE_MESTRA"
-    fi
+    [ ! -f "$CHAVE_MESTRA" ] && sudo cp /etc/openvpn/tls-crypt.key "$CHAVE_MESTRA" 2>/dev/null
 
-    # 3. Preparação do Template (IMPORTANTE: Sem espaços no início das linhas)
+    # 2. Template sem NENHUM espaço (colado na esquerda)
 sudo bash -c "cat << EOF > /etc/openvpn/server/client-template.txt
 client
 dev tun
@@ -400,67 +387,42 @@ ignore-unknown-option block-outside-dns
 verb 3
 EOF"
 
-    # 4. Interface visual e variáveis de caminho
     USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
-    clear
-    echo "======================================"
-    echo "      ADICIONAR NOVO USUÁRIO          "
-    echo "======================================"
-    
     INSTALLER="/home/$USER_ATUAL/configdebian-main/openvpn-install.sh"
-    LOG_SISTEMA="/var/log/openvpn-install.log"
     
-    if [ ! -f "$LOG_SISTEMA" ]; then
-        sudo touch "$LOG_SISTEMA"
-        sudo chmod 664 "$LOG_SISTEMA"
-    fi
-
+    clear
     read -p "Digite o nome do usuário: " CLIENT
-    if [ -z "$CLIENT" ]; then
-        echo -e "${VERMELHO}Nome não pode ser vazio!${SEM_COR}"
-        sleep 2; return
-    fi
+    [ -z "$CLIENT" ] && return
 
-    # === BLOCO DE LIMPEZA PREVENTIVA ===
+    # 3. Limpeza preventiva
     if sudo ls /etc/openvpn/server/easy-rsa/pki/issued/ 2>/dev/null | grep -q "${CLIENT}.crt"; then
-        echo -e "${AMARELO}O nome '$CLIENT' já existe. Revogando antigo...${SEM_COR}"
         sudo bash "$INSTALLER" client revoke "$CLIENT" > /dev/null 2>&1
     fi
 
-    echo -e "${AMARELO}Gerando certificado para $CLIENT...${SEM_COR}"
-    
-    # 5. Execução do Instalador
+    echo "Gerando..."
     cd /tmp
-    if sudo bash "$INSTALLER" client add "$CLIENT" > "$LOG_SISTEMA" 2>&1; then
-        
-        # 6. Pós-Processamento: Localização, Limpeza e Formatação
+    if sudo bash "$INSTALLER" client add "$CLIENT" > /dev/null 2>&1; then
         ARQUIVO_GERADO=$(sudo find /root /home -name "${CLIENT}.ovpn" | head -n 1)
 
-        if [ -n "$ARQUIVO_GERADO" ] && [ -f "$ARQUIVO_GERADO" ]; then
-            # Remove metadados do OpenSSL (Data, Version, Serial...)
-            sudo sed -i '/Certificate:/,/-----BEGIN CERTIFICATE-----/{/-----BEGIN CERTIFICATE-----/!d}' "$ARQUIVO_GERADO"
+        if [ -f "$ARQUIVO_GERADO" ]; then
+            # === LIMPEZA ULTRA AGRESSIVA ===
+            # 1. Remove toda a parte descritiva (Text) do certificado
+            sudo sed -i '/^Certificate:/,/^-----BEGIN CERTIFICATE-----/{/^-----BEGIN CERTIFICATE-----/!d}' "$ARQUIVO_GERADO"
             
-            # REMOVE ESPAÇOS NO INÍCIO E FIM (Evita erro de buffer_full)
-            sudo sed -i 's/^[ \t]*//;s/[ \t]*$//' "$ARQUIVO_GERADO"
+            # 2. Remove linhas em branco (causam buffer_full em alguns clientes)
+            sudo sed -i '/^$/d' "$ARQUIVO_GERADO"
             
-            # Remove possíveis quebras de linha estilo Windows que corrompem o arquivo
+            # 3. Remove espaços no início e fim de cada linha
+            sudo sed -i 's/^[[:space:]]*//;s/[[:space:]]*$//' "$ARQUIVO_GERADO"
+            
+            # 4. Força quebras de linha padrão Unix (remove \r do Windows)
             sudo tr -d '\r' < "$ARQUIVO_GERADO" | sudo tee "${ARQUIVO_GERADO}.tmp" > /dev/null
             sudo mv "${ARQUIVO_GERADO}.tmp" "$ARQUIVO_GERADO"
 
-            if sudo grep -q "remote $IP_EXT" "$ARQUIVO_GERADO"; then
-                echo -e "\n${VERDE}✅ Sucesso: Certificado gerado e formatado para $CLIENT${SEM_COR}"
-                echo -e "${AZUL}Local: $ARQUIVO_GERADO${SEM_COR}"
-            else
-                echo -e "\n${VERMELHO}⚠️ ALERTA: Falha na validação do IP no arquivo.${SEM_COR}"
-            fi
+            echo -e "\n✅ Criado com sucesso!"
         fi
-    else
-        echo -e "\n${VERMELHO}❌ ERRO: Falha crítica no instalador.${SEM_COR}"
-        tail -n 10 "$LOG_SISTEMA"
     fi
-    
-    echo -e "\nPressione ENTER para continuar..."
-    read dummy
+    read -p "ENTER..." dummy
     atualiza_ovp
 }
 # Função para Remover Usuário
