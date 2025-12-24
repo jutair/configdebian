@@ -1,5 +1,5 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS (Atualizado 24-12-2025)
+# menu.sh - Painel de Gestão VPS (Atualizado 24-12-2025) v1
 
 set -e
 
