@@ -54,15 +54,29 @@ listar_usuarios_cadastrados() {
 
 monitorar_logados() {
     clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}SESSÕES ATIVAS (IP E ATIVIDADE)${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    printf "${AMARELO}%-12s %-10s %-16s %-10s${NC}\n" "USUÁRIO" "TTY" "IP ORIGEM" "ATIVIDADE"
-    echo -e "---------------------------------------------------------------"
-    w -h | awk '{printf "%-12s %-10s %-16s %-10s\n", $1, $2, $3, $8}'
-    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "${AZUL}====================================================================${NC}"
+    echo -e "              ${VERDE}SESSÕES ATIVAS — SSH E VPN${NC}"
+    echo -e "${AZUL}====================================================================${NC}"
+    
+    printf "${AMARELO}%-15s %-6s %-18s %-20s${NC}\n" "USUÁRIO" "TIPO" "IP ORIGEM" "DESDE"
+    echo -e "--------------------------------------------------------------------"
+
+    # --- SSH ---
+    w -h | awk '{printf "👤 %-13s SSH   %-18s %-20s\n", $1, $3, $4}'
+
+    # --- VPN ---
+    if [ -f /var/log/openvpn/status.log ]; then
+        awk '
+        /^CLIENT_LIST/ {
+            split($3,ip,":");
+            printf "🔐 %-13s VPN   %-18s %-20s\n", $2, ip[1], $8
+        }' /var/log/openvpn/status.log
+    fi
+
+    echo -e "${AZUL}====================================================================${NC}"
     read -p " Pressione ENTER para retornar..." dummy
 }
+
 
 ############################ FUNÇÕES DE GESTÃO ############################
 
