@@ -13,14 +13,14 @@ echo "🔧 Iniciando setup da VPS..."
 
 # 1️⃣ Instala dependências básicas
 apt-get update
-apt-get install -y wget unzip curl sudo
+apt-get install -y wget unzip curl sudo vnstat ufw fail2ban openvpn samba speedtest-cli bc
 
 # 2️⃣ Limpeza de instalações anteriores
 rm -rf /opt/configdebian
 rm -rf /tmp/configdebian-main*
 rm -f /tmp/main.zip
 
-# 3️⃣ Baixa repositório
+# 3️⃣ Baixa repositório configdebian
 echo "📥 Baixando repositório configdebian..."
 wget -q https://github.com/jutair/configdebian/archive/refs/heads/main.zip -O /tmp/main.zip
 
@@ -32,7 +32,7 @@ mv /tmp/configdebian-main/* /opt/configdebian/
 chmod +x /opt/configdebian/*.sh
 rm -f /tmp/main.zip
 
-# 5️⃣ Executa configura_sistema.sh
+# 5️⃣ Executa o configura_sistema.sh
 CONFIG_SCRIPT="/opt/configdebian/configura_sistema.sh"
 
 if [ ! -f "$CONFIG_SCRIPT" ]; then
