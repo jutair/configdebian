@@ -1,5 +1,6 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS (Atualizado 24-12-2025)
+# menu.sh - Painel de Gestão VPS com Dashboard Interativo
+# Atualizado: 24-12-2025
 
 set -e
 
@@ -12,23 +13,29 @@ VERMELHO='\033[0;31m'
 NC='\033[0m'
 
 IP_SERVIDOR=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
+USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
 
-# ------------------- FUNÇÃO DASHBOARD -------------------
+# --- FUNÇÃO: DASHBOARD ---
 dashboard() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                     ${VERDE}DASHBOARD VPS${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "${AMARELO}Atualizando a cada 5 segundos. Pressione ENTER para voltar ao menu principal...${NC}"
+
     while true; do
-        clear
         DATA=$(date +"%Y-%m-%d")
         HORA=$(TZ="America/Manaus" date +"%H:%M:%S")
         CPU=$(top -bn1 | grep "Cpu(s)" | awk '{usage=100-$8} END {printf "%.1f%%", usage}')
         VPN_ONLINE=$(grep -c "^CLIENT_LIST" /etc/openvpn/server/openvpn-status.log 2>/dev/null || echo "0")
         SSH_ONLINE=$(who | grep -v "(:0)" | wc -l)
-        
-        # Detecta interface tun* ou fallback eth0
+
+        # Detecta interface tun*, fallback eth0
         IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep 'tun[0-9]' | head -n1)
         IFACE=${IFACE:-"eth0"}
-        TRAFEGO=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
-        [[ -z "$TRAFEGO" || "$TRAFEGO" == *"No data"* ]] && TRAFEGO="0.00 MB"
+        TRAFEGO=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6 || echo "0.00 MB")
 
+        clear
         echo -e "${AZUL}===============================================================${NC}"
         echo -e "                     ${VERDE}DASHBOARD VPS${NC}"
         echo -e "${AZUL}===============================================================${NC}"
@@ -50,20 +57,22 @@ dashboard() {
         done
 
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "${AMARELO}Pressione ENTER a qualquer momento para voltar ao menu principal...${NC}"
 
-        read -t 5 -r -n 1 KEY
-        [ "$KEY" = "" ] && break
+        # Espera 5 segundos, sai se ENTER for pressionado
+        read -t 5 -n 1 KEY
+        if [[ "$KEY" == "" ]]; then
+            break
+        fi
     done
 }
 
-# ------------------- MENU PRINCIPAL -------------------
+# --- FUNÇÃO: CHAMADAS DE MENU ---
 while true; do
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}MENU PRINCIPAL${NC}"
+    echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DIGITAL OCEAN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [0] 📊 DASHBOARD VPS"
+    echo -e "  [0] 📊 Dashboard"
     echo -e "  [1] 🌐 Gerenciar VPN (OpenVPN)"
     echo -e "  [2] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
     echo -e "  [3] 👤 Gerenciar Usuários do Sistema"
