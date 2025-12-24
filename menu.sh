@@ -41,7 +41,8 @@ while true; do
     echo -e "  [2] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
     echo -e "  [3] 👤 Gerenciar Usuários do Sistema"
     echo -e "  [4] 🆙 Atualizar Sistema"
-    echo -e "  [5] ❌ Sair"
+    echo -e "  [5] 💾 Backup do Sistema"
+    echo -e "  [6] ❌ Sair"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
     read -n 1 -p " Digite a opção: " OPCAO
@@ -52,7 +53,8 @@ while true; do
         2) sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh" ;;
         3) sudo -E bash "$DIR_SCRIPTS/usuarios.sh" ;;
         4) sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
-        5) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
+        5) sudo -E bash "$DIR_SCRIPTS/backup.sh" ;;
+        6) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
 done
