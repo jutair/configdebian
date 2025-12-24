@@ -34,47 +34,43 @@ organizar_arquivos() {
 listar_online() {
     clear
     echo -e "${AZUL}==========================================================================${NC}"
-    echo -e "                ${VERDE}DETALHAMENTO DE USUÁRIOS VPN ONLINE${NC}"
+    echo -e "                ${VERDE}👥 USUÁRIOS VPN ONLINE${NC}"
     echo -e "${AZUL}==========================================================================${NC}"
 
-    # Determina o arquivo de status do OpenVPN
-    if [ -f "/var/log/openvpn/status.log" ]; then
-        STATUS_LOG="/var/log/openvpn/status.log"
-    elif [ -f "/etc/openvpn/server/openvpn-status.log" ]; then
-        STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
-    else
-        STATUS_LOG=""
-    fi
-
-    if [ -z "$STATUS_LOG" ] || [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}Erro: Log da VPN não encontrado.${NC}"
-        read -p "Pressione ENTER para retornar..." dummy
+    if [ ! -f "$STATUS_LOG" ]; then
+        echo -e "${VERMELHO}Erro: Log da VPN não encontrado (${STATUS_LOG}).${NC}"
+        read -p " Pressione ENTER para retornar..." dummy
         return
     fi
 
-    # Cabeçalho da tabela
-    printf "${AZUL}%-15s %-15s %-12s %-12s %-15s${NC}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
-    echo "--------------------------------------------------------------------------"
+    printf "${AZUL}%-3s %-18s %-15s %-12s %-12s %-19s${NC}\n" \
+        "" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
+    echo "--------------------------------------------------------------------------------"
 
-    grep "^CLIENT_LIST" "$STATUS_LOG" | while read -r line; do
-        # Detecta separador correto (vírgula ou tab)
-        SEP=$( [[ "$line" == *","* ]] && echo "," || echo $'\t' )
-        USER=$(echo "$line" | cut -d"$SEP" -f2)
-        IP=$(echo "$line" | cut -d"$SEP" -f3 | cut -d':' -f1)
-        RECV=$(echo "$line" | cut -d"$SEP" -f5)
-        SENT=$(echo "$line" | cut -d"$SEP" -f6)
-        DATA=$(echo "$line" | cut -d"$SEP" -f8)
+    grep "^CLIENT_LIST" "$STATUS_LOG" | while IFS=',' read -r _ USER IP _ BYTES_IN BYTES_OUT _ CONN_DATE _; do
 
-        # Converte bytes para MB
-        RECV_MB=$(echo "scale=2; $RECV/1048576" | bc)
-        SENT_MB=$(echo "scale=2; $SENT/1048576" | bc)
+        # Segurança contra valores vazios
+        BYTES_IN=${BYTES_IN:-0}
+        BYTES_OUT=${BYTES_OUT:-0}
 
-        printf "%-15s %-15s %-12s %-12s %-15s\n" "$USER" "$IP" "${RECV_MB}MB" "${SENT_MB}MB" "$DATA"
+        # Conversão segura para MB
+        RX_MB=$(awk "BEGIN { printf \"%.2f\", $BYTES_IN/1048576 }")
+        TX_MB=$(awk "BEGIN { printf \"%.2f\", $BYTES_OUT/1048576 }")
+
+        # Ícone por tipo de dispositivo (heurística simples)
+        ICON="👤"
+        [[ "$USER" == *"celular"* || "$USER" == *"mobile"* ]] && ICON="📱"
+        [[ "$USER" == *"note"* || "$USER" == *"laptop"* ]] && ICON="💻"
+        [[ "$USER" == *"pc"* || "$USER" == *"desktop"* ]] && ICON="🖥️"
+
+        printf "%-3s %-18s %-15s %-12s %-12s %-19s\n" \
+            "$ICON" "$USER" "$IP" "${RX_MB}MB" "${TX_MB}MB" "$CONN_DATE"
     done
 
-    echo -e "${AZUL}--------------------------------------------------------------------------${NC}"
-    read -p "Pressione ENTER para retornar..." dummy
+    echo -e "${AZUL}--------------------------------------------------------------------------------${NC}"
+    read -p " Pressione ENTER para retornar..." dummy
 }
+
 
 gerar_link_ovpn() {
     clear
