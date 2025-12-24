@@ -65,12 +65,18 @@ listar_online() {
     echo -e "${AZUL}--------------------------------------------------------------------------${NC}"
     read -p " Pressione ENTER para retornar..." dummy
 }
-
 gerar_link_ovpn() {
     clear
-    # Detecta o usuário real da seção (ignora o sudo para pegar a home correta)
-    USUARIO_DA_SESSAO=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
-    CAMINHO_BUSCA="/home/$USUARIO_DA_SESSAO/clientes_ovp"
+    # Força a identificação do usuário humano (quem fez o login SSH)
+    # Se logname falhar, tenta SUDO_USER, se falhar, usa o USER do sistema.
+    USUARIO_REAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$USER})
+
+    # Se por algum motivo ainda detectar root, tentamos pegar o dono do TTY atual
+    if [ "$USUARIO_REAL" == "root" ]; then
+        USUARIO_REAL=$(who am i | awk '{print $1}')
+    fi
+
+    CAMINHO_BUSCA="/home/$USUARIO_REAL/clientes_ovp"
     
     # Garante o IP Externo
     [ -z "$IP_EXT" ] && IP_EXT=$(curl -s --max-time 2 ifconfig.me)
@@ -78,14 +84,14 @@ gerar_link_ovpn() {
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "             ${VERDE}MEUS ARQUIVOS OVPN DISPONÍVEIS${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e " Usuário: ${AMARELO}$USUARIO_DA_SESSAO${NC}"
-    echo -e " Pasta:   ${AMARELO}$CAMINHO_BUSCA${NC}"
+    echo -e " Usuário Detectado: ${AMARELO}$USUARIO_REAL${NC}"
+    echo -e " Buscando em:      ${AMARELO}$CAMINHO_BUSCA${NC}"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    # Verifica se a pasta existe
+    # Valida se o diretório existe
     if [ ! -d "$CAMINHO_BUSCA" ]; then
-        echo -e "${VERMELHO}Erro: Sua pasta 'clientes_ovp' não foi encontrada.${NC}"
-        echo -e "Certifique-se de que o diretório existe em sua HOME."
+        echo -e "${VERMELHO}Erro: Pasta não encontrada em $CAMINHO_BUSCA${NC}"
+        echo -e "Verifique se a pasta 'clientes_ovp' existe na sua HOME."
         read -p " ENTER para voltar..." d; return
     fi
 
@@ -94,11 +100,12 @@ gerar_link_ovpn() {
     if [ -z "$FILES" ]; then
         echo -e "${AMARELO}Nenhum arquivo .ovpn encontrado na sua pasta.${NC}"
     else
-        echo -e "${VERDE}Copie e cole no terminal do seu Computador Local:${NC}\n"
+        echo -e "${VERDE}Comandos para baixar no seu computador local:${NC}\n"
         
         for file in $FILES; do
             FILENAME=$(basename "$file")
             echo -e "${AMARELO}➜ $FILENAME${NC}"
+            # O comando SCP usa o caminho exato para evitar erro de permissão
             echo -e "scp root@$IP_EXT:$file ./"
             echo ""
         done
