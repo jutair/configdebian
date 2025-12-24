@@ -13,35 +13,30 @@ for USERNAME in "jutair" "guest"; do
         echo "$USERNAME:Senha123" | chpasswd
         usermod -aG sudo "$USERNAME"
         mkdir -p /home/$USERNAME/{Backup,clientes_ovp,transfer}
-        
-        # Copia a chave SSH para login direto
-        if [ -d "/root/.ssh" ]; then
-            mkdir -p /home/$USERNAME/.ssh
-            cp /root/.ssh/authorized_keys /home/$USERNAME/.ssh/ 2>/dev/null
-            chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
-            chmod 700 /home/$USERNAME/.ssh
-            chmod 600 /home/$USERNAME/.ssh/authorized_keys 2>/dev/null
-        fi
     fi
 
-    # --- LIMPEZA E INJEÇÃO DO MENU ---
-    # Remove lixo de tentativas anteriores no .bashrc
+    # --- LIMPEZA TOTAL DO BASHRC ---
+    # Remove linhas que causavam erros de 'No such file' ou 'cp/chmod' no login
     sed -i '/menu.sh/d' /home/$USERNAME/.bashrc
     sed -i '/cp /d' /home/$USERNAME/.bashrc
     sed -i '/chmod /d' /home/$USERNAME/.bashrc
+    sed -i '/configdebian/d' /home/$USERNAME/.bashrc
     sed -i '/Configuração completa/d' /home/$USERNAME/.bashrc
 
-    # Adiciona apenas a chamada do menu
+    # Adiciona a única linha necessária para o menu funcionar
     echo "sudo -E bash $DESTINO/menu.sh" >> /home/$USERNAME/.bashrc
     
+    # Garante que o usuário é dono da sua própria pasta home
     chown -R $USERNAME:$USERNAME /home/$USERNAME
 done
 
-# 3. Permissões de Sudo (Sem pedir senha)
+# 3. Permissões de Sudo (Essencial para o menu rodar sem senha)
 echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-vpn-users
+chmod 440 /etc/sudoers.d/90-vpn-users
 
-# 4. Ajuste final de permissões na pasta global
+# 4. Ajuste final de permissões na pasta dos scripts
 chown -R root:sudo "$DESTINO"
 chmod -R 775 "$DESTINO"
+chmod +x "$DESTINO"/*.sh
 
-echo "Instalação concluída com sucesso em $DESTINO!"
+echo "Instalação concluída com sucesso!"
