@@ -14,19 +14,22 @@ NC='\033[0m'
 # IP do servidor
 IP_SERVIDOR=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
-# --- FUNÇÃO DASHBOARD ---
 dashboard() {
-    clear
+    STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                     ${VERDE}DASHBOARD VPS${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "${AMARELO}Atualizando a cada 5 segundos. Pressione ENTER para voltar ao menu principal...${NC}"
 
+    # Desabilita echo para capturar ENTER
+    stty -echo -icanon time 0 min 0
+
     while true; do
         DATA=$(date +"%Y-%m-%d")
         HORA=$(TZ="America/Manaus" date +"%H:%M:%S")
         CPU=$(top -bn1 | grep "Cpu(s)" | awk '{usage=100-$8} END {printf "%.1f%%", usage}')
-        VPN_ONLINE=$(grep -c "^CLIENT_LIST" /etc/openvpn/server/openvpn-status.log 2>/dev/null || echo "0")
+        VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
         SSH_ONLINE=$(who | grep -v "(:0)" | wc -l)
 
         # Detecta interface tun*, fallback eth0
@@ -52,18 +55,16 @@ dashboard() {
         printf "%-15s %-20s\n" "USUÁRIO" "IP ORIGEM"
         who | while read -r user tty date time ip rest; do
             ip_real=$(echo "$ip" | tr -d '()')
-            if [ -z "$ip_real" ]; then ip_real="Local"; fi
+            [ -z "$ip_real" ] && ip_real="Local"
             printf "👤 %-13s %-20s\n" "$user" "$ip_real"
         done
 
         echo -e "${VERDE}Usuários VPN Conectados${NC}"
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
         if [ -f "$STATUS_LOG" ]; then
-            grep "^CLIENT_LIST" "$STATUS_LOG" | while read -r line; do
-                USER=$(echo "$line" | cut -d',' -f2)
-                IP=$(echo "$line" | cut -d',' -f3 | cut -d':' -f1)
-                printf "🔐 %-13s %-20s\n" "$USER" "$IP"
+            grep "^CLIENT_LIST" "$STATUS_LOG" | while IFS=',' read -r _ USER IP PORT RECV SENT _ _; do
+                IP_REAL=$(echo "$IP" | cut -d':' -f1)
+                printf "🔐 %-13s %-20s\n" "$USER" "$IP_REAL"
             done
         else
             echo -e "${AMARELO}Nenhum usuário VPN conectado${NC}"
@@ -71,12 +72,15 @@ dashboard() {
 
         echo -e "${AZUL}===============================================================${NC}"
 
-        # --- Aguarda 5s ou ENTER ---
+        # --- Verifica se ENTER foi pressionado ---
         read -t 5 -n 1 KEY
-        if [[ "$KEY" == "" ]]; then
+        if [[ "$KEY" == $'\n' ]]; then
             break
         fi
     done
+
+    # Restaura o terminal
+    stty sane
 }
 
 # --- MENU PRINCIPAL ---
