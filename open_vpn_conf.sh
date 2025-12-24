@@ -34,41 +34,33 @@ organizar_arquivos() {
 listar_online() {
     clear
     echo -e "${AZUL}==========================================================================${NC}"
-    echo -e "                ${VERDE}👥 USUÁRIOS VPN ONLINE${NC}"
+    echo -e "              ${VERDE}👥 USUÁRIOS VPN ONLINE (TEMPO REAL)${NC}"
     echo -e "${AZUL}==========================================================================${NC}"
 
     if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}Erro: Log da VPN não encontrado (${STATUS_LOG}).${NC}"
-        read -p " Pressione ENTER para retornar..." dummy
+        echo -e "${VERMELHO}❌ Log da VPN não encontrado: $STATUS_LOG${NC}"
+        read -p "ENTER para voltar..." dummy
         return
     fi
 
-    printf "${AZUL}%-3s %-18s %-15s %-12s %-12s %-19s${NC}\n" \
-        "" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
-    echo "--------------------------------------------------------------------------------"
+    printf "${AZUL}%-3s %-18s %-15s %-12s %-12s %-20s${NC}\n" \
+        " " "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
+    echo "----------------------------------------------------------------------------"
 
-    grep "^CLIENT_LIST" "$STATUS_LOG" | while IFS=',' read -r _ USER IP _ BYTES_IN BYTES_OUT _ CONN_DATE _; do
+    grep "^CLIENT_LIST" "$STATUS_LOG" | while IFS=',' read -r _ USER IP _ RX TX _ CONECTADO _; do
+        RX_MB=$(awk "BEGIN {printf \"%.2f\", $RX/1048576}")
+        TX_MB=$(awk "BEGIN {printf \"%.2f\", $TX/1048576}")
 
-        # Segurança contra valores vazios
-        BYTES_IN=${BYTES_IN:-0}
-        BYTES_OUT=${BYTES_OUT:-0}
-
-        # Conversão segura para MB
-        RX_MB=$(awk "BEGIN { printf \"%.2f\", $BYTES_IN/1048576 }")
-        TX_MB=$(awk "BEGIN { printf \"%.2f\", $BYTES_OUT/1048576 }")
-
-        # Ícone por tipo de dispositivo (heurística simples)
         ICON="👤"
-        [[ "$USER" == *"celular"* || "$USER" == *"mobile"* ]] && ICON="📱"
-        [[ "$USER" == *"note"* || "$USER" == *"laptop"* ]] && ICON="💻"
-        [[ "$USER" == *"pc"* || "$USER" == *"desktop"* ]] && ICON="🖥️"
+        [[ "$USER" == *"celular"* ]] && ICON="📱"
+        [[ "$USER" == *"notebook"* || "$USER" == *"pc"* ]] && ICON="💻"
 
-        printf "%-3s %-18s %-15s %-12s %-12s %-19s\n" \
-            "$ICON" "$USER" "$IP" "${RX_MB}MB" "${TX_MB}MB" "$CONN_DATE"
+        printf "%-3s %-18s %-15s %-12s %-12s %-20s\n" \
+            "$ICON" "$USER" "${IP%%:*}" "${RX_MB}MB" "${TX_MB}MB" "$CONECTADO"
     done
 
-    echo -e "${AZUL}--------------------------------------------------------------------------------${NC}"
-    read -p " Pressione ENTER para retornar..." dummy
+    echo "----------------------------------------------------------------------------"
+    read -p "Pressione ENTER para retornar..." dummy
 }
 
 
