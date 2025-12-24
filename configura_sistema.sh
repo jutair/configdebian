@@ -1,14 +1,10 @@
 #!/bin/bash
-# configura_sistema.sh - Configura sistema, login SSH com chave e menu automático para jutair e guest
+# configura_sistema.sh - Configura sistema, copia chave SSH do root e inicia menu automaticamente
 
 set -e
 
-# Usuários a serem criados
 USERS=("jutair" "guest")
 DIR_DESTINO="/opt/configdebian"
-
-# Substitua pelo conteúdo da sua chave pública SSH
-PUBKEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... SEU_EMAIL"
 
 echo "🔧 Configurando sistema..."
 
@@ -36,16 +32,17 @@ for USERNAME in "${USERS[@]}"; do
     mkdir -p "$USER_HOME"/{Backup,clientes_ovp,transfer}
     chown -R "$USERNAME:$USERNAME" "$USER_HOME"
 
-    # 3️⃣ Configura chave pública SSH para ambos os usuários
-    mkdir -p "$USER_HOME/.ssh"
-    echo "$PUBKEY" > "$USER_HOME/.ssh/authorized_keys"
-    chown -R "$USERNAME:$USERNAME" "$USER_HOME/.ssh"
-    chmod 700 "$USER_HOME/.ssh"
-    chmod 600 "$USER_HOME/.ssh/authorized_keys"
+    # 3️⃣ Copia a chave SSH do root, se existir
+    if [ -f /root/.ssh/authorized_keys ]; then
+        mkdir -p "$USER_HOME/.ssh"
+        cp /root/.ssh/authorized_keys "$USER_HOME/.ssh/authorized_keys"
+        chown -R "$USERNAME:$USERNAME" "$USER_HOME/.ssh"
+        chmod 700 "$USER_HOME/.ssh"
+        chmod 600 "$USER_HOME/.ssh/authorized_keys"
+    fi
 
-    # 4️⃣ Configura .bashrc para iniciar menu.sh no login
+    # 4️⃣ Configura .bashrc para iniciar menu.sh automaticamente
     cat <<'EOF' > "$USER_HOME/.bashrc"
-# ~/.bashrc gerenciado pelo configdebian
 [[ $- != *i* ]] && return
 if [ -z "$MENU_LOADED" ]; then
     export MENU_LOADED=1
@@ -53,9 +50,8 @@ if [ -z "$MENU_LOADED" ]; then
 fi
 EOF
 
-    # 5️⃣ Configura .profile para login SSH carregar .bashrc
+    # 5️⃣ Configura .profile para carregar .bashrc
     cat <<'EOF' > "$USER_HOME/.profile"
-# ~/.profile gerenciado pelo configdebian
 if [ -f "$HOME/.bashrc" ]; then
     . "$HOME/.bashrc"
 fi
@@ -65,13 +61,13 @@ EOF
     chmod 644 "$USER_HOME/.bashrc" "$USER_HOME/.profile"
 done
 
-# 6️⃣ Sudo sem senha
+# 6️⃣ Permite sudo sem senha
 echo "%sudo ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-vpn-users
 chmod 440 /etc/sudoers.d/90-vpn-users
 
-# 7️⃣ Permissões na pasta global /opt/configdebian
+# 7️⃣ Permissões da pasta global /opt/configdebian
 chown -R root:sudo "$DIR_DESTINO"
 chmod -R 775 "$DIR_DESTINO"
 chmod +x "$DIR_DESTINO"/*.sh
 
-echo "✅ Configuração finalizada! Usuários jutair e guest logarão com a mesma chave SSH e menu será iniciado automaticamente."
+echo "✅ Configuração finalizada! Usuários jutair e guest logarão via chave SSH do root e menu iniciará automaticamente."
