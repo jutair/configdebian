@@ -93,3 +93,56 @@ chmod +x "$DIR_CONFIG"/*.sh
 chown -R root:sudo "$DIR_CONFIG"
 
 echo "✅ Configuração completa. Usuários jutair e guest logarão diretamente no menu."
+
+# ===============================================================
+# BLOCO DE SEGURANÇA E PROTEÇÃO DE RECURSOS
+# ===============================================================
+
+echo -e "${AZUL}Configurando blindagem do sistema...${NC}"
+
+# 1. Proteção contra Fork Bomb e Abuso de RAM (Limits)
+# Define limites para usuários que não sejam root
+cat <<EOF > /etc/security/limits.d/vps_protecao.conf
+* soft    nproc           100
+* hard    nproc           150
+* soft    as              1048576
+* hard    as              2097152
+* soft    fsize           50000
+* hard    fsize           100000
+EOF
+
+# 2. Blindagem do Kernel (Sysctl)
+# Protege contra ataques de rede (SYN Flood) e tentativas de exploit
+cat <<EOF > /etc/sysctl.d/99-vps-security.conf
+# Proteção contra ataques SYN Flood
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_max_syn_backlog = 2048
+net.ipv4.tcp_synack_retries = 2
+
+# Ignorar respostas de ICMP (Evita Ping Flood e descoberta de rede)
+net.ipv4.icmp_echo_ignore_all = 1
+
+# Proteção contra IP Spoofing
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+
+# Desabilitar redirecionamento de pacotes (Segurança de roteamento)
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+
+# Proteção contra estouro de memória (OOM-Killer ajustado)
+vm.swappiness = 10
+vm.overcommit_memory = 1
+EOF
+
+# Aplicar as mudanças de Kernel imediatamente
+sysctl -p /etc/sysctl.d/99-vps-security.conf
+
+# 3. Proteção Automática Anti-Brute Force (SSH)
+# Garante que o UFW esteja logando para o seu Dashboard mostrar os bloqueios
+ufw logging medium
+ufw limit ssh
+
+echo -e "${VERDE}Blindagem aplicada com sucesso!${NC}"
+echo "✅ Configuração completa. Usuários jutair e guest logarão diretamente no menu."
+echo "De um comando exit e logue novamente com o usuário jutair ou guest"
