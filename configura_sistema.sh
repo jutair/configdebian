@@ -1,10 +1,11 @@
 #!/bin/bash
-# configura_sistema.sh - O CONFIGURADOR (VERSÃO LIMPEZA TOTAL) - Correção 24/12/2025-v2
+# configura_sistema.sh - CONFIGURADOR FINAL (Correção definitiva de login e menu)
 
 DESTINO="/opt/configdebian"
 
-# 1. Instalação de pacotes (Essencial para as funções do menu)
-apt-get update && apt-get install -y vnstat ufw fail2ban openvpn samba speedtest-cli bc
+# 1. Instalação de pacotes essenciais
+apt-get update && apt-get install -y \
+    vnstat ufw fail2ban openvpn samba speedtest-cli bc sudo
 
 # 2. Configuração de Usuários
 for USERNAME in "jutair" "guest"; do
@@ -12,38 +13,53 @@ for USERNAME in "jutair" "guest"; do
         useradd -m -s /bin/bash "$USERNAME"
         echo "$USERNAME:Senha123" | chpasswd
         usermod -aG sudo "$USERNAME"
+
         mkdir -p /home/$USERNAME/{Backup,clientes_ovp,transfer}
 
-        # COPIA A CHAVE SSH (Para evitar o erro 'Permission denied')
-        if [ -d "/root/.ssh" ]; then
+        # Copia chave SSH do root (se existir)
+        if [ -f "/root/.ssh/authorized_keys" ]; then
             mkdir -p /home/$USERNAME/.ssh
-            cp /root/.ssh/authorized_keys /home/$USERNAME/.ssh/ 2>/dev/null
-            chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
+            cp /root/.ssh/authorized_keys /home/$USERNAME/.ssh/
             chmod 700 /home/$USERNAME/.ssh
-            chmod 600 /home/$USERNAME/.ssh/authorized_keys 2>/dev/null
+            chmod 600 /home/$USERNAME/.ssh/authorized_keys
+            chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
         fi
     fi
 
-    # --- BLOCO DE LIMPEZA AGRESSIVA (Remove os erros do login) ---
-    # Remove qualquer linha que contenha esses termos problemáticos
-    sed -i '/configdebian/d' /home/$USERNAME/.bashrc
-    sed -i '/cp /d' /home/$USERNAME/.bashrc
-    sed -i '/chmod /d' /home/$USERNAME/.bashrc
-    sed -i '/Configuração completa/d' /home/$USERNAME/.bashrc
-    sed -i '/menu.sh/d' /home/$USERNAME/.bashrc
+    # ------------------------------------------------------------------
+    # LIMPEZA TOTAL DE ARQUIVOS DE LOGIN (remove lixo antigo)
+    # ------------------------------------------------------------------
+    rm -f /home/$USERNAME/.bashrc
+    rm -f /home/$USERNAME/.profile
+    rm -f /home/$USERNAME/.bash_login
+    rm -f /home/$USERNAME/.bash_logout
 
-    # Adiciona a única linha correta para chamar o menu
-    echo "sudo -E bash $DESTINO/menu.sh" >> /home/$USERNAME/.bashrc
-    
-    # Garante que o usuário é dono da sua home e do .bashrc limpo
+    # ------------------------------------------------------------------
+    # CRIA .bashrc CONTROLADO (entra direto no menu)
+    # ------------------------------------------------------------------
+    cat <<EOF > /home/$USERNAME/.bashrc
+# ~/.bashrc - gerenciado automaticamente pelo configdebian
+
+# Não executa em shell não interativo
+[[ \$- != *i* ]] && return
+
+# Proteção contra loop
+if [ -z "\$MENU_LOADED" ]; then
+    export MENU_LOADED=1
+    sudo -E bash $DESTINO/menu.sh
+fi
+EOF
+
+    chown $USERNAME:$USERNAME /home/$USERNAME/.bashrc
+    chmod 644 /home/$USERNAME/.bashrc
     chown -R $USERNAME:$USERNAME /home/$USERNAME
 done
 
-# 3. Permissões de Sudo (Para o menu rodar sem pedir senha)
-echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-vpn-users
-chmod 440 /etc/sudoers.d/90-vpn-users
+# 3. Permissão de sudo sem senha (necessário para o menu)
+echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-configdebian
+chmod 440 /etc/sudoers.d/90-configdebian
 
-# 4. Ajuste final de permissões na pasta global /opt
+# 4. Permissões finais da pasta global
 chown -R root:sudo "$DESTINO"
 chmod -R 775 "$DESTINO"
 chmod +x "$DESTINO"/*.sh
