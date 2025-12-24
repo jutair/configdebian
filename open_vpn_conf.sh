@@ -38,7 +38,7 @@ listar_online() {
     echo -e "${AZUL}==========================================================================${NC}"
 
     if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}❌ Log da VPN não encontrado: $STATUS_LOG${NC}"
+        echo -e "${VERMELHO}❌ Log da VPN não encontrado:${NC} $STATUS_LOG"
         read -p "ENTER para voltar..." dummy
         return
     fi
@@ -47,9 +47,15 @@ listar_online() {
         " " "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
     echo "----------------------------------------------------------------------------"
 
-    grep "^CLIENT_LIST" "$STATUS_LOG" | while IFS=',' read -r _ USER IP _ RX TX _ CONECTADO _; do
-        RX_MB=$(awk "BEGIN {printf \"%.2f\", $RX/1048576}")
-        TX_MB=$(awk "BEGIN {printf \"%.2f\", $TX/1048576}")
+    grep "^CLIENT_LIST" "$STATUS_LOG" | \
+    while IFS=',' read -r _ USER IP _ RX TX _ CONECTADO _; do
+
+        # Garantia contra valores vazios
+        RX=${RX:-0}
+        TX=${TX:-0}
+
+        RX_MB=$(awk -v v="$RX" 'BEGIN {printf "%.2f", v/1048576}')
+        TX_MB=$(awk -v v="$TX" 'BEGIN {printf "%.2f", v/1048576}')
 
         ICON="👤"
         [[ "$USER" == *"celular"* ]] && ICON="📱"
