@@ -1,5 +1,6 @@
 #!/bin/bash
 # configura_sistema.sh - Configura sistema, copia chave SSH do root e inicia menu automaticamente
+# Atualizado: 24-12-2025
 
 set -e
 
@@ -8,7 +9,7 @@ DIR_DESTINO="/opt/configdebian"
 
 echo "🔧 Configurando sistema..."
 
-# Rodar como root
+# Verifica se está rodando como root
 if [ "$EUID" -ne 0 ]; then
     echo "❌ Execute este script como root."
     exit 1
@@ -16,7 +17,7 @@ fi
 
 # 1️⃣ Instala pacotes essenciais
 apt-get update
-apt-get install -y vnstat ufw fail2ban openvpn samba speedtest-cli bc sudo
+apt-get install -y vnstat ufw fail2ban openvpn samba speedtest-cli bc sudo unzip wget curl
 
 # 2️⃣ Criação de usuários e configuração de ambiente
 for USERNAME in "${USERS[@]}"; do
@@ -29,6 +30,7 @@ for USERNAME in "${USERS[@]}"; do
         usermod -aG sudo "$USERNAME"
     fi
 
+    # Pastas do usuário
     mkdir -p "$USER_HOME"/{Backup,clientes_ovp,transfer}
     chown -R "$USERNAME:$USERNAME" "$USER_HOME"
 
@@ -65,9 +67,17 @@ done
 echo "%sudo ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-vpn-users
 chmod 440 /etc/sudoers.d/90-vpn-users
 
-# 7️⃣ Permissões da pasta global /opt/configdebian
+# 7️⃣ Criação da pasta global /opt/configdebian se não existir
+mkdir -p "$DIR_DESTINO"
+
+# 8️⃣ Baixa openvpn-install.sh do Angristan
+echo "📥 Baixando openvpn-install.sh para $DIR_DESTINO..."
+wget -q https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh -O "$DIR_DESTINO/openvpn-install.sh"
+
+# 9️⃣ Ajusta permissões de todos os scripts
 chown -R root:sudo "$DIR_DESTINO"
 chmod -R 775 "$DIR_DESTINO"
 chmod +x "$DIR_DESTINO"/*.sh
 
-echo "✅ Configuração finalizada! Usuários jutair e guest logarão via chave SSH do root e menu iniciará automaticamente."
+echo "✅ Configuração finalizada!"
+echo "Usuários jutair e guest logarão via chave SSH do root e menu iniciará automaticamente."
