@@ -22,6 +22,36 @@ fi
 trap '' SIGINT
 
 ############################ FUNÇÕES DE LISTAGEM ############################
+listar_usuarios_cadastrados() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}USUÁRIOS CADASTRADOS NO SISTEMA${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    # Cabeçalho da tabela
+    echo -e "${AMARELO} USUÁRIO             UID             PRIVILÉGIO${NC}"
+    echo -e "---------------------------------------------------------------"
+    
+    # Filtra usuários reais (com diretório em /home)
+    while IFS=: read -r user pass uid gid info home shell; do
+        if [[ "$home" == /home/* ]]; then
+            # Verifica se pertence ao grupo sudo e define a label colorida
+            if groups "$user" | grep -q "\bsudo\b"; then
+                PRIV=$(echo -e "${VERMELHO}ADMIN (sudo)${NC}")
+            else
+                PRIV=$(echo -e "${VERDE}COMUM${NC}")
+            fi
+            
+            # Alinhamento manual para evitar problemas com os códigos de cor
+            # Usamos printf apenas para o nome e UID (que não têm cor) e echo para o privilégio
+            printf " %-19s %-15s" "$user" "$uid"
+            echo -e "$PRIV"
+        fi
+    done < /etc/passwd
+    
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p " Pressione ENTER para retornar..." dummy
+}
+
 monitorar_logados() {
     clear
     echo -e "${AZUL}====================================================================${NC}"
