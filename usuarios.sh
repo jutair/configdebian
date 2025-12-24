@@ -21,35 +21,40 @@ fi
 # Bloqueia CTRL+C
 trap '' SIGINT
 
-############################ FUNÇÕES DE LISTAGEM ############################
-listar_usuarios_cadastrados() {
+cadastrar_user() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}USUÁRIOS CADASTRADOS NO SISTEMA${NC}"
+    echo -e "                ${VERDE}CADASTRAR NOVO USUÁRIO${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    # Cabeçalho da tabela
-    echo -e "${AMARELO} USUÁRIO             UID             PRIVILÉGIO${NC}"
-    echo -e "---------------------------------------------------------------"
-    
-    # Filtra usuários reais (com diretório em /home)
-    while IFS=: read -r user pass uid gid info home shell; do
-        if [[ "$home" == /home/* ]]; then
-            # Verifica se pertence ao grupo sudo e define a label colorida
-            if groups "$user" | grep -q "\bsudo\b"; then
-                PRIV=$(echo -e "${VERMELHO}ADMIN (sudo)${NC}")
-            else
-                PRIV=$(echo -e "${VERDE}COMUM${NC}")
-            fi
-            
-            # Alinhamento manual para evitar problemas com os códigos de cor
-            # Usamos printf apenas para o nome e UID (que não têm cor) e echo para o privilégio
-            printf " %-19s %-15s" "$user" "$uid"
-            echo -e "$PRIV"
-        fi
-    done < /etc/passwd
-    
-    echo -e "${AZUL}===============================================================${NC}"
-    read -p " Pressione ENTER para retornar..." dummy
+
+    read -p "Nome do usuário: " NOME_USUARIO
+    [ -z "$NOME_USUARIO" ] && return
+
+    if id "$NOME_USUARIO" &>/dev/null; then
+        echo -e "${VERMELHO}Erro: Usuário já existe!${NC}"
+        sleep 2
+        return
+    fi
+
+    # Cria usuário e diretório home
+    useradd -m -s /bin/bash "$NOME_USUARIO"
+    HOME_USER="/home/$NOME_USUARIO"
+
+    # Cria pastas padrão
+    mkdir -p "$HOME_USER"/{Backup,clientes_ovp,transfer}
+    chown -R "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER"
+
+    # Configura SSH com chave pública
+    mkdir -p "$HOME_USER/.ssh"
+    chmod 700 "$HOME_USER/.ssh"
+    read -p "Cole a chave pública SSH do usuário e pressione ENTER: " SSH_KEY
+    echo "$SSH_KEY" > "$HOME_USER/.ssh/authorized_keys"
+    chmod 600 "$HOME_USER/.ssh/authorized_keys"
+    chown -R "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER/.ssh"
+
+    echo -e "${VERDE}Usuário $NOME_USUARIO criado com sucesso!${NC}"
+    echo -e "${AMARELO}O usuário já pode logar via SSH com a chave pública fornecida.${NC}"
+    sleep 2
 }
 
 monitorar_logados() {
