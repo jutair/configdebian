@@ -1,5 +1,5 @@
 #!/bin/bash
-# configura_sistema.sh - O CONFIGURADOR (SILENCIOSO)
+# configura_sistema.sh - O CONFIGURADOR (COM CORREÇÃO DE SSH) 24-12-2025-v1
 
 DESTINO="/opt/configdebian"
 
@@ -13,28 +13,32 @@ for USERNAME in "jutair" "guest"; do
         echo "$USERNAME:Senha123" | chpasswd
         usermod -aG sudo "$USERNAME"
         mkdir -p /home/$USERNAME/{Backup,clientes_ovp,transfer}
+
+        # BLOCO ESSENCIAL: Copia sua chave para você conseguir logar
+        if [ -d "/root/.ssh" ]; then
+            mkdir -p /home/$USERNAME/.ssh
+            cp /root/.ssh/authorized_keys /home/$USERNAME/.ssh/ 2>/dev/null
+            chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
+            chmod 700 /home/$USERNAME/.ssh
+            chmod 600 /home/$USERNAME/.ssh/authorized_keys 2>/dev/null
+        fi
     fi
 
-    # --- LIMPEZA TOTAL DO BASHRC ---
-    # Remove linhas que causavam erros de 'No such file' ou 'cp/chmod' no login
+    # --- LIMPEZA E INJEÇÃO DO MENU ---
     sed -i '/menu.sh/d' /home/$USERNAME/.bashrc
     sed -i '/cp /d' /home/$USERNAME/.bashrc
     sed -i '/chmod /d' /home/$USERNAME/.bashrc
     sed -i '/configdebian/d' /home/$USERNAME/.bashrc
-    sed -i '/Configuração completa/d' /home/$USERNAME/.bashrc
-
-    # Adiciona a única linha necessária para o menu funcionar
     echo "sudo -E bash $DESTINO/menu.sh" >> /home/$USERNAME/.bashrc
     
-    # Garante que o usuário é dono da sua própria pasta home
     chown -R $USERNAME:$USERNAME /home/$USERNAME
 done
 
-# 3. Permissões de Sudo (Essencial para o menu rodar sem senha)
+# 3. Permissões de Sudo
 echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-vpn-users
 chmod 440 /etc/sudoers.d/90-vpn-users
 
-# 4. Ajuste final de permissões na pasta dos scripts
+# 4. Ajuste final
 chown -R root:sudo "$DESTINO"
 chmod -R 775 "$DESTINO"
 chmod +x "$DESTINO"/*.sh
