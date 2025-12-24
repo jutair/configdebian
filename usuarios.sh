@@ -52,36 +52,6 @@ monitorar_logados() {
     read -p " Pressione ENTER para retornar..." dummy
 }
 
-monitorar_logados() {
-    clear
-    echo -e "${AZUL}====================================================================${NC}"
-    echo -e "              ${VERDE}SESSÕES ATIVAS — SSH E VPN${NC}"
-    echo -e "${AZUL}====================================================================${NC}"
-    printf "${AMARELO}%-15s %-6s %-18s %-20s${NC}\n" "USUÁRIO" "TIPO" "IP ORIGEM" "DESDE"
-    echo -e "--------------------------------------------------------------------"
-
-    # --- Sessões SSH ---
-    who | while read -r user tty date time rest; do
-        IP=$(echo "$rest" | awk '{print $1}' | tr -d '()')
-        [[ -z "$IP" ]] && IP="Local"
-        printf "👤 %-15s SSH   %-18s %-20s\n" "$user" "$IP" "$date $time"
-    done
-
-    # --- Sessões VPN ---
-    STATUS_LOG="/var/log/openvpn/status.log"
-    if [ -f "$STATUS_LOG" ]; then
-        grep "^CLIENT_LIST" "$STATUS_LOG" | while IFS=',' read -r _ usuario ipport _ _ _ _ _ conectado_em _; do
-            IP=${ipport%%:*}  # remove a porta
-            # conectado_em contém só a data/hora
-            printf "🔐 %-15s VPN   %-18s %-20s\n" "$usuario" "$IP" "$conectado_em"
-        done
-    fi
-
-    echo -e "${AZUL}====================================================================${NC}"
-    read -p " Pressione ENTER para retornar..." dummy
-}
-
-
 ############################ FUNÇÕES DE GESTÃO ############################
 
 cadastrar_user() {
