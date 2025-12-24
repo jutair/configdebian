@@ -1,44 +1,54 @@
 #!/bin/bash
-# setup_vps.sh - Instalador Automatizado
+# setup_vps.sh - O Gatilho de Instalação
 
-# 1. Verificar se o usuário é root
-if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[31mErro: Por favor, execute como root (use sudo ./setup_vps.sh)\033[0m"
+# Cores para o terminal
+AZUL='\033[0;34m'
+VERDE='\033[0;32m'
+VERMELHO='\033[0;31m'
+NC='\033[0m'
+
+clear
+echo -e "${AZUL}===============================================================${NC}"
+echo -e "            INSTALADOR AUTOMÁTICO - CONFIG DEBIAN"
+echo -e "${AZUL}===============================================================${NC}"
+
+# 1. Verificação de privilégios
+if [ "$EUID" -ne 0 ]; then 
+  echo -e "${VERMELHO}Erro: Por favor, execute este script como ROOT (sudo su).${NC}"
   exit 1
 fi
 
-# 2. Instalar dependências básicas caso não existam
-echo "Verificando dependências (wget, unzip)..."
-apt-get update -qq
-apt-get install -y wget unzip > /dev/null 2>&1
+# 2. Instalação de dependências mínimas para extração
+echo -e "${AZUL}[1/4]${NC} Preparando ambiente básico..."
+apt-get update -y && apt-get install -y wget unzip curl
 
-# 3. Preparar diretório temporário
-cd /tmp
-echo "Baixando scripts do repositório..."
-# O -O garante que o nome do arquivo seja exatamente main.zip
-wget -q https://github.com/jutair/configdebian/archive/refs/heads/main.zip -O main.zip
+# 3. Limpeza de instalações antigas e download do repositório
+echo -e "${AZUL}[2/4]${NC} Descarregando repositório do GitHub..."
+DIR_DESTINO="$HOME/configdebian-main"
+rm -rf "$DIR_DESTINO" # Remove se já existir para atualizar
+rm -f main.zip
 
-# 4. Extração
-if [ -f "main.zip" ]; then
-    unzip -o main.zip > /dev/null
+wget https://github.com/jutair/configdebian/archive/refs/heads/main.zip
+
+# 4. Extração dos ficheiros
+if [ -f main.zip ]; then
+    echo -e "${AZUL}[3/4]${NC} Extraindo ficheiros..."
+    unzip -o main.zip -d $HOME/
+    rm main.zip
 else
-    echo "Erro ao baixar o arquivo do GitHub."
+    echo -e "${VERMELHO}Erro: Falha ao descarregar o repositório.${NC}"
     exit 1
 fi
 
-# 5. Execução do configurador
-if [ -f "configdebian-main/configura_sistema.sh" ]; then
-    chmod +x configdebian-main/configura_sistema.sh
-    echo "Iniciando configuração do sistema..."
-    ./configdebian-main/configura_sistema.sh
+# 5. Permissões e Início da Configuração Pesada
+echo -e "${AZUL}[4/4]${NC} Iniciando configuração do sistema..."
+chmod +x "$DIR_DESTINO"/*.sh
+
+if [ -f "$DIR_DESTINO/configura_sistema.sh" ]; then
+    echo -e "${VERDE}Sucesso! Chamando o construtor do sistema...${NC}"
+    sleep 2
+    bash "$DIR_DESTINO/configura_sistema.sh"
 else
-    echo "Erro: configura_sistema.sh não encontrado dentro do zip."
+    echo -e "${VERMELHO}Erro: Ficheiro configura_sistema.sh não encontrado.${NC}"
     exit 1
 fi
-
-# 6. Autodestruição e Limpeza
-echo "Limpando arquivos temporários..."
-rm -rf /tmp/main.zip /tmp/configdebian-main
-rm -- "$0"
-
-echo "Instalação finalizada. Por favor, faça login com o usuário jutair."
