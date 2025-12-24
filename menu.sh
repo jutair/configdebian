@@ -34,7 +34,12 @@ dashboard() {
         done
 
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "${AMARELO}Atualizando a cada 5 segundos. Pressione Ctrl+C para voltar ao menu principal...${NC}"
-        sleep 5
+        echo -e "${AMARELO}Pressione ENTER a qualquer momento para voltar ao menu principal...${NC}"
+
+        # Espera 5 segundos ou até ENTER
+        read -t 5 -r -n 1 KEY
+        if [ "$KEY" = "" ]; then
+            break
+        fi
     done
 }
