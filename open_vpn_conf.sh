@@ -7,7 +7,7 @@
 set +e
 
 DIR_SCRIPTS="/opt/configdebian"
-INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
+INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh interactive"
 
 AZUL='\033[0;34m'
 VERDE='\033[0;32m'
