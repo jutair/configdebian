@@ -21,7 +21,7 @@ dashboard() {
         # 2. Interface Visual
         clear
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "                     ${VERDE}DASHBOARD VPS${NC}"
+        echo -e "            ${VERDE}DASHBOARD VPS - DIGITAL OCEAN${NC}"
         echo -e "${AZUL}===============================================================${NC}"
         printf "  %-25s : ${AMARELO}%s${NC}\n" "IP do Servidor" "$IP_SERVIDOR"
         printf "  %-25s : ${AMARELO}%s${NC}\n" "Data" "$DATA"
