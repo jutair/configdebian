@@ -1,9 +1,14 @@
 #!/bin/bash
-# open_vpn_conf.sh - Gerenciador OpenVPN Profissional (24-12-2025 final)
+# open_vpn_conf.sh - Gerenciador OpenVPN Profissional (Atualizado 24-12-2025)
 
 set -e
 
 USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
+DIR_SCRIPTS="/opt/configdebian"
+DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
+STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
+SCRIPT_REDE="$DIR_SCRIPTS/gerencia_rede.sh"
 
 AZUL='\033[0;34m'
 VERDE='\033[0;32m'
@@ -11,17 +16,13 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
-STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
-DIR_SCRIPTS="/opt/configdebian"
-INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
-SCRIPT_REDE="$DIR_SCRIPTS/gerencia_rede.sh"
-
+# Verifica ROOT
 if [ "$EUID" -ne 0 ]; then
   echo -e "${VERMELHO}Erro: Execute com sudo!${NC}"
   exit 1
 fi
 
+# Bloqueia CTRL+C
 trap '' SIGINT
 
 organizar_arquivos() {
@@ -63,16 +64,9 @@ gerar_link_ovpn() {
     CAMINHO_BUSCA="/home/$USUARIO_REAL/clientes_ovp"
     [ -z "$IP_EXT" ] && IP_EXT=$(curl -s --max-time 2 ifconfig.me)
 
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "             ${VERDE}MEUS ARQUIVOS OVPN DISPONÍVEIS${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e " Usuário: ${AMARELO}$USUARIO_REAL${NC}"
-    echo -e " Pasta:   ${AMARELO}$CAMINHO_BUSCA${NC}"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-
     if [ ! -d "$CAMINHO_BUSCA" ]; then
         echo -e "${VERMELHO}Erro: Pasta não encontrada em $CAMINHO_BUSCA${NC}"
-        read -p " ENTER para voltar..." dummy
+        read -p "ENTER para voltar..." dummy
         return
     fi
 
@@ -80,29 +74,26 @@ gerar_link_ovpn() {
     if [ -z "$FILES" ]; then
         echo -e "${AMARELO}Nenhum arquivo .ovpn encontrado.${NC}"
     else
-        echo -e "${VERDE}Copie e cole no terminal do seu PC (Windows/Linux):${NC}\n"
+        echo -e "${VERDE}Comandos SCP para baixar os arquivos:${NC}\n"
         for file in $FILES; do
             FILENAME=$(basename "$file")
             echo -e "${AMARELO}➜ $FILENAME${NC}"
-            echo -e "scp ${USUARIO_REAL}@${IP_EXT}:~/clientes_ovp/${FILENAME} ./"
+            echo "scp ${USUARIO_REAL}@${IP_EXT}:~/clientes_ovp/${FILENAME} ./"
             echo ""
         done
     fi
-    echo -e "${AZUL}===============================================================${NC}"
-    read -p " Pressione ENTER para retornar..." dummy
+    read -p "Pressione ENTER para retornar..." dummy
 }
 
 menu_ovp() {
     while true; do
-        VPN_IFACE="tun0"
-        IFACE="eth0"
-        if ip link show "$VPN_IFACE" >/dev/null 2>&1; then
-            IFACE="$VPN_IFACE"
-        fi
-
         VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
         CPU_USO=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {printf "%.1f%%", usage}')
         MEM_USO=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
+        
+        # Detecta interface tun*
+        IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep 'tun[0-9]+' | head -n1)
+        IFACE=${IFACE:-"eth0"}
         BANDA_VPN=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
         [[ -z "$BANDA_VPN" || "$BANDA_VPN" == *"No data"* ]] && BANDA_VPN="0.00 MB"
 
@@ -123,8 +114,7 @@ menu_ovp() {
         echo -e "  [6] 🛡️ Segurança e Firewall"
         echo -e "  [7] ⬅️  Retornar ao Menu Principal"
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
-
-        read -n 1 -p " Digite a opção: " OPCAO
+        read -n 1 -p "Digite a opção: " OPCAO
         echo ""
 
         case $OPCAO in
@@ -132,13 +122,12 @@ menu_ovp() {
             2) gerar_link_ovpn ;;
             3) listar_online ;;
             4) clear; speedtest-cli --share; read -p "ENTER para voltar..." dummy ;;
-            5) clear; vnstat -i "$IFACE" -d; echo ""; read -p "ENTER para voltar..." dummy ;;
+            5) clear; vnstat -i "$IFACE" -d; read -p "ENTER para voltar..." dummy ;;
             6) [ -f "$SCRIPT_REDE" ] && bash "$SCRIPT_REDE" || echo "Script não encontrado" ;;
-            7) echo -e "${VERDE}Saindo do módulo VPN...${NC}"; sleep 1; exit 0 ;;
+            7) exit 0 ;;
             *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
         esac
     done
 }
 
-# Inicia o menu
 menu_ovp
