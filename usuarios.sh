@@ -1,5 +1,6 @@
 #!/bin/bash
 # usuarios.sh - Gerenciador de Usuários e Acessos Profissional
+# Lista usuários atualizado!
 
 # --- VARIÁVEIS E CORES ---
 USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
@@ -22,35 +23,34 @@ trap '' SIGINT
 
 ############################ FUNÇÕES DE LISTAGEM ############################
 
-listar_usuarios_cadastrados() {
+monitorar_logados() {
     clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}USUÁRIOS CADASTRADOS NO SISTEMA${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    # Cabeçalho da tabela
-    echo -e "${AMARELO} USUÁRIO             UID             PRIVILÉGIO${NC}"
-    echo -e "---------------------------------------------------------------"
-    
-    # Filtra usuários reais (com diretório em /home)
-    while IFS=: read -r user pass uid gid info home shell; do
-        if [[ "$home" == /home/* ]]; then
-            # Verifica se pertence ao grupo sudo e define a label colorida
-            if groups "$user" | grep -q "\bsudo\b"; then
-                PRIV=$(echo -e "${VERMELHO}ADMIN (sudo)${NC}")
-            else
-                PRIV=$(echo -e "${VERDE}COMUM${NC}")
-            fi
-            
-            # Alinhamento manual para evitar problemas com os códigos de cor
-            # Usamos printf apenas para o nome e UID (que não têm cor) e echo para o privilégio
-            printf " %-19s %-15s" "$user" "$uid"
-            echo -e "$PRIV"
-        fi
-    done < /etc/passwd
-    
-    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "${AZUL}====================================================================${NC}"
+    echo -e "              ${VERDE}SESSÕES ATIVAS — SSH E VPN${NC}"
+    echo -e "${AZUL}====================================================================${NC}"
+    printf "${AMARELO}%-13s %-6s %-18s %-20s${NC}\n" "USUÁRIO" "TIPO" "IP ORIGEM" "DESDE"
+    echo -e "--------------------------------------------------------------------"
+
+    # --- Sessões SSH ---
+    who | while read -r user tty date time rest; do
+        IP=$(echo "$rest" | awk '{print $1}' | tr -d '()')
+        [[ -z "$IP" ]] && IP="Local"
+        printf "👤 %-13s SSH   %-18s %-20s\n" "$user" "$IP" "$time"
+    done
+
+    # --- Sessões VPN ---
+    STATUS_LOG="/var/log/openvpn/status.log"
+    if [ -f "$STATUS_LOG" ]; then
+        grep "^CLIENT_LIST" "$STATUS_LOG" | while IFS=',' read -r _ usuario ipport recv sent _ conectadosem; do
+            IP=${ipport%%:*}  # remove a porta
+            printf "🔐 %-13s VPN   %-18s %-20s\n" "$usuario" "$IP" "$conectadosem"
+        done
+    fi
+
+    echo -e "${AZUL}====================================================================${NC}"
     read -p " Pressione ENTER para retornar..." dummy
 }
+
 
 monitorar_logados() {
     clear
