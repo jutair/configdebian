@@ -6,7 +6,7 @@ set -e
 USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
 DIR_SCRIPTS="/opt/configdebian"
 DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
-STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+STATUS_LOG="/var/log/openvpn/status.log"
 INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
 SCRIPT_REDE="$DIR_SCRIPTS/gerencia_rede.sh"
 
