@@ -1,60 +1,51 @@
 #!/bin/bash
-# update_sistema.sh - Atualizador Global em /opt/configdebian
-# Atualizado: 24-12-2025
+# update_sistema.sh - Atualiza sistema e scripts configdebian
+# 24-12-2025
 
 set -e
 
-# --- CORES ---
-AZUL='\033[0;34m'
-VERDE='\033[0;32m'
-VERMELHO='\033[0;31m'
-NC='\033[0m'
+DIR_CONFIG="/opt/configdebian"
+GITHUB_REPO="https://raw.githubusercontent.com/seuusuario/configdebian/main"
+OPENVPN_SCRIPT="openvpn-install.sh"
 
-# --- CAMINHO DE DESTINO ---
-DESTINO="/opt/configdebian"
+echo "🔧 Iniciando atualização do sistema e scripts..."
 
-echo -e "${AZUL}===============================================================${NC}"
-echo -e "              ATUALIZAÇÃO GERAL DO SISTEMA"
-echo -e "${AZUL}===============================================================${NC}"
-
-# 1. ATUALIZAÇÃO DO LINUX
-echo -e "${AZUL}[1/2]${NC} Atualizando pacotes do sistema (Apt)..."
-sudo apt update && sudo apt upgrade -y
-
-# 2. ATUALIZAÇÃO DOS SCRIPTS NO DIRETÓRIO GLOBAL
-echo -e "\n${AZUL}[2/2]${NC} Verificando atualizações no GitHub..."
-
-TEMP_ZIP="/tmp/configdebian-main.zip"
-TEMP_EXTRACT="/tmp/configdebian-update"
-
-# Baixa a versão mais recente do GitHub
-wget -q https://github.com/jutair/configdebian/archive/refs/heads/main.zip -O $TEMP_ZIP
-
-if [ -f "$TEMP_ZIP" ]; then
-    mkdir -p "$TEMP_EXTRACT"
-    unzip -o "$TEMP_ZIP" -d "$TEMP_EXTRACT" > /dev/null
-    
-    # Copia scripts para o diretório de produção
-    cp -r "$TEMP_EXTRACT/configdebian-main/"* "$DESTINO/"
-    
-    # Baixa também o openvpn-install.sh do Angristan
-    wget -q https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh -O "$DESTINO/openvpn-install.sh"
-    
-    # Ajusta permissões
-    chown -R root:sudo "$DESTINO"
-    chmod -R 775 "$DESTINO"
-    chmod +x "$DESTINO"/*.sh
-    
-    # Limpeza
-    rm -rf "$TEMP_EXTRACT" "$TEMP_ZIP"
-    
-    echo -e "${VERDE}✔ Scripts em $DESTINO atualizados com sucesso!${NC}"
-else
-    echo -e "${VERMELHO}✘ Falha ao conectar com o GitHub.${NC}"
+# Verifica ROOT
+if [ "$EUID" -ne 0 ]; then
+    echo "❌ Execute este script como root."
+    exit 1
 fi
 
-echo -e "${AZUL}===============================================================${NC}"
-read -p " Atualização concluída. Pressione ENTER para reiniciar o menu..." dummy
+# 1️⃣ Atualiza o sistema
+echo "⏳ Atualizando sistema..."
+apt-get update && apt-get upgrade -y
+apt-get install -y vnstat ufw fail2ban openvpn samba speedtest-cli bc sudo curl wget
 
-# Reinicia o menu
-exec bash "$DESTINO/menu.sh"
+# 2️⃣ Cria pasta configdebian se não existir
+mkdir -p "$DIR_CONFIG"
+chown root:sudo "$DIR_CONFIG"
+chmod 775 "$DIR_CONFIG"
+
+# 3️⃣ Baixa scripts principais do GitHub
+echo "⏳ Baixando scripts do GitHub..."
+SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "configura_sistema.sh")
+
+for SCRIPT in "${SCRIPTS[@]}"; do
+    URL="$GITHUB_REPO/$SCRIPT"
+    DEST="$DIR_CONFIG/$SCRIPT"
+
+    echo "Baixando $SCRIPT..."
+    curl -fsSL "$URL" -o "$DEST"
+    chmod +x "$DEST"
+done
+
+# 4️⃣ Baixa o openvpn-install.sh diretamente
+echo "⏳ Baixando $OPENVPN_SCRIPT..."
+curl -fsSL "https://raw.githubusercontent.com/angristan/openvpn-install/master/$OPENVPN_SCRIPT" -o "$DIR_CONFIG/$OPENVPN_SCRIPT"
+chmod +x "$DIR_CONFIG/$OPENVPN_SCRIPT"
+
+# 5️⃣ Confere permissões de todos os scripts
+chmod +x "$DIR_CONFIG"/*.sh
+chown root:sudo "$DIR_CONFIG"/*.sh
+
+echo "✅ Scripts configdebian atualizados com sucesso!"
