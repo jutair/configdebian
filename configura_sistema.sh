@@ -1,14 +1,14 @@
 #!/bin/bash
-# configura_sistema.sh - Configura sistema, usuários e atualiza scripts configdebian
-# Atualizado: 24-12-2025 v2
+# configura_sistema.sh - Configura sistema, usuários e scripts configdebian
+# Atualizado: 24-12-2025
 
 set -e
 
 USERS=("jutair" "guest")
 DIR_CONFIG="/opt/configdebian"
-GITHUB_REPO="https://raw.githubusercontent.com/seuusuario/configdebian/main"
+GITHUB_REPO="https://raw.githubusercontent.com/jutair/configdebian/main"
 OPENVPN_SCRIPT="openvpn-install.sh"
-SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "update_sistema.sh" "configura_sistema.sh" "backup.sh")
+SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "update_sistema.sh" "backup.sh" "configura_sistema.sh")
 
 # --- Verifica ROOT ---
 if [ "$EUID" -ne 0 ]; then
@@ -30,28 +30,17 @@ echo "⏳ Baixando scripts configdebian..."
 for SCRIPT in "${SCRIPTS[@]}"; do
     URL="$GITHUB_REPO/$SCRIPT"
     DEST="$DIR_CONFIG/$SCRIPT"
-    
-    # Backup se existir
-    [ -f "$DEST" ] && cp "$DEST" "$DEST.bak_$(date +%Y%m%d_%H%M%S)" && echo "⚠ Backup criado para $SCRIPT"
-    
-    if curl -fsSL "$URL" -o "$DEST"; then
-        chmod +x "$DEST"
-        chown root:sudo "$DEST"
-        echo "✔ $SCRIPT atualizado"
-    else
-        echo "❌ Falha ao baixar $SCRIPT. Mantendo versão anterior (se existir)."
-    fi
+    curl -fsSL "$URL" -o "$DEST" || echo "⚠ Falha ao baixar $SCRIPT"
+    chmod +x "$DEST"
+    chown root:sudo "$DEST"
 done
 
 # --- Baixa openvpn-install.sh oficial ---
-DEST_OVPN="$DIR_CONFIG/$OPENVPN_SCRIPT"
-[ -f "$DEST_OVPN" ] && cp "$DEST_OVPN" "$DEST_OVPN.bak_$(date +%Y%m%d_%H%M%S)" && echo "⚠ Backup criado para $OPENVPN_SCRIPT"
-curl -fsSL "https://raw.githubusercontent.com/angristan/openvpn-install/master/$OPENVPN_SCRIPT" -o "$DEST_OVPN"
-chmod +x "$DEST_OVPN"
-chown root:sudo "$DEST_OVPN"
-echo "✔ $OPENVPN_SCRIPT atualizado"
+curl -fsSL "https://raw.githubusercontent.com/angristan/openvpn-install/master/$OPENVPN_SCRIPT" -o "$DIR_CONFIG/$OPENVPN_SCRIPT"
+chmod +x "$DIR_CONFIG/$OPENVPN_SCRIPT"
+chown root:sudo "$DIR_CONFIG/$OPENVPN_SCRIPT"
 
-# --- Criação de usuários e configuração ---
+# --- Criação de usuários e configuração automática ---
 for USERNAME in "${USERS[@]}"; do
     USER_HOME="/home/$USERNAME"
 
@@ -94,13 +83,13 @@ EOF
     chmod 644 "$USER_HOME/.bashrc" "$USER_HOME/.profile"
 done
 
-# --- Permite sudo sem senha para grupo sudo ---
+# --- Permite sudo sem senha ---
 echo "%sudo ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-vpn-users
 chmod 440 /etc/sudoers.d/90-vpn-users
 
-# --- Permissões da pasta global configdebian ---
+# --- Permissões da pasta global ---
 chmod -R 775 "$DIR_CONFIG"
 chmod +x "$DIR_CONFIG"/*.sh
 chown -R root:sudo "$DIR_CONFIG"
 
-echo "✅ Configuração finalizada! Usuários jutair e guest logarão via chave SSH do root e menu iniciará automaticamente."
+echo "✅ Configuração completa. Usuários jutair e guest logarão diretamente no menu."
