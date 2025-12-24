@@ -1,25 +1,45 @@
 #!/bin/bash
-# configura_sistema.sh - Configura sistema, copia chave SSH do root e inicia menu automaticamente
-# Atualizado: 24-12-2025
+# configura_sistema.sh - Configura sistema, usuários e atualiza scripts configdebian
+# 24-12-2025
 
 set -e
 
 USERS=("jutair" "guest")
-DIR_DESTINO="/opt/configdebian"
+DIR_CONFIG="/opt/configdebian"
+GITHUB_REPO="https://raw.githubusercontent.com/seuusuario/configdebian/main"
+OPENVPN_SCRIPT="openvpn-install.sh"
+SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "update_sistema.sh" "configura_sistema.sh")
 
-echo "🔧 Configurando sistema..."
-
-# Verifica se está rodando como root
+# --- Verifica ROOT ---
 if [ "$EUID" -ne 0 ]; then
     echo "❌ Execute este script como root."
     exit 1
 fi
 
-# 1️⃣ Instala pacotes essenciais
+echo "🔧 Atualizando sistema e instalando pacotes essenciais..."
 apt-get update
-apt-get install -y vnstat ufw fail2ban openvpn samba speedtest-cli bc sudo unzip wget curl
+apt-get install -y vnstat ufw fail2ban openvpn samba speedtest-cli bc sudo curl wget unzip
 
-# 2️⃣ Criação de usuários e configuração de ambiente
+# --- Cria pasta global configdebian ---
+mkdir -p "$DIR_CONFIG"
+chown root:sudo "$DIR_CONFIG"
+chmod 775 "$DIR_CONFIG"
+
+# --- Baixa scripts principais do GitHub ---
+echo "⏳ Baixando scripts configdebian..."
+for SCRIPT in "${SCRIPTS[@]}"; do
+    URL="$GITHUB_REPO/$SCRIPT"
+    DEST="$DIR_CONFIG/$SCRIPT"
+    curl -fsSL "$URL" -o "$DEST"
+    chmod +x "$DEST"
+done
+
+# --- Baixa openvpn-install.sh oficial ---
+echo "⏳ Baixando $OPENVPN_SCRIPT..."
+curl -fsSL "https://raw.githubusercontent.com/angristan/openvpn-install/master/$OPENVPN_SCRIPT" -o "$DIR_CONFIG/$OPENVPN_SCRIPT"
+chmod +x "$DIR_CONFIG/$OPENVPN_SCRIPT"
+
+# --- Criação de usuários e configuração ---
 for USERNAME in "${USERS[@]}"; do
     USER_HOME="/home/$USERNAME"
 
@@ -30,11 +50,10 @@ for USERNAME in "${USERS[@]}"; do
         usermod -aG sudo "$USERNAME"
     fi
 
-    # Pastas do usuário
     mkdir -p "$USER_HOME"/{Backup,clientes_ovp,transfer}
     chown -R "$USERNAME:$USERNAME" "$USER_HOME"
 
-    # 3️⃣ Copia a chave SSH do root, se existir
+    # Copia chave SSH do root
     if [ -f /root/.ssh/authorized_keys ]; then
         mkdir -p "$USER_HOME/.ssh"
         cp /root/.ssh/authorized_keys "$USER_HOME/.ssh/authorized_keys"
@@ -43,41 +62,10 @@ for USERNAME in "${USERS[@]}"; do
         chmod 600 "$USER_HOME/.ssh/authorized_keys"
     fi
 
-    # 4️⃣ Configura .bashrc para iniciar menu.sh automaticamente
+    # Configura .bashrc para iniciar menu automaticamente
     cat <<'EOF' > "$USER_HOME/.bashrc"
 [[ $- != *i* ]] && return
 if [ -z "$MENU_LOADED" ]; then
     export MENU_LOADED=1
     sudo -E bash /opt/configdebian/menu.sh
 fi
-EOF
-
-    # 5️⃣ Configura .profile para carregar .bashrc
-    cat <<'EOF' > "$USER_HOME/.profile"
-if [ -f "$HOME/.bashrc" ]; then
-    . "$HOME/.bashrc"
-fi
-EOF
-
-    chown "$USERNAME:$USERNAME" "$USER_HOME/.bashrc" "$USER_HOME/.profile"
-    chmod 644 "$USER_HOME/.bashrc" "$USER_HOME/.profile"
-done
-
-# 6️⃣ Permite sudo sem senha
-echo "%sudo ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-vpn-users
-chmod 440 /etc/sudoers.d/90-vpn-users
-
-# 7️⃣ Criação da pasta global /opt/configdebian se não existir
-mkdir -p "$DIR_DESTINO"
-
-# 8️⃣ Baixa openvpn-install.sh do Angristan
-echo "📥 Baixando openvpn-install.sh para $DIR_DESTINO..."
-wget -q https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh -O "$DIR_DESTINO/openvpn-install.sh"
-
-# 9️⃣ Ajusta permissões de todos os scripts
-chown -R root:sudo "$DIR_DESTINO"
-chmod -R 775 "$DIR_DESTINO"
-chmod +x "$DIR_DESTINO"/*.sh
-
-echo "✅ Configuração finalizada!"
-echo "Usuários jutair e guest logarão via chave SSH do root e menu iniciará automaticamente."
