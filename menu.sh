@@ -1,35 +1,66 @@
 #!/bin/bash
-# configura_sistema.sh - Versão de Caminhos Globais
+# menu.sh - Painel de Gestão VPS (Produção)
 
-DESTINO="/opt/configdebian"
-# 1. Prepara a pasta global
-rm -rf "$DESTINO"
-mkdir -p "$DESTINO"
-# Assume que você baixou o zip e ele extraiu para $HOME/configdebian-main
-cp -r $HOME/configdebian-main/* "$DESTINO/"
+set -e
 
-# ... (parte de instalação de pacotes e criação de users continua igual) ...
+DIR_SCRIPTS="/opt/configdebian"
 
-# 4. CRIAÇÃO DE USUÁRIOS (Corrigindo o caminho do Bashrc)
-for USERNAME in "jutair" "guest"; do
-    if ! id "$USERNAME" &>/dev/null; then
-        useradd -m -s /bin/bash "$USERNAME"
-        echo "$USERNAME:Senha123" | chpasswd
-        usermod -aG sudo "$USERNAME"
-        mkdir -p /home/$USERNAME/{Backup,clientes_ovp,transfer}
-        
-        # Injeção do Menu (Atenção ao caminho /opt)
-        sed -i '/menu.sh/d' /home/$USERNAME/.bashrc
-        echo "if [ -f $DESTINO/menu.sh ]; then" >> /home/$USERNAME/.bashrc
-        echo "  sudo -E bash $DESTINO/menu.sh" >> /home/$USERNAME/.bashrc
-        echo "fi" >> /home/$USERNAME/.bashrc
+AZUL='\033[0;34m'
+VERDE='\033[0;32m'
+AMARELO='\033[1;33m'
+VERMELHO='\033[0;31m'
+NC='\033[0m'
+
+# IP externo (timeout seguro)
+IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
+
+while true; do
+    USER_SSH=$(who | wc -l)
+    MEM_LIVRE=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
+    DISCO=$(df -h / | awk 'NR==2 { print $5 }')
+    UPTIME=$(uptime -p | sed 's/up //')
+
+    IFACE="eth0"
+    if ip link show tun0 >/dev/null 2>&1; then
+        IFACE="tun0"
+        BANDA_HOJE=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
+    else
+        BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
     fi
+
+    if [[ -z "$BANDA_HOJE" || "$BANDA_HOJE" =~ Error|No\ data ]]; then
+        BANDA_HOJE="0.00 MB"
+    fi
+
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DIGITALOCEAN${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "IP EXTERNO" "$IP_EXT"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "SSH ATIVOS" "$USER_SSH"
+    printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "BANDA (HOJE)" "$BANDA_HOJE ($IFACE)"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "MEMÓRIA RAM" "$MEM_LIVRE em uso"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "DISCO (/)" "$DISCO ocupado"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "UPTIME" "$UPTIME"
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "  [1] 🌐 Gerenciar VPN (OpenVPN)"
+    echo -e "  [2] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
+    echo -e "  [3] 👤 Gerenciar Usuários do Sistema"
+    echo -e "  [4] 🆙 Atualizar Sistema"
+    echo -e "  [5] ❌ Sair"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    read -n 1 -p " Digite a opção: " OPCAO
+    echo ""
+
+    case $OPCAO in
+        1) sudo -E bash "$DIR_SCRIPTS/open_vpn_conf.sh" ;;
+        2) sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh" ;;
+        3) sudo -E bash "$DIR_SCRIPTS/usuarios.sh" ;;
+        4) sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
+        5) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
+        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
+    esac
 done
-
-# 5. PERMISSÕES CRÍTICAS
-# Garante que o grupo sudo possa ler e executar tudo em /opt/configdebian
-chown -R root:sudo "$DESTINO"
-chmod -R 775 "$DESTINO"
-chmod +x "$DESTINO"/*.sh
-
-echo "Configuração completa em $DESTINO"
