@@ -1,34 +1,35 @@
 #!/bin/bash
-# open_vpn_conf.sh - Gerenciador OpenVPN Profissional (Atualizado 24-12-2025)
-
-set -e
-
-USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
+# open_vpn_conf.sh - Gerenciador OpenVPN (Versão Fix Usuários - 24-12-2025)
+#Corrigindo a autorização de usuários
+# Removido set -e para evitar fechamento inesperado
 DIR_SCRIPTS="/opt/configdebian"
+
+# Lógica de detecção de usuário aprimorada (Não trava se falhar)
+if [ -n "$SUDO_USER" ]; then
+    USER_ATUAL="$SUDO_USER"
+elif command -v logname >/dev/null 2>&1; then
+    USER_ATUAL=$(logname 2>/dev/null || whoami)
+else
+    USER_ATUAL=$(whoami)
+fi
+
 DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
-STATUS_LOG="/var/log/openvpn/status.log"
+STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
 INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
 SCRIPT_REDE="$DIR_SCRIPTS/gerencia_rede.sh"
 
-AZUL='\033[0;34m'
-VERDE='\033[0;32m'
-AMARELO='\033[1;33m'
-VERMELHO='\033[0;31m'
-NC='\033[0m'
+AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
 
-# Verifica ROOT
-if [ "$EUID" -ne 0 ]; then
-  echo -e "${VERMELHO}Erro: Execute com sudo!${NC}"
-  exit 1
-fi
-
-# Bloqueia CTRL+C
+# Bloqueia CTRL+C para não quebrar o menu
 trap '' SIGINT
+
+# --- FUNÇÕES ---
 
 organizar_arquivos() {
     mkdir -p "$DESTINO_USUARIO"
-    find /root /home/$USER_ATUAL -maxdepth 1 -name "*.ovpn" -exec mv {} "$DESTINO_USUARIO/" \; 2>/dev/null
-    chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO_USUARIO"
+    # Tenta mover arquivos .ovpn recém criados
+    find /root /home -maxdepth 2 -name "*.ovpn" -exec mv {} "$DESTINO_USUARIO/" \; 2>/dev/null || true
+    chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO_USUARIO" 2>/dev/null || true
 }
 
 listar_online() {
@@ -38,8 +39,8 @@ listar_online() {
     echo -e "${AZUL}==========================================================================${NC}"
 
     if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}❌ Log da VPN não encontrado:${NC} $STATUS_LOG"
-        read -p "ENTER para voltar..." dummy
+        echo -e "${VERMELHO}❌ Log da VPN não encontrado em:${NC} $STATUS_LOG"
+        read -p "Pressione ENTER para voltar..." dummy
         return
     fi
 
@@ -47,16 +48,11 @@ listar_online() {
         " " "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
     echo "----------------------------------------------------------------------------"
 
-    grep "^CLIENT_LIST" "$STATUS_LOG" | \
+    # Uso de grep direto (sem sudo interno para não pedir senha de novo)
+    grep "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | \
     while IFS=',' read -r _ USER IP _ RX TX _ CONECTADO _; do
-
-        # Garantia contra valores vazios
-        RX=${RX:-0}
-        TX=${TX:-0}
-
-        RX_MB=$(awk -v v="$RX" 'BEGIN {printf "%.2f", v/1048576}')
-        TX_MB=$(awk -v v="$TX" 'BEGIN {printf "%.2f", v/1048576}')
-
+        RX_MB=$(awk -v v="${RX:-0}" 'BEGIN {printf "%.2f", v/1048576}')
+        TX_MB=$(awk -v v="${TX:-0}" 'BEGIN {printf "%.2f", v/1048576}')
         ICON="👤"
         [[ "$USER" == *"celular"* ]] && ICON="📱"
         [[ "$USER" == *"notebook"* || "$USER" == *"pc"* ]] && ICON="💻"
@@ -69,77 +65,43 @@ listar_online() {
     read -p "Pressione ENTER para retornar..." dummy
 }
 
-
-gerar_link_ovpn() {
-    clear
-    USUARIO_REAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$USER})
-    CAMINHO_BUSCA="/home/$USUARIO_REAL/clientes_ovp"
-    [ -z "$IP_EXT" ] && IP_EXT=$(curl -s --max-time 2 ifconfig.me)
-
-    if [ ! -d "$CAMINHO_BUSCA" ]; then
-        echo -e "${VERMELHO}Erro: Pasta não encontrada em $CAMINHO_BUSCA${NC}"
-        read -p "ENTER para voltar..." dummy
-        return
-    fi
-
-    FILES=$(ls "$CAMINHO_BUSCA"/*.ovpn 2>/dev/null)
-    if [ -z "$FILES" ]; then
-        echo -e "${AMARELO}Nenhum arquivo .ovpn encontrado.${NC}"
-    else
-        echo -e "${VERDE}Comandos SCP para baixar os arquivos:${NC}\n"
-        for file in $FILES; do
-            FILENAME=$(basename "$file")
-            echo -e "${AMARELO}➜ $FILENAME${NC}"
-            echo "scp ${USUARIO_REAL}@${IP_EXT}:~/clientes_ovp/${FILENAME} ./"
-            echo ""
-        done
-    fi
-    read -p "Pressione ENTER para retornar..." dummy
-}
-
 menu_ovp() {
     while true; do
+        # Captura estatísticas básicas
         VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
-        CPU_USO=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {printf "%.1f%%", usage}')
-        MEM_USO=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
         
-        # Detecta interface tun*
-        IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep 'tun[0-9]+' | head -n1)
-        IFACE=${IFACE:-"eth0"}
-        BANDA_VPN=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
-        [[ -z "$BANDA_VPN" || "$BANDA_VPN" == *"No data"* ]] && BANDA_VPN="0.00 MB"
-
         clear
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "            ${VERDE}GERENCIADOR OPENVPN - DIGITALOCE${NC}"
+        echo -e "            ${VERDE}GERENCIADOR OPENVPN - CONECTADO COMO: $USER_ATUAL${NC}"
         echo -e "${AZUL}===============================================================${NC}"
-        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "STATUS SERVIÇO" "Ativo ($IFACE)"
-        printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "USUÁRIOS VPN" "$VPN_ONLINE Conectados"
-        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "TRÁFEGO VPN" "$BANDA_VPN (Hoje)"
-        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "CPU / RAM" "$CPU_USO / $MEM_USO"
+        printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "USUÁRIOS VPN" "$VPN_ONLINE Online"
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "  [1] 👤 Gerenciar Usuários (Criar/Remover)"
-        echo -e "  [2] 📂 Baixar aquivo cliente ovpn"
-        echo -e "  [3] 📊 Ver Detalhes dos Online & Consumo"
-        echo -e "  [4] ⚡ Testar Velocidade da Internet"
-        echo -e "  [5] 📈 Relatórios VnStat (Dia/Mês)"
-        echo -e "  [6] 🛡️ Segurança e Firewall"
-        echo -e "  [7] ⬅️  Retornar ao Menu Principal"
+        echo -e "  [1] 👤 Criar / Remover Usuários"
+        echo -e "  [2] 📂 Meus Arquivos .ovpn"
+        echo -e "  [3] 📊 Ver Detalhes dos Online"
+        echo -e "  [4] ⚡ Testar Velocidade"
+        echo -e "  [5] 📈 Consumo de Banda (VnStat)"
+        echo -e "  [6] ⬅️  Retornar ao Menu Principal"
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        read -n 1 -p "Digite a opção: " OPCAO
-        echo ""
+        
+        read -n 1 -p "Digite a opção: " OPCAO; echo ""
 
         case $OPCAO in
-            1) sudo bash "$INSTALLER_PATH" interactive; organizar_arquivos ;;
-            2) gerar_link_ovpn ;;
+            1) if [ -f "$INSTALLER_PATH" ]; then 
+                   bash "$INSTALLER_PATH"
+                   organizar_arquivos
+               else
+                   echo -e "${VERMELHO}Instalador não encontrado!${NC}"; sleep 2
+               fi ;;
+            2) clear; echo -e "${VERDE}Configurações em $DESTINO_USUARIO:${NC}"; ls "$DESTINO_USUARIO"/*.ovpn 2>/dev/null || echo "Vazio."; read -p "ENTER..." d ;;
             3) listar_online ;;
-            4) clear; speedtest-cli --share; read -p "ENTER para voltar..." dummy ;;
-            5) clear; vnstat -i "$IFACE" -d; read -p "ENTER para voltar..." dummy ;;
-            6) [ -f "$SCRIPT_REDE" ] && bash "$SCRIPT_REDE" || echo "Script não encontrado" ;;
-            7) exit 0 ;;
+            4) clear; speedtest-cli --share; read -p "ENTER..." d ;;
+            5) clear; vnstat -d; read -p "ENTER..." d ;;
+            6) return 0 ;; 
             *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
         esac
     done
 }
 
+# Inicia o Menu
 menu_ovp
