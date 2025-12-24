@@ -11,7 +11,6 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-# IP externo (timeout seguro)
 IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
 while true; do
@@ -28,9 +27,7 @@ while true; do
         BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
     fi
 
-    if [[ -z "$BANDA_HOJE" || "$BANDA_HOJE" =~ Error|No\ data ]]; then
-        BANDA_HOJE="0.00 MB"
-    fi
+    [[ -z "$BANDA_HOJE" || "$BANDA_HOJE" =~ Error|No\ data ]] && BANDA_HOJE="0.00 MB"
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
