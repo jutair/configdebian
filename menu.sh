@@ -1,5 +1,5 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS (Produção)
+# menu.sh - Painel de Gestão VPS (Atualizado 24-12-2025)
 
 set -e
 
@@ -19,24 +19,14 @@ while true; do
     DISCO=$(df -h / | awk 'NR==2 { print $5 }')
     UPTIME=$(uptime -p | sed 's/up //')
 
-    # Detecta interface VPN tun0, se não existir usa eth0
-    IFACE=""
-    BANDA_HOJE=""
+    # Detecta interface ativa (tun0 se VPN, senão eth0)
+    IFACE="eth0"
     if ip link show tun0 >/dev/null 2>&1; then
         IFACE="tun0"
-        BANDA_HOJE=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
     fi
 
-    # Se tun0 não existir ou não tiver dados, usa eth0
-    if [ -z "$IFACE" ]; then
-        IFACE="eth0"
-        BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
-    fi
-
-    # Se vnStat não retornar dados, coloca 0.00 MB
-    if [ -z "$BANDA_HOJE" ] || [[ "$BANDA_HOJE" == *"Error"* ]] || [[ "$BANDA_HOJE" == *"No data"* ]]; then
-        BANDA_HOJE="0.00 MB"
-    fi
+    BANDA_HOJE=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
+    [[ -z "$BANDA_HOJE" || "$BANDA_HOJE" =~ Error|No\ data ]] && BANDA_HOJE="0.00 MB"
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
