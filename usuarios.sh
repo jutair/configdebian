@@ -57,20 +57,23 @@ monitorar_logados() {
     echo -e "${AZUL}====================================================================${NC}"
     echo -e "              ${VERDE}SESSÕES ATIVAS — SSH E VPN${NC}"
     echo -e "${AZUL}====================================================================${NC}"
-    
-    printf "${AMARELO}%-15s %-6s %-18s %-20s${NC}\n" "USUÁRIO" "TIPO" "IP ORIGEM" "DESDE"
+    printf "${AMARELO}%-13s %-6s %-18s %-20s${NC}\n" "USUÁRIO" "TIPO" "IP ORIGEM" "DESDE"
     echo -e "--------------------------------------------------------------------"
 
-    # --- SSH ---
-    w -h | awk '{printf "👤 %-13s SSH   %-18s %-20s\n", $1, $3, $4}'
+    # --- Sessões SSH ---
+    who | while read -r user tty date time rest; do
+        IP=$(echo "$rest" | awk '{print $1}' | tr -d '()')
+        [[ -z "$IP" ]] && IP="Local"
+        printf "👤 %-13s SSH   %-18s %-20s\n" "$user" "$IP" "$time"
+    done
 
-    # --- VPN ---
-    if [ -f /var/log/openvpn/status.log ]; then
-        awk '
-        /^CLIENT_LIST/ {
-            split($3,ip,":");
-            printf "🔐 %-13s VPN   %-18s %-20s\n", $2, ip[1], $8
-        }' /var/log/openvpn/status.log
+    # --- Sessões VPN ---
+    STATUS_LOG="/var/log/openvpn/status.log"
+    if [ -f "$STATUS_LOG" ]; then
+        grep "^CLIENT_LIST" "$STATUS_LOG" | while IFS=',' read -r _ usuario ipport recv sent _ conectadosem; do
+            IP=${ipport%%:*}  # remove a porta
+            printf "🔐 %-13s VPN   %-18s %-20s\n" "$usuario" "$IP" "$conectadosem"
+        done
     fi
 
     echo -e "${AZUL}====================================================================${NC}"
