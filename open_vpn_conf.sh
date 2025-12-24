@@ -1,5 +1,5 @@
 #!/bin/bash
-# open_vpn_conf.sh - Gerenciador OpenVPN Profissional 24-12-2025-v1
+# open_vpn_conf.sh - Gerenciador OpenVPN Profissional 24-12-2025-v2
 
 set -e
 
