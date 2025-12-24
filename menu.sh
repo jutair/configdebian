@@ -1,5 +1,5 @@
 #!/bin/bash
-# menu.sh - Painel de Gestão VPS (Atualizado 24-12-2025)
+# menu.sh - Painel de Gestão VPS com Dashboard (Atualizado 24-12-2025)
 
 set -e
 
@@ -11,50 +11,76 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
+IP_SERVIDOR=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
-while true; do
-    USER_SSH=$(who | wc -l)
-    MEM_LIVRE=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
-    DISCO=$(df -h / | awk 'NR==2 { print $5 }')
-    UPTIME=$(uptime -p | sed 's/up //')
+# Função de dashboard
+dashboard() {
+    while true; do
+        clear
+        DATA=$(date +"%Y-%m-%d")
+        HORA=$(TZ="America/Manaus" date +"%H:%M:%S")
+        CPU=$(top -bn1 | grep "Cpu(s)" | awk '{usage=100-$8} END {printf "%.1f%%", usage}')
+        VPN_ONLINE=$(grep -c "^CLIENT_LIST" /etc/openvpn/server/openvpn-status.log 2>/dev/null || echo "0")
+        SSH_ONLINE=$(who | grep -v "(:0)" | wc -l)
+        TRAFEGO=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
+        [[ -z "$TRAFEGO" || "$TRAFEGO" == *"No data"* ]] && TRAFEGO="0.00 MB"
 
-    # Detecta interface tun0 se existir, caso contrário eth0
-    IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -E 'tun[0-9]+|eth0' | head -n1)
-    BANDA_HOJE=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
-    [[ -z "$BANDA_HOJE" || "$BANDA_HOJE" =~ Error|No\ data ]] && BANDA_HOJE="0.00 MB"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "                     ${VERDE}DASHBOARD VPS${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "IP do Servidor" "$IP_SERVIDOR"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Data" "$DATA"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Hora do Sistema (Manaus)" "$HORA"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Consumo da CPU" "$CPU"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Usuários VPN Online" "$VPN_ONLINE"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Usuários SSH Online" "$SSH_ONLINE"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Tráfego VPN Hoje" "$TRAFEGO"
 
-    clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DIGITALOCEAN${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo -e "${VERDE}Usuários SSH Conectados (IP real)${NC}"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        printf "%-15s %-20s\n" "USUÁRIO" "IP ORIGEM"
+        who | while read -r user tty date time ip rest; do
+            ip_real=$(echo "$ip" | tr -d '()')
+            printf "%-15s %-20s\n" "$user" "$ip_real"
+        done
 
-    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "IP EXTERNO" "$IP_EXT"
-    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "SSH ATIVOS" "$USER_SSH"
-    printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "BANDA (HOJE)" "$BANDA_HOJE ($IFACE)"
-    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "MEMÓRIA RAM" "$MEM_LIVRE em uso"
-    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "DISCO (/)" "$DISCO ocupado"
-    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "UPTIME" "$UPTIME"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "${AMARELO}Atualizando a cada 60 segundos. Pressione Ctrl+C para voltar ao menu principal...${NC}"
+        sleep 60
+    done
+}
 
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] 🌐 Gerenciar VPN (OpenVPN)"
-    echo -e "  [2] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
-    echo -e "  [3] 👤 Gerenciar Usuários do Sistema"
-    echo -e "  [4] 🆙 Atualizar Sistema"
-    echo -e "  [5] 💾 Backup do Sistema"
-    echo -e "  [6] ❌ Sair"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+# Função do menu principal
+menu_principal() {
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DASHBOARD${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "  [1] 📊 Abrir Dashboard em tempo real"
+        echo -e "  [2] 🌐 Gerenciar VPN (OpenVPN)"
+        echo -e "  [3] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
+        echo -e "  [4] 👤 Gerenciar Usuários do Sistema"
+        echo -e "  [5] 🆙 Atualizar Sistema"
+        echo -e "  [6] 💾 Backup do Sistema"
+        echo -e "  [7] ❌ Sair"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    read -n 1 -p " Digite a opção: " OPCAO
-    echo ""
+        read -n 1 -p " Digite a opção: " OPCAO
+        echo ""
 
-    case $OPCAO in
-        1) sudo -E bash "$DIR_SCRIPTS/open_vpn_conf.sh" ;;
-        2) sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh" ;;
-        3) sudo -E bash "$DIR_SCRIPTS/usuarios.sh" ;;
-        4) sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
-        5) sudo -E bash "$DIR_SCRIPTS/backup.sh" ;;
-        6) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
-        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
-    esac
-done
+        case $OPCAO in
+            1) dashboard ;;
+            2) sudo -E bash "$DIR_SCRIPTS/open_vpn_conf.sh" ;;
+            3) sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh" ;;
+            4) sudo -E bash "$DIR_SCRIPTS/usuarios.sh" ;;
+            5) sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
+            6) sudo -E bash "$DIR_SCRIPTS/backup.sh" ;;
+            7) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
+            *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+menu_principal
