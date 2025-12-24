@@ -1,5 +1,5 @@
 #!/bin/bash
-# open_vpn_conf.sh - Gerenciador OpenVPN Profissional 24-12-2025-v5
+# open_vpn_conf.sh - Gerenciador OpenVPN Profissional 24-12-2025-v4
 
 set -e
 
@@ -17,7 +17,6 @@ NC='\033[0m'
 DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
 STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
 DIR_SCRIPTS="/opt/configdebian"
-
 INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
 SCRIPT_REDE="$DIR_SCRIPTS/gerencia_rede.sh"
 
@@ -106,24 +105,28 @@ gerar_link_ovpn() {
 
 menu_ovp() {
     while true; do
+        # Detecta interface VPN tun0 ou fallback eth0
+        IFACE=""
+        BANDA_VPN=""
+        if ip link show tun0 >/dev/null 2>&1; then
+            IFACE="tun0"
+            BANDA_VPN=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
+        fi
+        if [ -z "$IFACE" ]; then
+            IFACE="eth0"
+            BANDA_VPN=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
+        fi
+        [[ -z "$BANDA_VPN" || "$BANDA_VPN" == *"No data"* ]] && BANDA_VPN="0.00 MB"
+
         VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
         CPU_USO=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {printf "%.1f%%", usage}')
         MEM_USO=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
-        
-        # --- DETECTA INTERFACE TUN0 ---
-        BANDA_VPN="0.00 MB"
-        if ip link show tun0 >/dev/null 2>&1; then
-            TMP_BANDA=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
-            if [ -n "$TMP_BANDA" ] && [[ "$TMP_BANDA" != *"No data"* ]]; then
-                BANDA_VPN="$TMP_BANDA"
-            fi
-        fi
 
         clear
         echo -e "${AZUL}===============================================================${NC}"
         echo -e "            ${VERDE}GERENCIADOR OPENVPN - DIGITALOCE${NC}"
         echo -e "${AZUL}===============================================================${NC}"
-        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "STATUS SERVIÇO" "Ativo (tun0)"
+        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "STATUS SERVIÇO" "Ativo ($IFACE)"
         printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "USUÁRIOS VPN" "$VPN_ONLINE Conectados"
         printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "TRÁFEGO VPN" "$BANDA_VPN (Hoje)"
         printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "CPU / RAM" "$CPU_USO / $MEM_USO"
@@ -140,14 +143,11 @@ menu_ovp() {
         echo ""
 
         case $OPCAO in
-            1)
-                sudo bash "$INSTALLER_PATH" interactive
-                organizar_arquivos
-                ;;
+            1) sudo bash "$INSTALLER_PATH" interactive; organizar_arquivos ;;
             2) gerar_link_ovpn ;;
             3) listar_online ;;
             4) clear; speedtest-cli --share; read -p "ENTER para voltar..." dummy ;;
-            5) clear; vnstat -i tun0 -d; echo ""; read -p "ENTER para voltar..." dummy ;;
+            5) clear; vnstat -i "$IFACE" -d; echo ""; read -p "ENTER para voltar..." dummy ;;
             6) [ -f "$SCRIPT_REDE" ] && bash "$SCRIPT_REDE" || echo "Script não encontrado" ;;
             7) echo -e "${VERDE}Saindo do módulo VPN...${NC}"; sleep 1; exit 0 ;;
             *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
