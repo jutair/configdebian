@@ -54,7 +54,7 @@ listar_usuarios_cadastrados() {
 
 monitorar_logados() {
     clear
-    echo -e "${AZUL}====================================================================${NC}"
+    echo -e "${AZUL}========================================================================================================================${NC}"
     echo -e "              ${VERDE}SESSÕES ATIVAS — SSH E VPN (TEMPO REAL)${NC}"
     echo -e "${AZUL}====================================================================${NC}"
     printf "${AMARELO}%-15s %-6s %-18s %-15s %-12s${NC}\n" "USUÁRIO" "TIPO" "IP ORIGEM" "DOWNLOAD" "UPLOAD" "DESDE"
@@ -78,7 +78,7 @@ monitorar_logados() {
         done
     fi
 
-    echo -e "${AZUL}====================================================================${NC}"
+    echo -e "${AZUL}========================================================================================================================${NC}"
     read -p " Pressione ENTER para retornar..." dummy
 }
 
