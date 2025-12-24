@@ -19,7 +19,7 @@ USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
 dashboard() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                     ${VERDE}DASHBOARD VPS${NC}"
+    echo -e "                   ${VERDE}DASHBOAR DO SERVIDOR${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "${AMARELO}Atualizando a cada 5 segundos. Pressione ENTER para voltar ao menu principal...${NC}"
 
@@ -70,7 +70,7 @@ dashboard() {
 while true; do
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DIGITAL OCEAN${NC}"
+    echo -e "          ${VERDE}PAINEL DO SERVIDOR- DIGITAL OCEAN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "  [0] 📊 Dashboard"
     echo -e "  [1] 🌐 Gerenciar VPN (OpenVPN)"
