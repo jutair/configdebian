@@ -1,40 +1,52 @@
 #!/bin/bash
-# configura_sistema.sh - Construtor
+# configura_sistema.sh - Versão Final (Correção de Permissões e Login)
 
-DIR_SCRIPTS="$HOME/configdebian-main"
+# 1. Mover os scripts para um local acessível (fora da pasta root)
+DESTINO="/opt/configdebian"
+rm -rf "$DESTINO"
+mkdir -p "$DESTINO"
+cp -r $HOME/configdebian-main/* "$DESTINO/"
 
-# 1. Instalação de pacotes (Removido -u do vnstat para compatibilidade)
-apt-get install -y curl wget unzip vnstat ufw fail2ban openvpn samba speedtest-cli bc
+# 2. Instalação de pacotes
+apt-get update && apt-get install -y curl wget unzip vnstat ufw fail2ban openvpn samba speedtest-cli bc
 
-# 2. Configuração VnStat (Debian Trixie)
-INTERFACE=$(ip route | grep default | awk '{print $5}')
+# 3. Configuração VnStat
 systemctl start vnstat
 systemctl enable vnstat
 
-# 3. Criação de Usuários e Pastas
-for USERNAME in "admin" "jutair"; do
+# 4. CRIAÇÃO DE USUÁRIOS (jutair e guest)
+for USERNAME in "jutair" "guest"; do
     if ! id "$USERNAME" &>/dev/null; then
         useradd -m -s /bin/bash "$USERNAME"
         echo "$USERNAME:Senha123" | chpasswd
         usermod -aG sudo "$USERNAME"
         
-        # Estrutura necessária para o menu funcionar
+        # Estrutura de pastas na home do utilizador
         mkdir -p /home/$USERNAME/{Backup,clientes_ovp,transfer}
         
-        # Injeção do Menu no login (Importante: Usa o caminho absoluto)
-        echo "if [ -f $DIR_SCRIPTS/menu.sh ]; then" >> /home/$USERNAME/.bashrc
-        echo "  sudo -E bash $DIR_SCRIPTS/menu.sh" >> /home/$USERNAME/.bashrc
+        # --- CORREÇÃO DO SSH ---
+        if [ -d "/root/.ssh" ]; then
+            mkdir -p /home/$USERNAME/.ssh
+            cp /root/.ssh/authorized_keys /home/$USERNAME/.ssh/
+            chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
+            chmod 700 /home/$USERNAME/.ssh
+            chmod 600 /home/$USERNAME/.ssh/authorized_keys
+        fi
+
+        # --- CORREÇÃO DO MENU NO LOGIN ---
+        # Usamos o caminho absoluto /opt/configdebian para evitar erros de permissão
+        sed -i '/menu.sh/d' /home/$USERNAME/.bashrc # Limpa entradas duplicadas
+        echo "if [ -f $DESTINO/menu.sh ]; then" >> /home/$USERNAME/.bashrc
+        echo "  sudo -E bash $DESTINO/menu.sh" >> /home/$USERNAME/.bashrc
         echo "fi" >> /home/$USERNAME/.bashrc
         
         chown -R $USERNAME:$USERNAME /home/$USERNAME
     fi
 done
 
-# 4. Permissões sem senha para o Menu
+# 5. Permissões Globais
+chmod -R 755 "$DESTINO"
+chmod +x "$DESTINO"/*.sh
 echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-vpn-users
 
-# 5. Permissões finais nos scripts
-chmod +x "$DIR_SCRIPTS"/*.sh
-
-echo "Configuração concluída. Removendo instalador..."
-rm -f "$HOME/setup_vps.sh"*
+echo "Configuração concluída com sucesso!"
