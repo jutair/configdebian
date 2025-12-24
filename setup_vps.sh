@@ -1,5 +1,7 @@
 #!/bin/bash
 # setup_vps.sh - Setup completo da VPS com menu automático e usuários SSH
+# Atualizado: 24-12-2025
+
 set -e
 
 if [ "$EUID" -ne 0 ]; then
@@ -30,7 +32,7 @@ mv /tmp/configdebian-main/* /opt/configdebian/
 chmod +x /opt/configdebian/*.sh
 rm -f /tmp/main.zip
 
-# 5️⃣ Executa o configura_sistema.sh diretamente do repositório
+# 5️⃣ Executa configura_sistema.sh
 CONFIG_SCRIPT="/opt/configdebian/configura_sistema.sh"
 
 if [ ! -f "$CONFIG_SCRIPT" ]; then
