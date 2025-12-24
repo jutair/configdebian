@@ -1,94 +1,63 @@
 #!/bin/bash
-# configura_sistema.sh
-# Configuração inicial do sistema + menu automático no login SSH
+# menu.sh - Painel de Gestão VPS (Produção)
 
 set -e
 
-### VARIÁVEIS ###
-USERNAME="jutair"
-USER_HOME="/home/$USERNAME"
-DIR_SCRIPTS="$USER_HOME/configdebian-main"
-MENU_SCRIPT="$DIR_SCRIPTS/menu.sh"
+DIR_SCRIPTS="/opt/configdebian"
 
-echo "🔧 Iniciando configuração do sistema..."
+AZUL='\033[0;34m'
+VERDE='\033[0;32m'
+AMARELO='\033[1;33m'
+VERMELHO='\033[0;31m'
+NC='\033[0m'
 
-### 1️⃣ GARANTE QUE O SCRIPT RODE COMO ROOT ###
-if [ "$EUID" -ne 0 ]; then
-    echo "❌ Execute este script como root."
-    exit 1
-fi
+IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
-### 2️⃣ CRIA USUÁRIO SE NÃO EXISTIR ###
-if ! id "$USERNAME" &>/dev/null; then
-    echo "👤 Criando usuário $USERNAME..."
-    useradd -m -s /bin/bash "$USERNAME"
-    passwd "$USERNAME"
-else
-    echo "👤 Usuário $USERNAME já existe."
-fi
+while true; do
+    USER_SSH=$(who | wc -l)
+    MEM_LIVRE=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
+    DISCO=$(df -h / | awk 'NR==2 { print $5 }')
+    UPTIME=$(uptime -p | sed 's/up //')
 
-### 3️⃣ INSTALA DEPENDÊNCIAS BÁSICAS ###
-echo "📦 Instalando pacotes essenciais..."
-apt update
-apt install -y sudo curl vnstat
-
-### 4️⃣ CONFIGURA SUDO SEM SENHA (OPCIONAL) ###
-echo "🔐 Configurando sudo sem senha para $USERNAME..."
-echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME
-chmod 440 /etc/sudoers.d/$USERNAME
-
-### 5️⃣ GARANTE DIRETÓRIO DE SCRIPTS ###
-mkdir -p "$DIR_SCRIPTS"
-chown -R "$USERNAME:$USERNAME" "$DIR_SCRIPTS"
-
-### 6️⃣ CONFIGURA .bashrc PARA CHAMAR O MENU ###
-echo "🧠 Configurando .bashrc..."
-
-cat <<'EOF' > "$USER_HOME/.bashrc"
-# ~/.bashrc - gerenciado pelo configura_sistema.sh
-
-# Sai se não for shell interativo
-[[ $- != *i* ]] && return
-
-# Evita loop infinito
-if [ -z "$MENU_INICIADO" ]; then
-    export MENU_INICIADO=1
-
-    MENU="$HOME/configdebian-main/menu.sh"
-    if [ -x "$MENU" ]; then
-        clear
-        sudo -E bash "$MENU"
-        exit
+    IFACE="eth0"
+    if ip link show tun0 >/dev/null 2>&1; then
+        IFACE="tun0"
+        BANDA_HOJE=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
     else
-        echo "⚠ Menu não encontrado ou sem permissão."
+        BANDA_HOJE=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
     fi
-fi
-EOF
 
-### 7️⃣ CONFIGURA .profile (ESSENCIAL PARA SSH) ###
-echo "🔑 Configurando .profile..."
+    [[ -z "$BANDA_HOJE" || "$BANDA_HOJE" =~ Error|No\ data ]] && BANDA_HOJE="0.00 MB"
 
-cat <<'EOF' > "$USER_HOME/.profile"
-# ~/.profile - gerenciado pelo configura_sistema.sh
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DIGITALOCEAN${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
 
-# Carrega bashrc no login SSH
-if [ -f "$HOME/.bashrc" ]; then
-    . "$HOME/.bashrc"
-fi
-EOF
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "IP EXTERNO" "$IP_EXT"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "SSH ATIVOS" "$USER_SSH"
+    printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "BANDA (HOJE)" "$BANDA_HOJE ($IFACE)"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "MEMÓRIA RAM" "$MEM_LIVRE em uso"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "DISCO (/)" "$DISCO ocupado"
+    printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "UPTIME" "$UPTIME"
 
-### 8️⃣ PERMISSÕES CORRETAS ###
-chown "$USERNAME:$USERNAME" "$USER_HOME/.bashrc" "$USER_HOME/.profile"
-chmod 644 "$USER_HOME/.bashrc" "$USER_HOME/.profile"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "  [1] 🌐 Gerenciar VPN (OpenVPN)"
+    echo -e "  [2] 🚀 Gerenciar Rede e Segurança (FW/SSH)"
+    echo -e "  [3] 👤 Gerenciar Usuários do Sistema"
+    echo -e "  [4] 🆙 Atualizar Sistema"
+    echo -e "  [5] ❌ Sair"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-### 9️⃣ GARANTE PERMISSÃO DE EXECUÇÃO DO MENU ###
-if [ -f "$MENU_SCRIPT" ]; then
-    chmod +x "$MENU_SCRIPT"
-    chown "$USERNAME:$USERNAME" "$MENU_SCRIPT"
-else
-    echo "⚠ ATENÇÃO: menu.sh ainda não existe em $DIR_SCRIPTS"
-fi
+    read -n 1 -p " Digite a opção: " OPCAO
+    echo ""
 
-### 🔟 FINALIZA ###
-echo "✅ Configuração concluída com sucesso!"
-echo "➡ Ao logar via SSH com $USERNAME, o menu será iniciado automaticamente."
+    case $OPCAO in
+        1) sudo -E bash "$DIR_SCRIPTS/open_vpn_conf.sh" ;;
+        2) sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh" ;;
+        3) sudo -E bash "$DIR_SCRIPTS/usuarios.sh" ;;
+        4) sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
+        5) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
+        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
+    esac
+done
