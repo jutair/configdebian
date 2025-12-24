@@ -68,65 +68,45 @@ listar_online() {
 
 gerar_link_ovpn() {
     clear
-    # Garante que o IP Externo esteja disponível
-    [ -z "$IP_EXT" ] && IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "SEU_IP_VPS")
+    # Detecta o usuário real da seção (ignora o sudo para pegar a home correta)
+    USUARIO_DA_SESSAO=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
+    CAMINHO_BUSCA="/home/$USUARIO_DA_SESSAO/clientes_ovp"
+    
+    # Garante o IP Externo
+    [ -z "$IP_EXT" ] && IP_EXT=$(curl -s --max-time 2 ifconfig.me)
 
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}DOWNLOAD DE CONFIGURAÇÕES OVPN${NC}"
+    echo -e "             ${VERDE}MEUS ARQUIVOS OVPN DISPONÍVEIS${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    
-    # LISTAGEM PROFISSIONAL (Baseada na sua função de usuários)
-    printf "${AMARELO}%-20s %-15s${NC}\n" "USUÁRIO" "STATUS/TIPO"
-    echo -e "---------------------------------------------------------------"
-    
-    # Lista apenas usuários reais que possuem diretório no /home
-    while IFS=: read -r user pass uid gid info home shell; do
-        if [[ "$home" == /home/* ]]; then
-            if groups "$user" | grep -q "\bsudo\b"; then
-                TYPE=$(echo -e "${VERMELHO}ADMIN${NC}")
-            else
-                TYPE=$(echo -e "${VERDE}COMUM${NC}")
-            fi
-            printf "%-20s %-15s\n" "$user" "$TYPE"
-        fi
-    done < /etc/passwd
-    
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -ne "${AMARELO}Digite o NOME do usuário para buscar o arquivo: ${NC}"
-    read USER_SEL
+    echo -e " Usuário: ${AMARELO}$USUARIO_DA_SESSAO${NC}"
+    echo -e " Pasta:   ${AMARELO}$CAMINHO_BUSCA${NC}"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    # Validação se o usuário existe e tem a pasta
-    CAMINHO_BUSCA="/home/$USER_SEL/clientes_ovp"
-
+    # Verifica se a pasta existe
     if [ ! -d "$CAMINHO_BUSCA" ]; then
-        echo -e "\n${VERMELHO}Erro: Pasta 'clientes_ovp' não encontrada para o usuário $USER_SEL!${NC}"
-        sleep 2; return
+        echo -e "${VERMELHO}Erro: Sua pasta 'clientes_ovp' não foi encontrada.${NC}"
+        echo -e "Certifique-se de que o diretório existe em sua HOME."
+        read -p " ENTER para voltar..." d; return
     fi
 
-    clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "    ${AMARELO}ARQUIVOS DISPONÍVEIS PARA:${NC} $USER_SEL"
-    echo -e "${AZUL}===============================================================${NC}"
-    
     FILES=$(ls "$CAMINHO_BUSCA"/*.ovpn 2>/dev/null)
 
     if [ -z "$FILES" ]; then
-        echo -e "${VERMELHO}Nenhum arquivo .ovpn encontrado para este usuário.${NC}"
+        echo -e "${AMARELO}Nenhum arquivo .ovpn encontrado na sua pasta.${NC}"
     else
-        echo -e "${VERDE}INSTRUÇÃO:${NC} Copie o comando e cole no terminal do seu PC local.\n"
+        echo -e "${VERDE}Copie e cole no terminal do seu Computador Local:${NC}\n"
         
         for file in $FILES; do
             FILENAME=$(basename "$file")
-            echo -e "${AMARELO}Arquivo:${NC} $FILENAME"
-            # Comando SCP pronto para uso
-            echo -e "${VERDE}scp root@$IP_EXT:$file ./ ${NC}"
-            echo -e "${AZUL}---------------------------------------------------------------${NC}"
+            echo -e "${AMARELO}➜ $FILENAME${NC}"
+            echo -e "scp root@$IP_EXT:$file ./"
+            echo ""
         done
     fi
     
-    read -p " Pressione ENTER para retornar ao menu..." dummy
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p " Pressione ENTER para retornar..." dummy
 }
-
 menu_ovp() {
     while true; do
         # --- COLETA DE DADOS PARA O DASHBOARD ---
