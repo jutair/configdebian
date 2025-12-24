@@ -1,6 +1,5 @@
 #!/bin/bash
 # update_sistema.sh - Atualizador Global em /opt/configdebian
-# Baixa o script do Angristan
 
 AZUL='\033[0;34m'
 VERDE='\033[0;32m'
@@ -29,7 +28,7 @@ wget -q https://github.com/jutair/configdebian/archive/refs/heads/main.zip -O "$
 
 if [ -f "$TEMP_ZIP" ]; then
     mkdir -p "$TEMP_EXTRACT"
-    unzip -o "$TEMP_ZIP" -d "$TEMP_EXTRACT" > /dev/null
+    unzip -o "$TEMP_ZIP" -d "$TEMP_EXTRACT" > /dev/null 2>&1
 
     cp -r "$TEMP_EXTRACT/configdebian-main/"* "$DESTINO/"
 
