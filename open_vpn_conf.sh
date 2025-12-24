@@ -1,35 +1,29 @@
 #!/bin/bash
-# open_vpn_conf.sh - Gerenciador OpenVPN Profissional 24-12-2025-v4
+# open_vpn_conf.sh - Gerenciador OpenVPN Profissional (24-12-2025 final)
 
 set -e
 
-# Identifica o usuário real (quem logou via SSH)
 USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
 
-# --- CORES ---
 AZUL='\033[0;34m'
 VERDE='\033[0;32m'
 AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-# --- CAMINHOS ---
 DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
 STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
 DIR_SCRIPTS="/opt/configdebian"
 INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
 SCRIPT_REDE="$DIR_SCRIPTS/gerencia_rede.sh"
 
-# Verifica ROOT
 if [ "$EUID" -ne 0 ]; then
   echo -e "${VERMELHO}Erro: Execute com sudo!${NC}"
   exit 1
 fi
 
-# Bloqueia CTRL+C para manter a integridade do menu
 trap '' SIGINT
 
-# --- FUNÇÕES ---
 organizar_arquivos() {
     mkdir -p "$DESTINO_USUARIO"
     find /root /home/$USER_ATUAL -maxdepth 1 -name "*.ovpn" -exec mv {} "$DESTINO_USUARIO/" \; 2>/dev/null
@@ -54,10 +48,8 @@ listar_online() {
             RECV=$(echo "$line" | cut -d"$SEP" -f5)
             SENT=$(echo "$line" | cut -d"$SEP" -f6)
             DATA=$(echo "$line" | cut -d"$SEP" -f8)
-
             RECV_MB=$(echo "scale=2; $RECV/1048576" | bc)
             SENT_MB=$(echo "scale=2; $SENT/1048576" | bc)
-
             printf "%-15s %-15s %-12s %-12s %-15s\n" "$USER" "$IP" "${RECV_MB}MB" "${SENT_MB}MB" "$DATA"
         done
     fi
@@ -69,7 +61,6 @@ gerar_link_ovpn() {
     clear
     USUARIO_REAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$USER})
     CAMINHO_BUSCA="/home/$USUARIO_REAL/clientes_ovp"
-
     [ -z "$IP_EXT" ] && IP_EXT=$(curl -s --max-time 2 ifconfig.me)
 
     echo -e "${AZUL}===============================================================${NC}"
@@ -86,7 +77,6 @@ gerar_link_ovpn() {
     fi
 
     FILES=$(ls "$CAMINHO_BUSCA"/*.ovpn 2>/dev/null)
-
     if [ -z "$FILES" ]; then
         echo -e "${AMARELO}Nenhum arquivo .ovpn encontrado.${NC}"
     else
@@ -98,29 +88,23 @@ gerar_link_ovpn() {
             echo ""
         done
     fi
-
     echo -e "${AZUL}===============================================================${NC}"
     read -p " Pressione ENTER para retornar..." dummy
 }
 
 menu_ovp() {
     while true; do
-        # Detecta interface VPN tun0 ou fallback eth0
-        IFACE=""
-        BANDA_VPN=""
-        if ip link show tun0 >/dev/null 2>&1; then
-            IFACE="tun0"
-            BANDA_VPN=$(vnstat -i tun0 --oneline 2>/dev/null | cut -d';' -f6)
+        VPN_IFACE="tun0"
+        IFACE="eth0"
+        if ip link show "$VPN_IFACE" >/dev/null 2>&1; then
+            IFACE="$VPN_IFACE"
         fi
-        if [ -z "$IFACE" ]; then
-            IFACE="eth0"
-            BANDA_VPN=$(vnstat -i eth0 --oneline 2>/dev/null | cut -d';' -f6)
-        fi
-        [[ -z "$BANDA_VPN" || "$BANDA_VPN" == *"No data"* ]] && BANDA_VPN="0.00 MB"
 
         VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
         CPU_USO=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {printf "%.1f%%", usage}')
         MEM_USO=$(free -m | awk '/Mem:/ { printf("%d%%", $3/$2*100) }')
+        BANDA_VPN=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
+        [[ -z "$BANDA_VPN" || "$BANDA_VPN" == *"No data"* ]] && BANDA_VPN="0.00 MB"
 
         clear
         echo -e "${AZUL}===============================================================${NC}"
@@ -139,6 +123,7 @@ menu_ovp() {
         echo -e "  [6] 🛡️ Segurança e Firewall"
         echo -e "  [7] ⬅️  Retornar ao Menu Principal"
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
         read -n 1 -p " Digite a opção: " OPCAO
         echo ""
 
