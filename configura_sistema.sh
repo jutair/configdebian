@@ -1,12 +1,10 @@
 #!/bin/bash
-# configura_sistema.sh - O CONFIGURADOR (RODA DENTRO DE /OPT)
+# configura_sistema.sh
 
 DESTINO="/opt/configdebian"
 
-# 1. Instala os pacotes do sistema
 apt-get update && apt-get install -y vnstat ufw fail2ban openvpn samba speedtest-cli bc
 
-# 2. Configura os Usuários (jutair e guest)
 for USERNAME in "jutair" "guest"; do
     if ! id "$USERNAME" &>/dev/null; then
         useradd -m -s /bin/bash "$USERNAME"
@@ -14,7 +12,6 @@ for USERNAME in "jutair" "guest"; do
         usermod -aG sudo "$USERNAME"
         mkdir -p /home/$USERNAME/{Backup,clientes_ovp,transfer}
         
-        # Copia a chave SSH para permitir login direto
         if [ -d "/root/.ssh" ]; then
             mkdir -p /home/$USERNAME/.ssh
             cp /root/.ssh/authorized_keys /home/$USERNAME/.ssh/ 2>/dev/null
@@ -23,24 +20,21 @@ for USERNAME in "jutair" "guest"; do
         fi
     fi
 
-    # --- LIMPEZA DO BASHRC (PARA NÃO TER MENSAGENS DE ERRO) ---
-    # Removemos qualquer lixo de tentativas anteriores
+    # LIMPEZA E CONFIGURAÇÃO DO LOGIN
+    # Removemos qualquer lixo de versões antigas
     sed -i '/menu.sh/d' /home/$USERNAME/.bashrc
     sed -i '/cp /d' /home/$USERNAME/.bashrc
     sed -i '/chmod /d' /home/$USERNAME/.bashrc
-    sed -i '/Configuração completa/d' /home/$USERNAME/.bashrc
 
-    # ADICIONA APENAS A ENTRADA DO MENU
+    # ÚNICA LINHA QUE DEVE IR PARA O LOGIN:
     echo "sudo -E bash $DESTINO/menu.sh" >> /home/$USERNAME/.bashrc
     
     chown -R $USERNAME:$USERNAME /home/$USERNAME
 done
 
-# 3. Permissões de Sudo (Para o menu não pedir senha)
-echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-vpn-users
-
-# 4. Ajuste final de permissões na pasta global
+# Permissões globais (Executadas agora pelo script, não no login)
 chown -R root:sudo "$DESTINO"
 chmod -R 775 "$DESTINO"
+echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-vpn-users
 
-echo "Instalação concluída com sucesso!"
+echo "Configuração completa em $DESTINO"
