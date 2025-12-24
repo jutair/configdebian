@@ -18,7 +18,7 @@ DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
 STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
 DIR_SCRIPTS="/opt/configdebian"
 
-INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
+INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh interactive"
 SCRIPT_REDE="$DIR_SCRIPTS/gerencia_rede.sh"
 
 # Verifica ROOT
