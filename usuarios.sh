@@ -1,6 +1,6 @@
 #!/bin/bash
 # usuarios.sh - Gerenciador de Usuários e Acessos Profissional
-# Lista usuários atualizado!
+# Lista usuários atualizado com download e upload
 
 # --- VARIÁVEIS E CORES ---
 USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
@@ -22,7 +22,6 @@ fi
 trap '' SIGINT
 
 ############################ FUNÇÕES DE LISTAGEM ############################
-
 monitorar_logados() {
     clear
     echo -e "${AZUL}====================================================================${NC}"
@@ -52,7 +51,6 @@ monitorar_logados() {
     echo -e "${AZUL}====================================================================${NC}"
     read -p " Pressione ENTER para retornar..." dummy
 }
-
 
 monitorar_logados() {
     clear
