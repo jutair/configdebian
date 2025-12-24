@@ -1,121 +1,60 @@
 #!/bin/bash
-# instala_tudo.sh - Instalação completa OpenVPN + Configuração de Sistema
+# configura_sistema.sh - O Construtor da VPS
 
-# --- VARIÁVEIS ---
-USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
-DIR_CONFIG="/home/jutair/configdebian-main"
+AZUL='\033[0;34m'
 VERDE='\033[0;32m'
-AMARELO='\033[1;33m'
-VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-# 1. VERIFICAÇÃO DE ROOT
-if [ "$EUID" -ne 0 ]; then
-  echo -e "${VERMELHO}Erro: Execute como ROOT (sudo).${NC}"
-  exit 1
-fi
+echo -e "${AZUL}Iniciando configuração pesada do sistema...${NC}"
 
-# 2. INSTALAÇÃO DE DEPENDÊNCIAS
-echo -e "${AMARELO}Instalando pacotes base...${NC}"
-apt update && apt upgrade -y
-apt install sudo htop net-tools nload speedtest-cli vnstat bc curl unzip ufw fail2ban -y
+# 1. ATUALIZAÇÃO E DEPENDÊNCIAS ESSENCIAIS
+apt-get update && apt-get upgrade -y
+apt-get install -y curl wget unzip vnstat ufw fail2ban openvpn samba speedtest-cli bc
 
-# 3. INSTALAÇÃO AUTOMÁTICA OPENVPN (ANGRISTAN)
-echo -e "${AMARELO}Iniciando instalação do OpenVPN...${NC}"
-INSTALLER="openvpn-install.sh"
-if [ ! -f "$INSTALLER" ]; then
-    curl -O https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-    chmod +x "$INSTALLER"
-fi
+# 2. CONFIGURAÇÃO DE REDE (VnStat e Firewall)
+# Detecta a interface de rede ativa para o VnStat não ficar zerado
+INTERFACE=$(ip route | grep default | awk '{print $5}')
+vnstat -u -i "$INTERFACE"
+systemctl restart vnstat
 
-# Variáveis para instalação automática (Porta 1194 UDP)
-export APPROVE_INSTALL=${APPROVE_INSTALL:-y}
-export ENDPOINT=$(curl -4 -s ifconfig.me)
-export PORT="1194"
-export PROTOCOL="1" # UDP
-export DNS="9"      # Google
-export COMPRESSION="n"
-export CUSTOMIZE_ENC="n"
-export CLIENT="vpn_admin"
-export PASS="1"
+# 3. CRIAÇÃO DE USUÁRIOS E ESTRUTURA DE PASTAS
+# Lista de usuários que você deseja criar (Exemplo: jutair e suporte)
+USUARIOS=("jutair" "admin")
 
-./$INSTALLER
-
-# 4. OTIMIZAÇÃO DE LOGS (MONITOR DE MB)
-echo -e "${AMARELO}Otimizando logs para monitoramento em tempo real...${NC}"
-
-CONF_FILE="/etc/openvpn/server/server.conf"
-LOG_FILE="/etc/openvpn/server/openvpn-status.log"
-
-if [ -f "$CONF_FILE" ]; then
-    # 1. Remove qualquer linha de status ou status-version existente para evitar conflito
-    sed -i '/^status /d' "$CONF_FILE"
-    sed -i '/^status-version/d' "$CONF_FILE"
-    
-    # 2. Adiciona as configurações otimizadas
-    # O '5' no final indica que o log será atualizado a cada 5 segundos
-    echo "status $LOG_FILE 5" >> "$CONF_FILE"
-    echo "status-version 2" >> "$CONF_FILE"
-    
-    # 3. Garante que o arquivo de log exista e tenha permissões
-    touch "$LOG_FILE"
-    chmod 644 "$LOG_FILE"
-    
-    # 4. Reinicia o serviço para aplicar
-    systemctl restart openvpn-server@server
-    echo -e "${VERDE}✅ Logs do OpenVPN configurados com sucesso!${NC}"
-else
-    echo -e "${VERMELHO}❌ Erro: Arquivo $CONF_FILE não encontrado.${NC}"
-fi
-
-# Extra: Garantir que o VnStat monitore a interface correta desde o início
-echo -e "${AMARELO}Iniciando monitoramento de tráfego (VnStat)...${NC}"
-systemctl enable vnstat
-systemctl start vnstat
-systemctl restart openvpn-server@server
-
-# 5. CONFIGURAÇÃO DE FIREWALL (UFW)
-echo -e "${AMARELO}Configurando Firewall...${NC}"
-ufw allow 22/tcp
-ufw allow 1194/udp
-ufw allow 53
-echo "y" | ufw enable
-
-# 6. FUNÇÃO DE PERFIL DE USUÁRIO
-configurar_perfil() {
-    local USER=$1; local SENHA=$2; local ADMIN=$3
-    echo -e "${VERDE}Configurando usuário: $USER...${NC}"
-    useradd -m -s /bin/bash "$USER" 2>/dev/null
-    echo "$USER:$SENHA" | chpasswd
-    [ "$ADMIN" = "true" ] && usermod -aG sudo "$USER"
-    
-    mkdir -p "/home/$USER/"{Backup,clientes_ovp,transfer,configdebian-main}
-    
-    # Copia scripts se existirem na pasta atual
-    cp *.sh "/home/$USER/configdebian-main/" 2>/dev/null
-    
-    chown -R "$USER:$USER" "/home/$USER"
-    chmod -R +x "/home/$USER/configdebian-main/"*.sh
-}
-
-# 7. CRIAÇÃO DOS USUÁRIOS
-configurar_perfil "jutair" "SUA_SENHA_AQUI" "true"
-configurar_perfil "guest" "SENHA_GUEST_AQUI" "false"
-
-# 8. REGRAS DE SUDOERS
-echo "jutair ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-echo "guest ALL=(ALL) NOPASSWD: /home/guest/configdebian-main/*.sh" >> /etc/sudoers
-
-# 9. MENU NO LOGIN
-cat <<EOF > /etc/profile.d/vpn_menu.sh
-if [[ -t 0 ]]; then
-    if [ -f "\$HOME/configdebian-main/menu.sh" ]; then
-        sudo -E bash "\$HOME/configdebian-main/menu.sh"
+for USERNAME in "${USUARIOS[@]}"; do
+    if ! id "$USERNAME" &>/dev/null; then
+        echo -e "${VERDE}Criando usuário: $USERNAME...${NC}"
+        # Cria usuário com shell bash e home
+        useradd -m -s /bin/bash "$USERNAME"
+        # Define uma senha padrão (Altere após o primeiro login)
+        echo "$USERNAME:Senha123" | chpasswd
+        
+        # Adiciona ao grupo sudo
+        usermod -aG sudo "$USERNAME"
+        
+        # Cria a estrutura de pastas que seus scripts exigem
+        mkdir -p /home/$USERNAME/Backup
+        mkdir -p /home/$USERNAME/clientes_ovp
+        mkdir -p /home/$USERNAME/transfer
+        
+        # Ajusta permissões para o usuário ser dono da sua home
+        chown -R $USERNAME:$USERNAME /home/$USERNAME
+        
+        # 4. CONFIGURAÇÃO DE LOGIN AUTOMÁTICO NO MENU
+        # Faz o menu iniciar assim que o usuário logar no SSH
+        echo "if [ -f ~/configdebian-main/menu.sh ]; then" >> /home/$USERNAME/.bashrc
+        echo "  sudo -E bash ~/configdebian-main/menu.sh" >> /home/$USERNAME/.bashrc
+        echo "fi" >> /home/$USERNAME/.bashrc
     fi
-fi
-EOF
-chmod +x /etc/profile.d/vpn_menu.sh
+done
 
-echo -e "${VERDE}***************************************************${NC}"
-echo -e "${VERDE}   INSTALAÇÃO CONCLUÍDA COM SUCESSO!               ${NC}"
-echo -e "${VERDE}***************************************************${NC}"
+# 5. PERMISSÃO SUDO SEM SENHA (Para o Menu não engasgar)
+# Permite que os usuários do grupo sudo rodem o menu sem pedir senha toda hora
+echo "%sudo ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-cloud-init-users
+
+# 6. FINALIZAÇÃO DAS PERMISSÕES DO REPOSITÓRIO
+# Garante que todos os scripts baixados sejam executáveis
+chmod +x $HOME/configdebian-main/*.sh
+
+echo -e "${VERDE}Configuração concluída! Reiniciando serviços...${NC}"
+systemctl restart ssh
