@@ -1,6 +1,6 @@
 #!/bin/bash
 # update_sistema.sh - Atualizador Global em /opt/configdebian
-# Responsável por baixar scripts do GitHub, aplicar permissões e reiniciar o menu
+# Baixa o script do Angrista!
 
 set -e
 
@@ -9,56 +9,61 @@ VERDE='\033[0;32m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
+# --- DEFINIÇÃO DO CAMINHO GLOBAL ---
 DESTINO="/opt/configdebian"
-TEMP_ZIP="/tmp/main.zip"
-TEMP_EXTRACT="/tmp/configdebian-update"
-REPO_ZIP="https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
 
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "              ATUALIZAÇÃO GERAL DO SISTEMA"
 echo -e "${AZUL}===============================================================${NC}"
 
-# 1️⃣ Atualiza pacotes do sistema
-echo -e "${AZUL}[1/2]${NC} Atualizando pacotes do sistema (apt)..."
+# 1. ATUALIZAÇÃO DO LINUX
+echo -e "${AZUL}[1/3]${NC} Atualizando pacotes do sistema (Apt)..."
 sudo apt update && sudo apt upgrade -y
 
-# 2️⃣ Atualiza scripts do repositório
-echo -e "\n${AZUL}[2/2]${NC} Atualizando scripts do GitHub em $DESTINO..."
+# 2. ATUALIZAÇÃO DOS SCRIPTS NO DIRETÓRIO GLOBAL
+echo -e "\n${AZUL}[2/3]${NC} Verificando atualizações no GitHub..."
 
-# Verifica se wget e unzip estão disponíveis
-command -v wget >/dev/null || { echo -e "${VERMELHO}wget não encontrado!${NC}"; exit 1; }
-command -v unzip >/dev/null || { echo -e "${VERMELHO}unzip não encontrado!${NC}"; exit 1; }
+TEMP_ZIP="/tmp/main.zip"
+TEMP_EXTRACT="/tmp/configdebian-update"
 
-# Baixa o zip mais recente
-wget -q $REPO_ZIP -O $TEMP_ZIP || { echo -e "${VERMELHO}Falha ao baixar o repositório.${NC}"; exit 1; }
+# Baixa a versão mais recente do repositório configdebian
+wget -q https://github.com/jutair/configdebian/archive/refs/heads/main.zip -O $TEMP_ZIP
 
-# Extrai para pasta temporária
-rm -rf $TEMP_EXTRACT
-mkdir -p $TEMP_EXTRACT
-unzip -o $TEMP_ZIP -d $TEMP_EXTRACT > /dev/null
+if [ -f $TEMP_ZIP ]; then
+    mkdir -p $TEMP_EXTRACT
+    unzip -o $TEMP_ZIP -d $TEMP_EXTRACT > /dev/null
 
-# Detecta a pasta extraída dinamicamente
-EXTRACTED_DIR=$(find $TEMP_EXTRACT -maxdepth 1 -type d -name "configdebian-*")
-if [ -z "$EXTRACTED_DIR" ]; then
-    echo -e "${VERMELHO}✘ Não foi possível localizar o diretório extraído.${NC}"
-    exit 1
+    # Copia os scripts atualizados para /opt/configdebian
+    cp -r $TEMP_EXTRACT/configdebian-main/* "$DESTINO/"
+
+    # Limpa temporários
+    rm -rf $TEMP_EXTRACT $TEMP_ZIP
+
+    echo -e "${VERDE}✔ Scripts configdebian atualizados com sucesso!${NC}"
+else
+    echo -e "${VERMELHO}✘ Falha ao conectar com o GitHub para configdebian.${NC}"
 fi
 
-# Copia scripts para /opt/configdebian
-mkdir -p $DESTINO
-cp -r $EXTRACTED_DIR/* $DESTINO/
+# 3. DOWNLOAD DO SCRIPT openvpn-install.sh
+echo -e "\n${AZUL}[3/3]${NC} Baixando openvpn-install.sh do Angristan..."
 
-# Ajusta permissões
-chown -R root:sudo $DESTINO
-chmod -R 775 $DESTINO
-chmod +x $DESTINO/*.sh
+OVPN_SCRIPT="$DESTINO/openvpn-install.sh"
+wget -q https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh -O "$OVPN_SCRIPT"
 
-# Limpa temporários
-rm -rf $TEMP_EXTRACT $TEMP_ZIP
+if [ -f "$OVPN_SCRIPT" ]; then
+    chmod +x "$OVPN_SCRIPT"
+    echo -e "${VERDE}✔ openvpn-install.sh atualizado com sucesso!${NC}"
+else
+    echo -e "${VERMELHO}✘ Falha ao baixar openvpn-install.sh.${NC}"
+fi
 
-echo -e "${VERDE}✔ Scripts atualizados com sucesso em $DESTINO!${NC}"
+# Garantindo permissões gerais da pasta
+chown -R root:sudo "$DESTINO"
+chmod -R 775 "$DESTINO"
+chmod +x "$DESTINO"/*.sh
+
 echo -e "${AZUL}===============================================================${NC}"
+read -p "Atualização concluída. Pressione ENTER para reiniciar o menu..." dummy
 
-# 3️⃣ Reinicia o menu
-read -p "Pressione ENTER para reiniciar o menu..." dummy
-exec bash $DESTINO/menu.sh
+# Reinicia o menu usando o caminho global
+exec bash "$DESTINO/menu.sh"
