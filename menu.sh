@@ -1,5 +1,6 @@
 #!/bin/bash
 # menu.sh - Painel de Gestão VPS (Produção)
+# Tudo usando /opt/configdebian
 
 set -e
 
@@ -11,6 +12,7 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
+# IP externo (timeout seguro)
 IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
 while true; do
@@ -53,10 +55,10 @@ while true; do
     echo ""
 
     case $OPCAO in
-        1) sudo -E bash "$DIR_SCRIPTS/open_vpn_conf.sh" ;;
-        2) sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh" ;;
-        3) sudo -E bash "$DIR_SCRIPTS/usuarios.sh" ;;
-        4) sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
+        1) [ -f "$DIR_SCRIPTS/open_vpn_conf.sh" ] && sudo -E bash "$DIR_SCRIPTS/open_vpn_conf.sh" ;;
+        2) [ -f "$DIR_SCRIPTS/gerencia_rede.sh" ] && sudo -E bash "$DIR_SCRIPTS/gerencia_rede.sh" ;;
+        3) [ -f "$DIR_SCRIPTS/usuarios.sh" ] && sudo -E bash "$DIR_SCRIPTS/usuarios.sh" ;;
+        4) [ -f "$DIR_SCRIPTS/update_sistema.sh" ] && sudo -E bash "$DIR_SCRIPTS/update_sistema.sh" ;;
         5) clear; echo -e "${VERDE}Sessão finalizada.${NC}"; exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
