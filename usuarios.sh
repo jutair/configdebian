@@ -1,5 +1,6 @@
 #!/bin/bash
 # usuarios.sh - Gerenciador de Usuários e Acessos Profissional (Atualizado 24-12-2025)
+#Atualização do bin bash para adicionar usuário
 
 # --- VARIÁVEIS E CORES ---
 USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
@@ -63,23 +64,54 @@ monitorar_logados() {
 cadastrar_user() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}CADASTRAR NOVO USUÁRIO${NC}"
+    echo -e "                ${VERDE}CADASTRAR NOVO USUÁRIO (SSH + MENU)${NC}"
     echo -e "${AZUL}===============================================================${NC}"
+
     read -p " Nome do usuário: " NOME_USUARIO
     [ -z "$NOME_USUARIO" ] && return
 
     if id "$NOME_USUARIO" &>/dev/null; then
-        echo -e "${VERMELHO}Erro: Usuário já existe!${NC}"; sleep 2; return
+        echo -e "${VERMELHO}Erro: Usuário já existe!${NC}"
+        sleep 2
+        return
     fi
 
+    # Cria usuário SEM senha (login só por chave)
     useradd -m -s /bin/bash "$NOME_USUARIO"
+
     HOME_USER="/home/$NOME_USUARIO"
-    mkdir -p "$HOME_USER/"{Backup,clientes_ovp,transfer}
+
+    # Diretórios padrão
+    mkdir -p "$HOME_USER"/{Backup,clientes_ovp,transfer,.ssh}
+
+    # Permissões SSH
+    chmod 700 "$HOME_USER/.ssh"
+    touch "$HOME_USER/.ssh/authorized_keys"
+    chmod 600 "$HOME_USER/.ssh/authorized_keys"
+
+    # Configura menu automático no login SSH
+    cat << 'EOF' > "$HOME_USER/.bashrc"
+# ~/.bashrc - Menu automático VPS
+
+# Evita execução duplicada
+[[ $- != *i* ]] && return
+
+if [[ -n "$SSH_CONNECTION" ]]; then
+    clear
+    /opt/configdebian/menu.sh
+    exit
+fi
+EOF
+
+    # Permissões finais
     chown -R "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER"
-    passwd "$NOME_USUARIO"
+
     echo -e "${VERDE}Usuário $NOME_USUARIO criado com sucesso!${NC}"
-    sleep 2
+    echo -e "${AMARELO}Login permitido apenas via chave SSH.${NC}"
+    echo -e "${AMARELO}Menu iniciará automaticamente ao logar.${NC}"
+    sleep 3
 }
+
 
 adicionar_chave_ssh() {
     if [ "$USER_ATUAL" != "jutair" ]; then
