@@ -18,6 +18,7 @@ SCRIPTS=(
   configura_sistema.sh
   backup.sh
   update_sistema.sh
+  autokil.sh
 )
 
 AZUL='\033[0;34m'
