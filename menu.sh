@@ -19,12 +19,8 @@ while true; do
     DISCO=$(df -h / | awk 'NR==2 { print $5 }')
     UPTIME=$(uptime -p | sed 's/up //')
 
-    # Detecta interface ativa (tun0 se VPN, senão eth0)
-    IFACE="eth0"
-    if ip link show tun0 >/dev/null 2>&1; then
-        IFACE="tun0"
-    fi
-
+    # Detecta interface tun0 se existir, caso contrário eth0
+    IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -E 'tun[0-9]+|eth0' | head -n1)
     BANDA_HOJE=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
     [[ -z "$BANDA_HOJE" || "$BANDA_HOJE" =~ Error|No\ data ]] && BANDA_HOJE="0.00 MB"
 
