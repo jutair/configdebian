@@ -8,7 +8,7 @@ USERS=("jutair" "guest")
 DIR_CONFIG="/opt/configdebian"
 GITHUB_REPO="https://raw.githubusercontent.com/jutair/configdebian/main"
 OPENVPN_SCRIPT="openvpn-install.sh"
-SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "update_sistema.sh" "backup.sh" "configura_sistema.sh")
+SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "update_sistema.sh" "backup.sh" "configura_sistema.sh" "autokil.sh")
 
 # --- Verifica ROOT ---
 if [ "$EUID" -ne 0 ]; then
