@@ -1,27 +1,24 @@
 #!/bin/bash
-# setup_vps.sh - O Gatilho
+# setup_vps.sh - O Maestro (Root)
 
-AZUL='\033[0;34m'
-NC='\033[0m'
-
-clear
-echo -e "${AZUL}Limpando arquivos antigos e preparando instalação...${NC}"
-# Remove vestígios para evitar o erro do .1, .2
-rm -f setup_vps.sh* main.zip
-rm -rf $HOME/configdebian-main
-
+# 1. Limpeza e Dependências
 apt-get update && apt-get install -y wget unzip curl
 
-echo -e "${AZUL}Baixando repositório...${NC}"
-wget https://github.com/jutair/configdebian/archive/refs/heads/main.zip
+# 2. Baixar e Extrair
+wget -q https://github.com/jutair/configdebian/archive/refs/heads/main.zip -O /tmp/main.zip
+unzip -o /tmp/main.zip -d /tmp/
 
-unzip -o main.zip -d $HOME/
-DIR_SCRIPTS="$HOME/configdebian-main"
+# 3. CRIAR O DIRETÓRIO DESTINO (Crucial para evitar o erro de chmod)
+mkdir -p /opt/configdebian
 
-if [ -f "$DIR_SCRIPTS/configura_sistema.sh" ]; then
-    chmod +x "$DIR_SCRIPTS"/*.sh
-    bash "$DIR_SCRIPTS/configura_sistema.sh"
-else
-    echo "Erro: Pasta não encontrada."
-    exit 1
-fi
+# 4. MOVER OS ARQUIVOS (Garante que os scripts existam antes do chmod)
+cp -r /tmp/configdebian-main/* /opt/configdebian/
+
+# 5. PERMISSÕES INICIAIS
+chmod +x /opt/configdebian/*.sh
+
+# 6. EXECUTAR O CONFIGURADOR (Agora ele vai encontrar a pasta /opt)
+bash /opt/configdebian/configura_sistema.sh
+
+# 7. Limpeza
+rm -rf /tmp/main.zip /tmp/configdebian-main
