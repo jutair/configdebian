@@ -37,25 +37,43 @@ listar_online() {
     echo -e "                ${VERDE}DETALHAMENTO DE USUÁRIOS VPN ONLINE${NC}"
     echo -e "${AZUL}==========================================================================${NC}"
 
-    if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}Erro: Log da VPN não encontrado.${NC}"
+    # Determina o arquivo de status do OpenVPN
+    if [ -f "/var/log/openvpn/status.log" ]; then
+        STATUS_LOG="/var/log/openvpn/status.log"
+    elif [ -f "/etc/openvpn/server/openvpn-status.log" ]; then
+        STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
     else
-        printf "${AZUL}%-15s %-15s %-12s %-12s %-15s${NC}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
-        echo "--------------------------------------------------------------------------"
-        grep "^CLIENT_LIST" "$STATUS_LOG" | while read -r line; do
-            SEP=$( [[ "$line" == *","* ]] && echo "," || echo $'\t' )
-            USER=$(echo "$line" | cut -d"$SEP" -f2)
-            IP=$(echo "$line" | cut -d"$SEP" -f3 | cut -d':' -f1)
-            RECV=$(echo "$line" | cut -d"$SEP" -f5)
-            SENT=$(echo "$line" | cut -d"$SEP" -f6)
-            DATA=$(echo "$line" | cut -d"$SEP" -f8)
-            RECV_MB=$(echo "scale=2; $RECV/1048576" | bc)
-            SENT_MB=$(echo "scale=2; $SENT/1048576" | bc)
-            printf "%-15s %-15s %-12s %-12s %-15s\n" "$USER" "$IP" "${RECV_MB}MB" "${SENT_MB}MB" "$DATA"
-        done
+        STATUS_LOG=""
     fi
+
+    if [ -z "$STATUS_LOG" ] || [ ! -f "$STATUS_LOG" ]; then
+        echo -e "${VERMELHO}Erro: Log da VPN não encontrado.${NC}"
+        read -p "Pressione ENTER para retornar..." dummy
+        return
+    fi
+
+    # Cabeçalho da tabela
+    printf "${AZUL}%-15s %-15s %-12s %-12s %-15s${NC}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD" "CONECTADO EM"
+    echo "--------------------------------------------------------------------------"
+
+    grep "^CLIENT_LIST" "$STATUS_LOG" | while read -r line; do
+        # Detecta separador correto (vírgula ou tab)
+        SEP=$( [[ "$line" == *","* ]] && echo "," || echo $'\t' )
+        USER=$(echo "$line" | cut -d"$SEP" -f2)
+        IP=$(echo "$line" | cut -d"$SEP" -f3 | cut -d':' -f1)
+        RECV=$(echo "$line" | cut -d"$SEP" -f5)
+        SENT=$(echo "$line" | cut -d"$SEP" -f6)
+        DATA=$(echo "$line" | cut -d"$SEP" -f8)
+
+        # Converte bytes para MB
+        RECV_MB=$(echo "scale=2; $RECV/1048576" | bc)
+        SENT_MB=$(echo "scale=2; $SENT/1048576" | bc)
+
+        printf "%-15s %-15s %-12s %-12s %-15s\n" "$USER" "$IP" "${RECV_MB}MB" "${SENT_MB}MB" "$DATA"
+    done
+
     echo -e "${AZUL}--------------------------------------------------------------------------${NC}"
-    read -p " Pressione ENTER para retornar..." dummy
+    read -p "Pressione ENTER para retornar..." dummy
 }
 
 gerar_link_ovpn() {
