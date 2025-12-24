@@ -1,71 +1,54 @@
 #!/bin/bash
+# update_sistema.sh - Atualizador Global em /opt
 
-# Detecta o usuário humano para definir os caminhos
-NOME_USUARIO=$(logname 2>/dev/null || echo $SUDO_USER)
-DESTINO="/home/$NOME_USUARIO/configdebian-main"
+AZUL='\033[0;34m'
+VERDE='\033[0;32m'
+NC='\033[0m'
 
-# Verifica se o script foi executado como root
-if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[31mErro: Por favor execute esse script como sudo/root!\033[0m"
-  exit 1
+# --- DEFINIÇÃO DO CAMINHO GLOBAL ---
+DESTINO="/opt/configdebian"
+
+echo -e "${AZUL}===============================================================${NC}"
+echo -e "              ATUALIZAÇÃO GERAL DO SISTEMA"
+echo -e "${AZUL}===============================================================${NC}"
+
+# 1. ATUALIZAÇÃO DO LINUX
+echo -e "${AZUL}[1/2]${NC} Atualizando pacotes do sistema (Apt)..."
+sudo apt update && sudo apt upgrade -y
+
+# 2. ATUALIZAÇÃO DOS SCRIPTS NO DIRETÓRIO GLOBAL
+echo -e "\n${AZUL}[2/2]${NC} Verificando atualizações no GitHub..."
+
+TEMP_ZIP="/tmp/main.zip"
+TEMP_EXTRACT="/tmp/configdebian-update"
+
+# Descarrega a versão mais recente
+wget -q https://github.com/jutair/configdebian/archive/refs/heads/main.zip -O $TEMP_ZIP
+
+if [ -f $TEMP_ZIP ]; then
+    # Extrai para uma pasta temporária primeiro
+    mkdir -p $TEMP_EXTRACT
+    unzip -o $TEMP_ZIP -d $TEMP_EXTRACT > /dev/null
+    
+    # Move os novos ficheiros para a pasta de produção (/opt/configdebian)
+    # Nota: O zip do github vem com uma pasta dentro 'configdebian-main'
+    cp -r $TEMP_EXTRACT/configdebian-main/* "$DESTINO/"
+    
+    # Limpa temporários
+    rm -rf $TEMP_EXTRACT $TEMP_ZIP
+    
+    # Garante permissões na pasta global
+    chown -R root:sudo "$DESTINO"
+    chmod -R 775 "$DESTINO"
+    chmod +x "$DESTINO"/*.sh
+    
+    echo -e "${VERDE}✔ Scripts em $DESTINO atualizados com sucesso!${NC}"
+else
+    echo -e "${VERMELHO}✘ Falha ao conectar com o GitHub.${NC}"
 fi
 
-echo "=========================================================================="
-echo "Verificando e instalando dependências do instalador..."
-echo "=========================================================================="
-# Lista de dependências necessárias para o instalador funcionar
-DEPENDENCIAS=(sudo wget curl unzip coreutils)
+echo -e "${AZUL}===============================================================${NC}"
+read -p " Atualização concluída. Pressione ENTER para reiniciar o menu..." dummy
 
-apt update -y
-for pacote in "${DEPENDENCIAS[@]}"; do
-    if ! dpkg -s "$pacote" >/dev/null 2>&1; then
-        echo -e "\033[33mInstalando dependência ausente: $pacote\033[0m"
-        apt install -y "$pacote"
-    fi
-done
-
-echo "=========================================================================="
-echo "Buscando por atualização dos pacotes no repositório do Debian..."
-echo "=========================================================================="
-apt upgrade -y
-
-echo "=========================================================================="
-echo "Baixando scripts do GitHub..."
-echo "=========================================================================="
-wget -qO "/home/$NOME_USUARIO/main.zip" "https://github.com/jutair/configdebian/archive/refs/heads/main.zip"
-
-echo "=========================================================================="
-echo "Extraindo os scripts para pasta do usuário..."
-echo "=========================================================================="
-unzip -o "/home/$NOME_USUARIO/main.zip" -d "/home/$NOME_USUARIO/"
-rm "/home/$NOME_USUARIO/main.zip"
-
-# Garante que o usuário humano seja o dono da pasta extraída
-chown -R "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO"
-
-echo "=========================================================================="
-echo "Baixando o script do OpenVPN do Angristan..."
-echo "=========================================================================="
-wget -qO "$DESTINO/openvpn-install.sh" https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh
-chmod +x "$DESTINO/openvpn-install.sh"
-chown "$NOME_USUARIO:$NOME_USUARIO" "$DESTINO/openvpn-install.sh"
-
-echo "=========================================================================="
-echo "Limpando arquivos de instalação e configurando permissões..."
-echo "=========================================================================="
-cd "$DESTINO" || exit
-
-# 1. Dá permissão de execução aos scripts de gestão diária
-chmod +x menu.sh open_vpn_conf.sh usuarios.sh update_sistema.sh gerencia_rede.sh backup.sh
-
-# 2. APAGA os scripts que não devem ser rodados novamente (Autodestruição)
-# Removemos o configurador e este próprio instalador da pasta de destino final
-rm -f configura_sistema.sh setup_vps.sh
-
-echo "=========================================================================="
-echo "Configuração concluída! Iniciando o sistema..."
-echo "=========================================================================="
-sleep 2
-
-# Inicia o menu diretamente como o usuário correto preservando o ambiente
-exec sudo -E -u "$NOME_USUARIO" bash ./menu.sh
+# Reinicia o menu usando o caminho global
+exec bash "$DESTINO/menu.sh"
