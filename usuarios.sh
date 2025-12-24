@@ -88,27 +88,50 @@ monitorar_logados() {
 }
 
 ############################ FUNÇÕES DE GESTÃO ############################
-
-cadastrar_user() {
-    clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}CADASTRAR NOVO USUÁRIO${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    read -p " Nome do usuário: " NOME_USUARIO
-    [ -z "$NOME_USUARIO" ] && return
-
-    if id "$NOME_USUARIO" &>/dev/null; then
-        echo -e "${VERMELHO}Erro: Usuário já existe!${NC}"; sleep 2; return
+adicionar_chave_ssh() {
+    # Só permite o usuário jutair executar
+    if [ "$USER_ATUAL" != "jutair" ]; then
+        echo -e "${VERMELHO}Apenas o usuário jutair pode adicionar novas chaves.${NC}"
+        sleep 2
+        return
     fi
 
-    useradd -m -s /bin/bash "$NOME_USUARIO"
-    HOME_USER="/home/$NOME_USUARIO"
-    mkdir -p "$HOME_USER/"{Backup,clientes_ovp,transfer}
-    chown -R "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER"
-    passwd "$NOME_USUARIO"
-    echo -e "${VERDE}Usuário $NOME_USUARIO criado com sucesso!${NC}"
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "               ${VERDE}ADICIONAR CHAVE SSH PARA USUÁRIO${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    read -p "Nome do usuário: " USER_ALVO
+    if ! id "$USER_ALVO" &>/dev/null; then
+        echo -e "${VERMELHO}Erro: Usuário não existe.${NC}"
+        sleep 2
+        return
+    fi
+
+    read -p "Cole a chave pública SSH: " CHAVE
+    if [ -z "$CHAVE" ]; then
+        echo -e "${AMARELO}Nenhuma chave informada.${NC}"
+        sleep 2
+        return
+    fi
+
+    USER_HOME="/home/$USER_ALVO"
+    SSH_DIR="$USER_HOME/.ssh"
+    AUTH_KEYS="$SSH_DIR/authorized_keys"
+
+    mkdir -p "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
+    touch "$AUTH_KEYS"
+    chmod 600 "$AUTH_KEYS"
+
+    # Adiciona a chave ao authorized_keys
+    echo "$CHAVE" >> "$AUTH_KEYS"
+    chown -R "$USER_ALVO:$USER_ALVO" "$SSH_DIR"
+
+    echo -e "${VERDE}Chave adicionada com sucesso para o usuário $USER_ALVO!${NC}"
     sleep 2
 }
+
 
 ############################ MENU PRINCIPAL ############################
 
