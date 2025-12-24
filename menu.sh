@@ -61,7 +61,7 @@ dashboard() {
 while true; do
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}PAINEL DE GESTÃO VPS${NC}"
+    echo -e "                ${VERDE}MENU PRINCIPAL${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "  [0] 📊 DASHBOARD VPS"
     echo -e "  [1] 🌐 Gerenciar VPN (OpenVPN)"
