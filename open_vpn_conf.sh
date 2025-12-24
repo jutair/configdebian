@@ -67,11 +67,10 @@ listar_online() {
 }
 gerar_link_ovpn() {
     clear
-    # Força a identificação do usuário humano (quem fez o login SSH)
-    # Se logname falhar, tenta SUDO_USER, se falhar, usa o USER do sistema.
+    # Captura o usuário real (quem fez o login SSH)
     USUARIO_REAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$USER})
 
-    # Se por algum motivo ainda detectar root, tentamos pegar o dono do TTY atual
+    # Se ainda detectar root, tenta pelo dono do TTY
     if [ "$USUARIO_REAL" == "root" ]; then
         USUARIO_REAL=$(who am i | awk '{print $1}')
     fi
@@ -84,29 +83,29 @@ gerar_link_ovpn() {
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "             ${VERDE}MEUS ARQUIVOS OVPN DISPONÍVEIS${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e " Usuário Detectado: ${AMARELO}$USUARIO_REAL${NC}"
-    echo -e " Buscando em:      ${AMARELO}$CAMINHO_BUSCA${NC}"
+    echo -e " Usuário: ${AMARELO}$USUARIO_REAL${NC}"
+    echo -e " Pasta:   ${AMARELO}$CAMINHO_BUSCA${NC}"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    # Valida se o diretório existe
     if [ ! -d "$CAMINHO_BUSCA" ]; then
         echo -e "${VERMELHO}Erro: Pasta não encontrada em $CAMINHO_BUSCA${NC}"
-        echo -e "Verifique se a pasta 'clientes_ovp' existe na sua HOME."
         read -p " ENTER para voltar..." d; return
     fi
 
     FILES=$(ls "$CAMINHO_BUSCA"/*.ovpn 2>/dev/null)
 
     if [ -z "$FILES" ]; then
-        echo -e "${AMARELO}Nenhum arquivo .ovpn encontrado na sua pasta.${NC}"
+        echo -e "${AMARELO}Nenhum arquivo .ovpn encontrado.${NC}"
     else
-        echo -e "${VERDE}Comandos para baixar no seu computador local:${NC}\n"
+        echo -e "${VERDE}Copie e cole no terminal do seu PC (Windows/Linux):${NC}\n"
         
         for file in $FILES; do
             FILENAME=$(basename "$file")
             echo -e "${AMARELO}➜ $FILENAME${NC}"
-            # O comando SCP usa o caminho exato para evitar erro de permissão
-            echo -e "scp root@$IP_EXT:$file ./"
+            
+            # COMANDO AJUSTADO: Usa o usuário real e o caminho relativo ~/
+            # Isso evita problemas de permissão que o root teria ao acessar a home alheia
+            echo -e "scp ${USUARIO_REAL}@${IP_EXT}:~/clientes_ovp/${FILENAME} ./"
             echo ""
         done
     fi
