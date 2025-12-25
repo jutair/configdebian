@@ -295,6 +295,28 @@ diagnostico_ataques() {
     read -p " Pressione ENTER para retornar..." dummy
 }
 configurar_telegram() {
+    # --- TRAVA DE SEGURANÇA ---
+    USUARIO_ATUAL=$(whoami)
+    if [ "$USUARIO_ATUAL" != "jutair" ]; then
+        clear
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e "O usuário '${AMARELO}$USUARIO_ATUAL${NC}' não pode configurar alertas."
+        
+        # Alerta o dono no Telegram sobre a tentativa de mexer nas configurações
+        # Tenta carregar o token atual para avisar do acesso negado
+        [ -f /etc/vps_protecao/telegram.conf ] && source /etc/vps_protecao/telegram.conf
+        if [[ ! -z "$TOKEN" ]]; then
+            MENSAGEM="🚫 <b>TENTATIVA DE ACESSO:</b>%0AO usuário <code>$USUARIO_ATUAL</code> tentou alterar as configurações do Telegram!"
+            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+        fi
+        
+        sleep 3
+        return
+    fi
+
+    # --- INÍCIO DA CONFIGURAÇÃO (APENAS PARA JUTAIR) ---
     clear
     echo -e "\033[1;33m--- CONFIGURAR ALERTA TELEGRAM ---\033[0m"
     echo ""
@@ -303,14 +325,14 @@ configurar_telegram() {
     echo ""
 
     # Cria o diretório se não existir
-    mkdir -p /etc/vps_protecao
+    sudo mkdir -p /etc/vps_protecao
 
-    # Grava no arquivo usando sudo e aspas corretas
+    # Grava no arquivo limpando o conteúdo anterior (sem o -a no primeiro tee)
     echo "TOKEN=\"$NOVO_TOKEN\"" | sudo tee /etc/vps_protecao/telegram.conf > /dev/null
     echo "ID_CHAT=\"$NOVO_ID\"" | sudo tee -a /etc/vps_protecao/telegram.conf > /dev/null
 
-    # Dá permissão de leitura
-    chmod 644 /etc/vps_protecao/telegram.conf
+    # Garante que o arquivo seja legível pelo script, mas protegido
+    sudo chmod 644 /etc/vps_protecao/telegram.conf
 
     echo -e "\033[1;32mConfiguração salva com sucesso!\033[0m"
     
@@ -318,7 +340,7 @@ configurar_telegram() {
     echo "Enviando teste para o seu Telegram..."
     curl -s -X POST "https://api.telegram.org/bot$NOVO_TOKEN/sendMessage" \
          -d chat_id="$NOVO_ID" \
-         -d text="✅ Alertas da VPS configurados com sucesso!" > /dev/null
+         -d text="✅ Alertas da VPS configurados com sucesso para o usuário JUTAIR!" > /dev/null
          
     sleep 2
 }
