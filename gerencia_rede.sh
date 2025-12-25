@@ -315,7 +315,7 @@ while true; do
     echo -e "  [4] 📉 Relatórios de Consumo (VnStat)"
     echo -e "  [5] 🛡️  Firewall e Fail2Ban (Banimentos)"
     echo -e "  [6] 🔑 Configurações do SSH"
-    echo -e "  [7] 🔑 Configurações do SSH"
+    echo -e "  [3] 📢 Configurar Alertas ✈️ Telegram"
     echo -e "  [8] ⬅️  Retornar ao Menu Principal"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Digite a opção: " OP; echo ""
