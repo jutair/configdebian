@@ -3,7 +3,7 @@
 # Carrega configs do Telegram
 [ -f "/etc/vps_protecao/telegram.conf" ] && source "/etc/vps_protecao/telegram.conf"
 
-LIMITE=80
+LIMITE=35
 
 # O segredo está no --no-headers para não vir a palavra "USER" ou "%CPU"
 # E filtramos para pegar apenas processos que NÃO sejam root
