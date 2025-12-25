@@ -257,36 +257,56 @@ diagnostico_ataques() {
 }
 
 configurar_telegram() {
+    # 1. Identifica o usuário real
+    local USUARIO_REAL=$(who am i | awk '{print $1}')
+    [[ -z "$USUARIO_REAL" ]] && USUARIO_REAL="$LOGNAME"
+
+    # 2. Restrição de Usuário
+    if [[ "$USUARIO_REAL" != "jutair" ]]; then
+        clear
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e "          🚫 ACESSO NEGADO: USUÁRIO NÃO AUTORIZADO"
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e " O usuário logado é: ${AMARELO}$USUARIO_REAL${NC}"
+        echo -e " Apenas o administrador ${VERDE}jutair${NC} pode alterar estas chaves."
+        echo -e "\n${VERMELHO}Pressione [ENTER] para voltar...${NC}"
+        read -r
+        return
+    fi
+
+    # 3. Interface
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          📢 CONFIGURAR ALERTAS DO TELEGRAM"
+    echo -e "          📢  CONFIGURAR ALERTAS DO TELEGRAM  ✈️"
     echo -e "${AZUL}===============================================================${NC}"
-    
-    # -r evita que barras invertidas no token causem problemas
-    read -p " Digite o TOKEN do Bot: " TELEGRAM_TOKEN
-    read -p " Digite o seu ID do Chat: " TELEGRAM_ID
-    
-    # Pasta externa ao projeto e segura
-    CONF_DIR="/etc/vps_protecao"
-    mkdir -p "$CONF_DIR"
-    
-    # Usar 'EOF' entre aspas evita expansão indesejada de variáveis durante a escrita
-    cat <<'EOF' > "$CONF_DIR/telegram.conf"
-TOKEN="$TELEGRAM_TOKEN"
-ID_CHAT="$TELEGRAM_ID"
-EOF
+    read -p " 🔍 Digite o TOKEN do Bot: " TELEGRAM_TOKEN
+    read -p " 🆔 Digite o seu ID do Chat: " TELEGRAM_ID
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    # Agora aplicamos as variáveis reais no arquivo substituindo as strings temporárias
-    # Isso é mais seguro que o método anterior para evitar conflitos de sintaxe
-    sed -i "s|\$TELEGRAM_TOKEN|$TELEGRAM_TOKEN|g" "$CONF_DIR/telegram.conf"
-    sed -i "s|\$TELEGRAM_ID|$TELEGRAM_ID|g" "$CONF_DIR/telegram.conf"
+    # 4. Salvando sem usar EOF (Evita erro de aspas/chaves abertas)
+    echo -e " ⌛ ${AMARELO}Salvando configurações...${NC}"
+    mkdir -p "/etc/vps_protecao"
+    
+    # Escreve linha por linha para garantir que não quebre a sintaxe
+    echo "TOKEN=\"$TELEGRAM_TOKEN\"" > "/etc/vps_protecao/telegram.conf"
+    echo "ID_CHAT=\"$TELEGRAM_ID\"" >> "/etc/vps_protecao/telegram.conf"
 
-    # PROTEÇÃO: Somente o root lê e escreve (600)
-    chmod 600 "$CONF_DIR/telegram.conf"
-    chown root:root "$CONF_DIR/telegram.conf"
+    chmod 600 "/etc/vps_protecao/telegram.conf"
+    chown root:root "/etc/vps_protecao/telegram.conf"
 
-    echo -e "\n${VERDE}✅ Configurações salvas em $CONF_DIR/telegram.conf${NC}"
-    echo -e "${AMARELO}Pressione ENTER para voltar...${NC}"
+    # 5. Teste de Envio
+    local TESTE=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
+            -d chat_id="$TELEGRAM_ID" \
+            -d text="✅ CONEXÃO ESTABELECIDA" \
+            -d parse_mode="HTML")
+
+    if [[ $TESTE == *"ok\":true"* ]]; then
+        echo -e "\n${VERDE} ✅ Teste de envio OK!${NC}"
+    else
+        echo -e "\n${VERMELHO} ❌ Erro no envio. Verifique os dados.${NC}"
+    fi
+
+    echo -e "\n${AMARELO}Pressione [ENTER] para retornar...${NC}"
     read -r
 }
 
