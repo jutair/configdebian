@@ -35,7 +35,7 @@ fi
 
 clear
 echo -e "${AZUL}===============================================================${NC}"
-echo -e "          🔄 ATUALIZAÇÃO INTELIGENTE DO SISTEMA"
+echo -e "           🔄 ATUALIZAÇÃO INTELIGENTE DO SISTEMA"
 echo -e "${AZUL}===============================================================${NC}"
 
 # 2. Atualização de Repositórios e Pacotes
@@ -50,7 +50,7 @@ for script in "${SCRIPTS[@]}"; do
     [ -f "$DIR_CONFIG/$script" ] && cp "$DIR_CONFIG/$script" "$BACKUP_DIR/$DATA/"
 done
 
-# 4. Download Atômico (Evita corromper scripts em execução)
+# 4. Download Atômico (Substituição segura de arquivos)
 echo -e "${AZUL}⏳ Sincronizando scripts com GitHub...${NC}"
 
 for script in "${SCRIPTS[@]}"; do
@@ -62,7 +62,7 @@ for script in "${SCRIPTS[@]}"; do
 
     # Tenta baixar para o arquivo temporário
     if curl -fsSL "$URL" -o "$TEMP"; then
-        # Se o download foi 100%, substitui o original instantaneamente
+        # Se o download foi 100%, substitui o original e dá permissão
         mv "$TEMP" "$DEST"
         chmod +x "$DEST"
         echo -e "${VERDE}OK!${NC}"
@@ -72,16 +72,25 @@ for script in "${SCRIPTS[@]}"; do
     fi
 done
 
-# 5. Garantia de Reinicialização (Apenas se o autokil estiver preso na RAM)
-# Como você usa Cron, isso não é obrigatório, mas é uma boa prática:
+# 5. Reinicialização do Guardião (Aplica as novas regras de CPU/RAM)
+echo -e "${AZUL}🔄 Reiniciando o Guardião (Nova versão)...${NC}"
+# Mata a instância antiga que estava na memória
 pkill -f autokil.sh || true
+
+# Inicia a nova versão imediatamente em background (Daemon Mode)
+if [ -f "$DIR_CONFIG/autokil.sh" ]; then
+    nohup /bin/bash "$DIR_CONFIG/autokil.sh" > /dev/null 2>&1 &
+    echo -e "${VERDE}✅ Guardião atualizado e rodando em tempo real!${NC}"
+else
+    echo -e "${VERMELHO}⚠️ Erro: autokil.sh não encontrado para inicialização.${NC}"
+fi
 
 # 6. Limpeza de Backups Antigos (Mais de 7 dias)
 find "$BACKUP_DIR" -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
 
 echo -e "${AZUL}---------------------------------------------------------------${NC}"
 echo -e "${VERDE}✅ Sistema e scripts atualizados com sucesso!${NC}"
-echo -e "${AMARELO}ℹ️ O Autokil será carregado na nova versão no próximo minuto.${NC}"
+echo -e "${AMARELO}ℹ️ O Autokil já está operando com proteção de CPU + RAM.${NC}"
 echo -e "${AZUL}===============================================================${NC}"
 
 exit 0
