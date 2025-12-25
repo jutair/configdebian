@@ -234,20 +234,22 @@ restaura_seguranca() {
     if [ -f "/opt/configdebian/autokil.sh" ]; then
         chmod +x /opt/configdebian/autokil.sh
         
-        # 1. Limpeza de processos antigos e do Cron para evitar duplicados
+        # 1. MATAR PROCESSO ANTIGO E LIMPAR CRON
+        # Isso garante que a versão carregada na RAM seja substituída pela nova
         pkill -f "autokil.sh" > /dev/null 2>&1
         crontab -l 2>/dev/null | grep -v "autokil.sh" | crontab -
+        sleep 1 # Pequena pausa para garantir o encerramento
         
-        # 2. Verifica se a configuração do Telegram existe
+        # 2. Verifica configuração do Telegram
         if [ ! -f "/etc/vps_protecao/telegram.conf" ]; then
             echo -e "${VERMELHO}   -> ⚠️ Configuração do Telegram não encontrada!${NC}"
         fi
 
-        # 3. Inicialização IMEDIATA em segundo plano (Modo Daemon 10s)
-        # Usamos nohup para que ele sobreviva ao fechamento do menu
+        # 3. REINICIALIZAÇÃO EM SEGUNDO PLANO (MODO DAEMON)
+        # Inicia o script recém-baixado/atualizado
         nohup /bin/bash /opt/configdebian/autokil.sh > /dev/null 2>&1 &
         
-        echo -e "${VERDE}   -> Guardião sincronizado e rodando em tempo real.${NC}"
+        echo -e "${VERDE}   -> Guardião REINICIADO e rodando em tempo real.${NC}"
     else
         echo -e "${VERMELHO}   -> Erro: Script /opt/configdebian/autokil.sh não encontrado!${NC}"
     fi
