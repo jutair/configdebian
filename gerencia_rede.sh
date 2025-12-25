@@ -193,6 +193,7 @@ ssh_config() {
         esac
     done
 }
+
 restaura_seguranca() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
@@ -230,16 +231,23 @@ restaura_seguranca() {
     systemctl restart ssh
 
     echo -e "${AMARELO}[5/7]${NC} Validando Guardião Auto-Kill..."
-    # Ajustado para o nome correto: autokil.sh
     if [ -f "/opt/configdebian/autokil.sh" ]; then
         chmod +x /opt/configdebian/autokil.sh
-        # Verifica se o arquivo de config do Telegram existe
+        
+        # 1. Limpeza de processos antigos e do Cron para evitar duplicados
+        pkill -f "autokil.sh" > /dev/null 2>&1
+        crontab -l 2>/dev/null | grep -v "autokil.sh" | crontab -
+        
+        # 2. Verifica se a configuração do Telegram existe
         if [ ! -f "/etc/vps_protecao/telegram.conf" ]; then
-            echo -e "${VERMELHO}⚠️ Alerta: Configuração do Telegram não encontrada!${NC}"
+            echo -e "${VERMELHO}   -> ⚠️ Configuração do Telegram não encontrada!${NC}"
         fi
-        # Remove agendamentos antigos e coloca o novo a cada 1 minuto
-        (crontab -l 2>/dev/null | grep -v "autokil.sh"; echo "* * * * * /bin/bash /opt/configdebian/autokil.sh") | crontab -
-        echo -e "${VERDE}   -> Guardião ativado no Cron (1 min).${NC}"
+
+        # 3. Inicialização IMEDIATA em segundo plano (Modo Daemon 10s)
+        # Usamos nohup para que ele sobreviva ao fechamento do menu
+        nohup /bin/bash /opt/configdebian/autokil.sh > /dev/null 2>&1 &
+        
+        echo -e "${VERDE}   -> Guardião sincronizado e rodando em tempo real.${NC}"
     else
         echo -e "${VERMELHO}   -> Erro: Script /opt/configdebian/autokil.sh não encontrado!${NC}"
     fi
