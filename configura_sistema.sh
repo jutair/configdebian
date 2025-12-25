@@ -103,26 +103,34 @@ sysctl -p /etc/sysctl.d/99-vps-security.conf
 # ===============================================================
 echo -e "${AZUL}Ativando o monitor de integridade (Auto-Kill)...${NC}"
 
-# Garante que o script existe e tem permissão
+# Garante que o diretório e o script existem e têm permissão
 if [ -f "/opt/configdebian/autokil.sh" ]; then
     chmod +x /opt/configdebian/autokil.sh
     
     # Adiciona ao Crontab para rodar a cada 1 minuto (evita duplicados)
     (crontab -l 2>/dev/null | grep -v "autokil.sh"; echo "* * * * * /bin/bash /opt/configdebian/autokil.sh") | crontab -
     
-    # Inicializa o log vazio
+    # Inicializa o log se não existir
     touch /var/log/vps_autokill.log
     chmod 644 /var/log/vps_autokill.log
     
-    echo -e "${VERDE}✅ Monitoramento em background ativado!${NC}"
+    # INICIALIZAÇÃO IMEDIATA EM SEGUNDO PLANO
+    # O "&" ao final garante que ele rode sem travar o restante do seu script
+    /bin/bash /opt/configdebian/autokil.sh & 
+    
+    echo -e "${VERDE}✅ Monitoramento ativado e rodando em background!${NC}"
 else
     echo -e "${VERMELHO}⚠️ Alerta: /opt/configdebian/autokil.sh não encontrado!${NC}"
+    echo -e "${AMARELO}Certifique-se de que o script foi baixado corretamente.${NC}"
 fi
 
 # 5. Proteção Automática Anti-Brute Force (SSH)
+echo -e "${AZUL}Aplicando limites de segurança SSH...${NC}"
 ufw logging medium
 ufw limit ssh
 
 echo -e "${VERDE}Blindagem aplicada com sucesso!${NC}"
+echo -e "${AMARELO}===============================================================${NC}"
 echo "✅ Configuração completa. Usuários jutair e guest logarão diretamente no menu."
 echo "Dê um comando exit e logue novamente com o usuário jutair ou guest"
+echo -e "${AMARELO}===============================================================${NC}"
