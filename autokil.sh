@@ -1,17 +1,15 @@
 #!/bin/bash
-# autokil.sh - Versão Segura para GitHub
+# autokil.sh - Monitor com Alertas Remotos
 
 LOG_FILE="/var/log/vps_autokill.log"
-CONFIG_TELEGRAM="/opt/configdebian/sec/telegram.conf"
+# Local onde o seu menu salvou o Token e o ID
+CONFIG_TELEGRAM="/etc/vps_protecao/telegram.conf"
 
-# Tenta carregar as configurações do Telegram se o arquivo existir
-if [ -f "$CONFIG_TELEGRAM" ]; then
-    source "$CONFIG_TELEGRAM"
-fi
+# Carrega as chaves silenciosamente
+[ -f "$CONFIG_TELEGRAM" ] && source "$CONFIG_TELEGRAM"
 
 enviar_telegram() {
-    # Só tenta enviar se o TOKEN estiver configurado
-    if [ ! -z "$TOKEN" ]; then
+    if [[ ! -z "$TOKEN" && ! -z "$ID_CHAT" ]]; then
         local MENSAGEM="$1"
         curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
             -d chat_id="$ID_CHAT" \
@@ -20,5 +18,6 @@ enviar_telegram() {
     fi
 }
 
-# --- Restante do código de monitoramento (CPU e DDoS) igual ao anterior ---
-# Quando o script chamar enviar_telegram, ele usará as variáveis do arquivo local.
+# --- EXEMPLO DE USO NO MONITOR DE CPU ---
+# Quando o script matar um processo, ele chama:
+# enviar_telegram "⚠️ <b>ALERTA:</b> Usuário $USER desconectado por CPU alta!"
