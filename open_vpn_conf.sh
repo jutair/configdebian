@@ -65,31 +65,64 @@ listar_online() {
     read -p "ENTER..." d
 }
 
+# ... (início do seu script open_vpn_conf.sh com a detecção de AUID que já funciona)
+
 menu_ovp() {
     while true; do
         VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
+        # Lê o limite atual do script de proteção para mostrar no menu
+        LIMITE_ATUAL=$(grep "LIMITE_GB=" /opt/configdebian/auto_limite.sh | cut -d'=' -f2 || echo "Não definido")
+        
         clear
         echo -e "${AZUL}===============================================================${NC}"
         echo -e "            ${VERDE}GERENCIADOR OPENVPN - LOGADO: $USER_ATUAL${NC}"
         echo -e "${AZUL}===============================================================${NC}"
         printf "  ${AZUL}%-15s :${NC} ${VERDE}%s Cliente(s) Online${NC}\n" "STATUS" "$VPN_ONLINE"
-        printf "  ${AZUL}%-15s :${NC} ${AMARELO}%s${NC}\n" "DESTINO" "$DESTINO_USUARIO"
+        printf "  ${AZUL}%-15s :${NC} ${VERMELHO}%s GB${NC}\n" "LIMITE ATUAL" "$LIMITE_ATUAL"
         echo -e "${AZUL}===============================================================${NC}"
         echo -e "  [1] 👤 Criar / Remover Usuários"
         echo -e "  [2] 📂 Meus Arquivos .ovpn"
         echo -e "  [3] 📊 Ver Detalhes dos Online"
         echo -e "  [4] ⚡ Testar Velocidade"
         echo -e "  [5] 📈 Consumo de Banda"
-        echo -e "  [6] ⬅️  Retornar ao Menu Principal"
+        echo -e "  [6] 🛡️  Definir Limite de Tráfego (Auto-Kill)"
+        echo -e "  [7] ⬅️  Retornar ao Menu Principal"
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
         read -n 1 -p "Opção: " OPCAO; echo ""
+        
         case $OPCAO in
-            1) if [ -f "$INSTALLER_PATH" ]; then bash "$INSTALLER_PATH" interactive; organizar_arquivos; else echo "Erro: Instalador não encontrado!"; sleep 2; fi ;;
+            1) if [ -f "$INSTALLER_PATH" ]; then bash "$INSTALLER_PATH" interactive; organizar_arquivos; else echo "Erro!"; sleep 2; fi ;;
             2) clear; ls -lh "$DESTINO_USUARIO"/*.ovpn 2>/dev/null || echo "Vazio."; read -p "ENTER..." d ;;
             3) listar_online ;;
             4) clear; speedtest-cli --share; read -p "ENTER..." d ;;
             5) clear; vnstat -d; read -p "ENTER..." d ;;
-            6) return 0 ;;
+            6) 
+                clear
+                echo -e "${AMARELO}Configuração de Proteção de Tráfego${NC}"
+                read -p "Digite o limite máximo mensal desejado (em GB): " NOVO_LIMITE
+                # Verifica se é um número
+                if [[ $NOVO_LIMITE =~ ^[0-9]+$ ]]; then
+                    # Sobrescreve ou cria o script de monitoramento
+                    cat <<EOF > /opt/configdebian/auto_limite.sh
+#!/bin/bash
+LIMITE_GB=$NOVO_LIMITE
+IFACE_WEB=\$(ip route | grep default | awk '{print \$5}' | head -n1)
+CONSUMO_ATUAL=\$(vnstat -i \$IFACE_WEB --oneline | cut -d';' -f11 | sed 's/ GB//' | cut -d'.' -f1)
+
+if [ -n "\$CONSUMO_ATUAL" ] && [ "\$CONSUMO_ATUAL" -ge "\$LIMITE_GB" ]; then
+    systemctl stop openvpn
+    systemctl stop openvpn-server@server
+    ufw deny 1194/udp
+fi
+EOF
+                    chmod +x /opt/configdebian/auto_limite.sh
+                    echo -e "${VERDE}Sucesso! Limite de $NOVO_LIMITE GB aplicado.${NC}"
+                else
+                    echo -e "${VERMELHO}Erro: Digite apenas números.${NC}"
+                fi
+                sleep 2
+                ;;
+            7) return 0 ;;
             *) echo -e "${VERMELHO}Inválido!${NC}"; sleep 1 ;;
         esac
     done
