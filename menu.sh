@@ -34,7 +34,7 @@ IP_SERVIDOR=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 # --- FUNÇÕES ---
 
 dashboard() {
-    # (Mantive sua função dashboard igual, apenas certifique-se que as variáveis locais não conflitem)
+    # Localizador de Log
     STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
     STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
 
@@ -48,7 +48,21 @@ dashboard() {
         DISCO_INFO=$(df -h / | awk 'NR==2 {print $3 " / " $2 " (" $5 ")"}')
 
         VPN_ONLINE=$(grep -E "CLIENT_LIST|Common Name" "$STATUS_LOG" 2>/dev/null | grep -v "HEADER" | grep -cv "Common Name" || echo "0")
-        SSH_ONLINE=$(who | grep -v "(:0)" | wc -l || echo "0")
+        SSH_ONLINE=$(who | wc -l || echo "0")
+
+        # --- CORREÇÃO DO TRÁFEGO ---
+        # Tenta pegar a interface principal de internet (geralmente eth0 ou enp...)
+        IFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+        
+        # Tenta obter o tráfego do vnstat. Se falhar, usa um comando alternativo ou mostra "Aguardando"
+        TRAFEGO=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
+        
+        if [[ -z "$TRAFEGO" || "$TRAFEGO" == *"Error"* ]]; then
+            # Alternativa rápida: Mostra o total recebido pela interface via /proc/net/dev se o vnstat falhar
+            RX_BYTES=$(cat /proc/net/dev | grep "$IFACE" | awk '{print $2}')
+            TRAFEGO=$(awk -v bytes="$RX_BYTES" 'BEGIN {printf "%.2f GB (Total)", bytes/1024/1024/1024}')
+        fi
+        # ---------------------------
 
         clear
         echo -e "${AZUL}===============================================================${NC}"
@@ -63,9 +77,12 @@ dashboard() {
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
         printf "  %-25s : ${VERDE}%s online${NC}\n" "Usuários VPN" "$VPN_ONLINE"
         printf "  %-25s : ${VERDE}%s online${NC}\n" "Usuários SSH" "$SSH_ONLINE"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Tráfego ($IFACE)" "$TRAFEGO"
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "${AMARELO}Pressione qualquer tecla para sair...${NC}"
-        if read -t 5 -n 1; then return; fi
+        echo -e "${AMARELO}Pressione qualquer tecla para sair... (Refresh 5s)${NC}"
+        
+        # Aguarda 5 segundos por uma tecla, senão atualiza o dashboard
+        read -t 5 -n 1 && return || true
     done
 }
 
