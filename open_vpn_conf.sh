@@ -74,7 +74,7 @@ listar_arquivos_ovpn() {
 
     # 1. Define a pasta de busca (Home do usuário real)
     HOME_HUMANA=$(getent passwd "$USER_ATUAL" | cut -d: -f6)
-    PASTA_BUSCA="$HOME_HUMANA"
+    PASTA_BUSCA="$HOME_HUMANA/clientes_ovp"
     
     # 2. Obtém o IP público do servidor
     IP_SERVIDOR=$(curl -s https://api.ipify.org)
