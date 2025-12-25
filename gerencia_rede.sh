@@ -260,19 +260,21 @@ while true; do
     printf "  ${AZUL}%-15s :${NC} ${VERDE}%-20s${NC}\n" "INTERFACE" "$IFACE_PRINCIPAL"
     printf "  ${AZUL}%-15s :${NC} ${VERMELHO}%-20s${NC}\n" "IPs BANIDOS" "$TOTAL_BAN (Fail2Ban)"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] ⚡ Testar Velocidade"
-    echo -e "  [2] 📊 Monitorar Tráfego Real (Live)"
-    echo -e "  [3] 📉 Relatórios de Consumo (VnStat)"
-    echo -e "  [4] 🛡️  Firewall e Fail2Ban (Banimentos)"
-    echo -e "  [5] 🔑 Configurações do SSH"
-    echo -e "  [6] ⬅️  Retornar ao Menu Principal"
+    echo -e "  [1] 📜 Ver Logs de Segurança"
+    echo -e "  [2] ⚡ Testar Velocidade"
+    echo -e "  [3] 📊 Monitorar Tráfego Real (Live)"
+    echo -e "  [4] 📉 Relatórios de Consumo (VnStat)"
+    echo -e "  [5] 🛡️  Firewall e Fail2Ban (Banimentos)"
+    echo -e "  [6] 🔑 Configurações do SSH"
+    echo -e "  [7] ⬅️  Retornar ao Menu Principal"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Digite a opção: " OP; echo ""
 
     case $OP in
-        1) testa_velocidade ;;
-        2) monitora_placa ;;
-        3) 
+        1) visualizar_logs ;;
+        2) testa_velocidade ;;
+        3) monitora_placa ;;
+        4) 
             while true; do
                 clear
                 echo "=== Relatórios VnStat ($IFACE_PRINCIPAL) ==="
@@ -284,7 +286,7 @@ while true; do
                     3) break ;;
                 esac
             done ;;
-        4)  
+        5)  
             while true; do
                 # Dados para o Dashboard de Segurança
                 ATAQUES=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l)
@@ -319,8 +321,8 @@ while true; do
                     *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
                 esac
             done ;;
-        5) ssh_config ;;
-        6) exit 0 ;;
+        6) ssh_config ;;
+        7) exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
 done
