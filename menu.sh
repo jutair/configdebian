@@ -102,7 +102,7 @@ while true; do
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "  [1] 📊 Dashboard"
     echo -e "  [2] 🌐 Gerenciar VPN"
-    echo -e "  [3] 🚀 Gerenciar Rede"
+    echo -e "  [3] 🚀 Gerenciar Rede & Segurança"
     echo -e "  [4] 👤 Gerenciar Usuários"
     echo -e "  [5] 🆙 Atualizar Sistema"
     echo -e "  [6] 💾 Backup"
