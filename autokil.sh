@@ -10,16 +10,26 @@ INTERVALO=10           # Verificação a cada 10 segundos
 LOG_FILE="/var/log/vps_autokill.log"
 MEU_USUARIO="jutair"   # Seu usuário para nunca ser expulso
 
-# --- CARREGA CONFIGURAÇÕES DO TELEGRAM ---
-[ -f /etc/vps_protecao/telegram.conf ] && source /etc/vps_protecao/telegram.conf
+# --- CARREGA CONFIGURAÇÕES DO TELEGRAM (FORÇADO) ---
+CONF_FILE="/etc/vps_protecao/telegram.conf"
+
+if [ -f "$CONF_FILE" ]; then
+    # Usa 'export' para garantir que as variáveis fiquem visíveis para sub-processos (como o curl)
+    set -a
+    source "$CONF_FILE"
+    set +a
+else
+    echo "$(date) - Erro: Arquivo de configuração não encontrado" >> /var/log/vps_autokill.log
+fi
 
 enviar_telegram() {
     local msg="$1"
+    # Verifica se as variáveis foram carregadas antes de tentar enviar
     if [[ ! -z "$TOKEN" && ! -z "$ID_CHAT" ]]; then
-        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
-             -d chat_id="$ID_CHAT" \
-             -d text="$msg" \
-             -d parse_mode="HTML" > /dev/null
+        /usr/bin/curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+             -d "chat_id=${ID_CHAT}" \
+             -d "text=${msg}" \
+             -d "parse_mode=HTML" > /dev/null 2>&1
     fi
 }
 
