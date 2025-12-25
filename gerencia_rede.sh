@@ -138,7 +138,6 @@ restaura_seguranca() {
     echo -e "${VERDE}✅ SEGURANÇA E SERVIÇOS RESTAURADOS COM SUCESSO!${NC}"
     sleep 3
 }
-
 visualizar_logs() {
     while true; do
         clear
@@ -149,7 +148,8 @@ visualizar_logs() {
         echo -e "  [2] 🎮 Log do BadVPN (UDP-GW)"
         echo -e "  [3] 🛡️  Log do Auto-Kill (Segurança)"
         echo -e "  [4] 🔐 Log de Autenticação (SSH/Falhas)"
-        echo -e "  [5] ⬅️  Voltar"
+        echo -e "  [5] 🧹 Limpar Todos os Logs (Reset)"
+        echo -e "  [6] ⬅️  Voltar"
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
         read -n 1 -p " Escolha uma opção: " OP_LOG; echo ""
 
@@ -193,6 +193,21 @@ visualizar_logs() {
                 read -r
                 ;;
             5)
+                echo -e "\n${VERMELHO}⚠️ Deseja realmente limpar todos os logs de segurança e proxy?${NC}"
+                read -p " Confirmar limpeza? (s/n): " CONFIRM
+                if [[ "$CONFIRM" == "s" || "$CONFIRM" == "S" ]]; then
+                    # Limpa o Log do Auto-Kill
+                    [ -f "/var/log/vps_autokill.log" ] && > /var/log/vps_autokill.log
+                    # Limpa o Log do Squid
+                    LOG_SQUID="/var/log/squid/access.log"
+                    [ ! -f "$LOG_SQUID" ] && LOG_SQUID="/var/log/squid3/access.log"
+                    [ -f "$LOG_SQUID" ] && > "$LOG_SQUID"
+                    
+                    echo -e "${VERDE}✅ Logs limpos com sucesso!${NC}"
+                    sleep 2
+                fi
+                ;;
+            6)
                 return
                 ;;
             *)
@@ -202,7 +217,6 @@ visualizar_logs() {
         esac
     done
 }
-
 banir_ip() {
     echo -e "\n${AMARELO}---------------------------------------------------------------${NC}"
     read -p " Digite o IP que deseja BANIR: " IP_ALVO
