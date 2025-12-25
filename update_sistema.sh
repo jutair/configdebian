@@ -1,13 +1,12 @@
 #!/bin/bash
-# update_sistema.sh - Atualização segura do sistema e scripts configdebian
-# Versão estável - 24-12-2025
+# update_sistema.sh - Atualização segura e atômica
+# Versão: 25-12-2025
 
 set -e
 
 DIR_CONFIG="/opt/configdebian"
 BACKUP_DIR="/opt/configdebian/backups"
 DATA=$(date +"%Y%m%d-%H%M%S")
-
 GITHUB_BASE="https://raw.githubusercontent.com/jutair/configdebian/main"
 
 SCRIPTS=(
@@ -21,59 +20,68 @@ SCRIPTS=(
   autokil.sh
 )
 
+# Cores para interface
 AZUL='\033[0;34m'
 VERDE='\033[0;32m'
 AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-# ---------------- ROOT ----------------
+# 1. Verificação de ROOT
 if [ "$EUID" -ne 0 ]; then
-    echo -e "${VERMELHO}❌ Execute como root ou com sudo${NC}"
+    echo -e "${VERMELHO}❌ Erro: Execute como root.${NC}"
     exit 1
 fi
 
-echo -e "${AZUL}🔄 Atualizando sistema...${NC}"
+clear
+echo -e "${AZUL}===============================================================${NC}"
+echo -e "          🔄 ATUALIZAÇÃO INTELIGENTE DO SISTEMA"
+echo -e "${AZUL}===============================================================${NC}"
 
-apt-get update
-apt-get upgrade -y
+# 2. Atualização de Repositórios e Pacotes
+echo -e "${AMARELO}⌛ Atualizando pacotes do sistema...${NC}"
+apt-get update -y && apt-get upgrade -y
 apt-get install -y openvpn samba speedtest-cli bc sudo curl wget unzip vnstat ufw fail2ban
 
-# ---------------- BACKUP ----------------
+# 3. Backup de Segurança
 mkdir -p "$BACKUP_DIR/$DATA"
-
-echo -e "${AZUL}📦 Criando backups...${NC}"
+echo -e "${AZUL}📦 Criando backup da versão atual...${NC}"
 for script in "${SCRIPTS[@]}"; do
-    if [ -f "$DIR_CONFIG/$script" ]; then
-        cp "$DIR_CONFIG/$script" "$BACKUP_DIR/$DATA/"
-    fi
+    [ -f "$DIR_CONFIG/$script" ] && cp "$DIR_CONFIG/$script" "$BACKUP_DIR/$DATA/"
 done
 
-# ---------------- DOWNLOAD ----------------
-echo -e "${AZUL}⏳ Baixando scripts do GitHub...${NC}"
+# 4. Download Atômico (Evita corromper scripts em execução)
+echo -e "${AZUL}⏳ Sincronizando scripts com GitHub...${NC}"
 
 for script in "${SCRIPTS[@]}"; do
     URL="$GITHUB_BASE/$script"
     DEST="$DIR_CONFIG/$script"
+    TEMP="$DEST.tmp"
 
     echo -ne "${AMARELO}→ $script ... ${NC}"
 
-    # Testa se o arquivo existe no GitHub
-    if curl -fsI "$URL" >/dev/null; then
-        curl -fsSL "$URL" -o "$DEST"
+    # Tenta baixar para o arquivo temporário
+    if curl -fsSL "$URL" -o "$TEMP"; then
+        # Se o download foi 100%, substitui o original instantaneamente
+        mv "$TEMP" "$DEST"
         chmod +x "$DEST"
-        echo -e "${VERDE}atualizado${NC}"
+        echo -e "${VERDE}OK!${NC}"
     else
-        echo -e "${VERMELHO}404 (mantido local)${NC}"
+        echo -e "${VERMELHO}FALHA (mantido anterior)${NC}"
+        [ -f "$TEMP" ] && rm "$TEMP"
     fi
 done
 
-# ---------------- LIMPEZA ----------------
+# 5. Garantia de Reinicialização (Apenas se o autokil estiver preso na RAM)
+# Como você usa Cron, isso não é obrigatório, mas é uma boa prática:
+pkill -f autokil.sh || true
+
+# 6. Limpeza de Backups Antigos (Mais de 7 dias)
 find "$BACKUP_DIR" -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
 
-# ---------------- FINAL ----------------
-echo -e "${VERDE}✅ Atualização concluída com sucesso!${NC}"
-echo -e "${AZUL}📂 Backups em:${NC} $BACKUP_DIR/$DATA"
-echo -e "${AZUL}➡️ Retorne ao menu para aplicar as mudanças.${NC}"
+echo -e "${AZUL}---------------------------------------------------------------${NC}"
+echo -e "${VERDE}✅ Sistema e scripts atualizados com sucesso!${NC}"
+echo -e "${AMARELO}ℹ️ O Autokil será carregado na nova versão no próximo minuto.${NC}"
+echo -e "${AZUL}===============================================================${NC}"
 
 exit 0
