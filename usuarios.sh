@@ -245,50 +245,49 @@ promover_a_root() {
         echo -e "${VERMELHO}Usuário não encontrado.${NC}"
     fi
 }
-
-alterar_senha_protegida() {
+alterar_senha_vps() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "               ${AMARELO}ALTERAÇÃO DE SENHA PROTEGIDA${NC}"
+    echo -e "               ${AMARELO}GERENCIADOR DE SENHAS PROTEGIDO${NC}"
     echo -e "${AZUL}===============================================================${NC}"
 
-    # 1. Identifica quem está executando o script no momento
-    USUARIO_ATUAL=$(whoami)
+    # Captura quem está logado no SSH agora
+    USUARIO_LOGADO=$(whoami)
 
-    read -p "Digite o nome do usuário que deseja alterar a senha: " USER_ALVO
+    read -p "Alterar a senha de qual usuário? " USER_ALVO
 
-    # 2. REGRA DE OURO: Somente o jutair pode mexer na própria senha
-    # Se o alvo for o jutair, mas quem está tentando não é o jutair, bloqueia.
-    if [[ "$USER_ALVO" == "jutair" && "$USUARIO_ATUAL" != "jutair" ]]; then
-        echo -e "${VERMELHO}❌ ACESSO NEGADO: Você não tem permissão para alterar a senha de '$USER_ALVO'.${NC}"
-        echo -e "${AMARELO}Apenas o próprio usuário '$USER_ALVO' pode realizar esta ação.${NC}"
-        sleep 3
+    # --- TRAVA DE SEGURANÇA ---
+    # Se o alvo for 'jutair', mas quem está tentando alterar NÃO for o 'jutair'
+    if [[ "$USER_ALVO" == "jutair" && "$USUARIO_LOGADO" != "jutair" ]]; then
+        echo -e "${VERMELHO}❌ ACESSO NEGADO!${NC}"
+        echo -e "${AMARELO}Apenas o usuário 'jutair' pode alterar sua própria senha.${NC}"
+        
+        # Alerta o dono no Telegram sobre a tentativa suspeita
+        source /etc/vps_protecao/telegram.conf
+        MENSAGEM="⚠️ <b>TENTATIVA DE INVASÃO:</b>%0AO usuário <code>$USUARIO_LOGADO</code> tentou alterar a senha do administrador <code>jutair</code>!"
+        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+        
+        sleep 4
         return
     fi
 
-    # 3. Impede alteração do Root por usuários comuns através do menu
-    if [[ "$USER_ALVO" == "root" && "$USUARIO_ATUAL" != "root" ]]; then
-        echo -e "${VERMELHO}❌ ERRO: Alteração de senha do ROOT bloqueada via menu.${NC}"
-        sleep 3
-        return
-    fi
-
-    # 4. Verifica se o usuário alvo existe no sistema
+    # --- EXECUÇÃO DA ALTERAÇÃO ---
     if id "$USER_ALVO" &>/dev/null; then
-        echo -e "${AMARELO}Alterando senha para: $USER_ALVO${NC}"
-        # O comando 'passwd' será chamado para o usuário definido
-        passwd "$USER_ALVO"
+        echo -e "${AZUL}Digite a nova senha para [$USER_ALVO]:${NC}"
+        
+        # Como jutair está no sudoers, usamos sudo para não pedir a senha antiga
+        sudo passwd "$USER_ALVO"
         
         if [ $? -eq 0 ]; then
-            echo -e "${VERDE}✅ Senha de '$USER_ALVO' alterada com sucesso!${NC}"
+            echo -e "${VERDE}✅ Senha de '$USER_ALVO' atualizada com sucesso!${NC}"
             
-            # Alerta opcional no Telegram quando uma senha for alterada
+            # Log de auditoria no Telegram
             source /etc/vps_protecao/telegram.conf
-            MENSAGEM="🔐 <b>AVISO DE SEGURANÇA</b>%0ASenha do usuário <code>$USER_ALVO</code> foi alterada por <code>$USUARIO_ATUAL</code>."
+            MENSAGEM="🔐 <b>SENHA ALTERADA:</b>%0AAlvo: <code>$USER_ALVO</code>%0AAutor: <code>$USUARIO_LOGADO</code>"
             curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
         fi
     else
-        echo -e "${VERMELHO}⚠️ O usuário '$USER_ALVO' não existe.${NC}"
+        echo -e "${VERMELHO}⚠️ Usuário '$USER_ALVO' não encontrado.${NC}"
     fi
     sleep 2
 }
@@ -331,7 +330,7 @@ while true; do
         1) listar_usuarios_cadastrados ;;
         2) cadastrar_user ;;
         3) remover_usuario_protegido ;;
-        4) alterar_senha_protegida ;;
+        4) alterar_senha_vps ;;
         5) promover_a_root ;;
         6) monitorar_logados ;;
         7) gerenciar_banidos ;;
