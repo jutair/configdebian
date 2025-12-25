@@ -1,6 +1,6 @@
 #!/bin/bash
 # gerencia_rede.sh - Gerenciador de Segurança e Rede Profissional
-
+# Com alerta no telegram
 # --- VARIÁVEIS E CORES ---
 USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
 HOME_HUMANA=$(getent passwd "$USER_ATUAL" | cut -d: -f6)
