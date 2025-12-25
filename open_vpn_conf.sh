@@ -74,7 +74,7 @@ listar_arquivos_ovpn() {
 
     # 1. Configurações de diretório e IP
     HOME_HUMANA=$(getent passwd "$USER_ATUAL" | cut -d: -f6)
-    PASTA_BUSCA="$HOME_HUMANA/clientes_ovpn" # Ajustado para o nome comum
+    PASTA_BUSCA="$HOME_HUMANA/clientes_ovp" # Ajustado para o nome comum
     IP_SERVIDOR=$(curl -s https://api.ipify.org)
 
     # 2. Lista os arquivos em array
