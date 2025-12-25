@@ -349,36 +349,42 @@ banir_ip() {
     local ARQUIVO_WHITE="/etc/vps_protecao/whitelist.conf"
     
     echo -e "\n${AMARELO}---------------------------------------------------------------${NC}"
-    read -p " Digite o IP que deseja BANIR: " IP_ALVO
+    read -p " Digite o IP que deseja BANIR (Bloqueio Total): " IP_ALVO
     
     # 1. Validação de formato de IP
     if [[ $IP_ALVO =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         
         # 2. VERIFICAÇÃO DE SEGURANÇA (WHITELIST)
-        # Verifica se o IP alvo existe dentro do arquivo de whitelist
         if [ -f "$ARQUIVO_WHITE" ] && grep -q "^$IP_ALVO$" "$ARQUIVO_WHITE"; then
             echo -e "${VERMELHO}❌ OPERAÇÃO BLOQUEADA!${NC}"
             echo -e "${AMARELO}O IP $IP_ALVO está na Lista Branca e não pode ser banido.${NC}"
             
-            # Alerta o jutair no Telegram sobre a tentativa de banir um IP protegido
+            # Alerta o administrador no Telegram
             [ -f /etc/vps_protecao/telegram.conf ] && source /etc/vps_protecao/telegram.conf
             if [[ ! -z "$TOKEN" ]]; then
                 MENSAGEM="🛡️ <b>AVISO:</b> O usuário <code>$(whoami)</code> tentou banir o IP protegido <code>$IP_ALVO</code>!"
                 curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
             fi
         else
-            # 3. Executa o banimento se não estiver na whitelist
-            echo -e "${VERMELHO}Bloqueando IP: $IP_ALVO...${NC}"
-            sudo ufw insert 1 deny from "$IP_ALVO" to any
-            echo -e "${VERDE}O IP $IP_ALVO foi banido com sucesso!${NC}"
+            # 3. EXECUTA O BANIMENTO BIDIRECIONAL
+            echo -e "${VERMELHO}Aplicando bloqueio total para o IP: $IP_ALVO...${NC}"
+
+            # Bloqueia ENTRADA (Hacker -> VPS)
+            sudo ufw insert 1 deny from "$IP_ALVO" to any > /dev/null
+            
+            # Bloqueia SAÍDA (Clientes VPN/VPS -> Site/IP)
+            # Esta é a linha que impede os clientes VPN de acessarem o IP
+            sudo ufw insert 1 deny out to "$IP_ALVO" > /dev/null
+
+            echo -e "${VERDE}✅ O IP $IP_ALVO foi isolado! (Entrada e Saída bloqueadas)${NC}"
+            echo -e "${AMARELO}ℹ️ Clientes VPN não conseguem mais acessar este destino.${NC}"
         fi
     else
-        echo -e "${VERMELHO}Formato de IP inválido!${NC}"
+        echo -e "${VERMELHO}❌ Formato de IP inválido!${NC}"
     fi
     echo -e "${AMARELO}---------------------------------------------------------------${NC}"
     sleep 2
 }
-
 gerenciar_whitelist() {
     # APENAS JUTAIR MEXE NA LISTA
     if [ $USER_REAL != "jutair" ]; then
