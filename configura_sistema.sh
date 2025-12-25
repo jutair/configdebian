@@ -99,32 +99,34 @@ echo "⌛ Aplicando as proteções de segurança..."
 sysctl -p /etc/sysctl.d/99-vps-security.conf
 echo "⌛ Aplicando as proteções de segurança..."
 # ===============================================================
-# 4. ATIVAÇÃO DO MONITOR DE INTEGRIDADE (AUTO-KILL)
+# 4. ATIVAÇÃO DO MONITOR DE INTEGRIDADE E LIMITES (AUTO-KILL)
 # ===============================================================
-echo -e "${AZUL}Ativando o monitor de integridade (Auto-Kill)...${NC}"
+echo -e "${AZUL}Configurando limites de processos e Monitor (Auto-Kill)...${NC}"
 
-# Garante que o diretório e o script existem e têm permissão
+# --- A. PROTEÇÃO CONTRA FORK BOMB (Kernel Limits) ---
+# Impede que usuários comuns travem a VPS abrindo milhares de processos
+if ! grep -q "* hard nproc" /etc/security/limits.conf; then
+    echo "* hard nproc 100" >> /etc/security/limits.conf
+    echo "* soft nproc 80" >> /etc/security/limits.conf
+    echo -e "${VERDE}✅ Limites de processos (Anti-Fork Bomb) aplicados!${NC}"
+fi
+
+# --- B. INICIALIZAÇÃO DO GUARDIÃO ---
 if [ -f "/opt/configdebian/autokil.sh" ]; then
     chmod +x /opt/configdebian/autokil.sh
     
-    # 1. REMOVE DO CRONTAB (O script agora tem loop próprio de 10s)
-    # Deixar no crontab causaria múltiplas instâncias travando sua CPU
+    # 1. Limpeza de agendamentos e processos antigos
     crontab -l 2>/dev/null | grep -v "autokil.sh" | crontab -
-    
-    # 2. LIMPEZA DE SEGURANÇA
-    # Mata qualquer processo antigo que possa ter restado de uma instalação anterior
     pkill -f "autokil.sh" > /dev/null 2>&1
     
-    # 3. INICIALIZAÇÃO DO LOG
+    # 2. Inicialização do Log
     touch /var/log/vps_autokill.log
     chmod 644 /var/log/vps_autokill.log
     
-    # 4. INICIALIZAÇÃO IMEDIATA (DAEMON MODE)
-    # O "nohup" permite que o script continue rodando mesmo após você sair do SSH
-    # O "&" joga para segundo plano imediatamente
+    # 3. Execução em Segundo Plano (Modo Daemon)
     nohup /bin/bash /opt/configdebian/autokil.sh > /dev/null 2>&1 &
     
-    echo -e "${VERDE}✅ Monitoramento ativado e rodando em tempo real (10s)!${NC}"
+    echo -e "${VERDE}✅ Monitoramento em tempo real (10s) ativado!${NC}"
 else
     echo -e "${VERMELHO}⚠️ Alerta: /opt/configdebian/autokil.sh não encontrado!${NC}"
 fi
