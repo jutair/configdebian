@@ -107,30 +107,25 @@ echo -e "${AZUL}Ativando o monitor de integridade (Auto-Kill)...${NC}"
 if [ -f "/opt/configdebian/autokil.sh" ]; then
     chmod +x /opt/configdebian/autokil.sh
     
-    # Adiciona ao Crontab para rodar a cada 1 minuto (evita duplicados)
-    (crontab -l 2>/dev/null | grep -v "autokil.sh"; echo "* * * * * /bin/bash /opt/configdebian/autokil.sh") | crontab -
+    # 1. REMOVE DO CRONTAB (O script agora tem loop próprio de 10s)
+    # Deixar no crontab causaria múltiplas instâncias travando sua CPU
+    crontab -l 2>/dev/null | grep -v "autokil.sh" | crontab -
     
-    # Inicializa o log se não existir
+    # 2. LIMPEZA DE SEGURANÇA
+    # Mata qualquer processo antigo que possa ter restado de uma instalação anterior
+    pkill -f "autokil.sh" > /dev/null 2>&1
+    
+    # 3. INICIALIZAÇÃO DO LOG
     touch /var/log/vps_autokill.log
     chmod 644 /var/log/vps_autokill.log
     
-    # INICIALIZAÇÃO IMEDIATA EM SEGUNDO PLANO
-    # O "&" ao final garante que ele rode sem travar o restante do seu script
-    /bin/bash /opt/configdebian/autokil.sh & 
+    # 4. INICIALIZAÇÃO IMEDIATA (DAEMON MODE)
+    # O "nohup" permite que o script continue rodando mesmo após você sair do SSH
+    # O "&" joga para segundo plano imediatamente
+    nohup /bin/bash /opt/configdebian/autokil.sh > /dev/null 2>&1 &
     
-    echo -e "${VERDE}✅ Monitoramento ativado e rodando em background!${NC}"
+    echo -e "${VERDE}✅ Monitoramento ativado e rodando em tempo real (10s)!${NC}"
 else
     echo -e "${VERMELHO}⚠️ Alerta: /opt/configdebian/autokil.sh não encontrado!${NC}"
-    echo -e "${AMARELO}Certifique-se de que o script foi baixado corretamente.${NC}"
 fi
 
-# 5. Proteção Automática Anti-Brute Force (SSH)
-echo -e "${AZUL}Aplicando limites de segurança SSH...${NC}"
-ufw logging medium
-ufw limit ssh
-
-echo -e "${VERDE}Blindagem aplicada com sucesso!${NC}"
-echo -e "${AMARELO}===============================================================${NC}"
-echo "✅ Configuração completa. Usuários jutair e guest logarão diretamente no menu."
-echo "Dê um comando exit e logue novamente com o usuário jutair ou guest"
-echo -e "${AMARELO}===============================================================${NC}"
