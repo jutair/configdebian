@@ -85,43 +85,122 @@ ssh_config() {
 restaura_seguranca() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          ${AMARELO}RESTAURANDO CONFIGURAÇÕES DE SEGURANÇA${NC}"
+    echo -e "           ${AMARELO}RESTAURANDO CONFIGURAÇÕES DE SEGURANÇA${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     
-    echo -e "${AMARELO}[1/5]${NC} Resetando regras do UFW..."
+    echo -e "${AMARELO}[1/7]${NC} Resetando regras do UFW..."
     ufw --force reset > /dev/null
     ufw default deny incoming > /dev/null
     ufw default allow outgoing > /dev/null
 
-    echo -e "${AMARELO}[2/5]${NC} Aplicando portas padrão (SSH e VPN)..."
-    PORTA_SSH=$(grep "^Port" $SSH_CONF | awk '{print $2}')
+    echo -e "${AMARELO}[2/7]${NC} Aplicando portas padrão (SSH, VPN e Proxy)..."
+    PORTA_SSH=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}')
     [ -z "$PORTA_SSH" ] && PORTA_SSH="22"
     
-    ufw allow "$PORTA_SSH"/tcp
-    ufw allow 1194/udp
-    ufw allow 80/tcp
-    ufw allow 443/tcp
+    ufw allow "$PORTA_SSH"/tcp  # SSH
+    ufw allow 1194/udp         # OpenVPN
+    ufw allow 80/tcp           # HTTP
+    ufw allow 443/tcp          # HTTPS
+    ufw allow 8080/tcp         # Squid Proxy (Porta padrão)
+    ufw allow 7300/udp         # BadVPN UDPGW (Jogos)
     
-    echo -e "${AMARELO}[3/5]${NC} Otimizando Kernel (BBR & Anti-Spoofing)..."
+    echo -e "${AMARELO}[3/7]${NC} Otimizando Kernel (BBR & Anti-Spoofing)..."
     sed -i '/net.ipv4.conf.all.rp_filter/d' /etc/sysctl.conf
     echo "net.ipv4.conf.all.rp_filter=1" >> /etc/sysctl.conf
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
     sysctl -p > /dev/null 2>&1
 
-    echo -e "${AMARELO}[4/5]${NC} Aplicando Hardening no SSH..."
+    echo -e "${AMARELO}[4/7]${NC} Aplicando Hardening no SSH..."
     sed -i '/PermitRootLogin/d' /etc/ssh/sshd_config
     sed -i '/MaxAuthTries/d' /etc/ssh/sshd_config
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
     echo "MaxAuthTries 5" >> /etc/ssh/sshd_config
     systemctl restart ssh
 
-    echo -e "${AMARELO}[5/5]${NC} Ativando serviços de proteção..."
+    echo -e "${AMARELO}[5/7]${NC} Validando Guardião Auto-Kill (Background)..."
+    if [ -f "/opt/configdebian/auto_kill.sh" ]; then
+        chmod +x /opt/configdebian/auto_kill.sh
+        (crontab -l 2>/dev/null | grep -v "auto_kill.sh"; echo "*/2 * * * * /bin/bash /opt/configdebian/auto_kill.sh") | crontab -
+        /bin/bash /opt/configdebian/auto_kill.sh # Checagem imediata
+    fi
+
+    echo -e "${AMARELO}[6/7]${NC} Reiniciando Serviços de Conectividade..."
+    # Reinicia Squid se estiver instalado
+    systemctl restart squid > /dev/null 2>&1 || systemctl restart squid3 > /dev/null 2>&1
+    # Reinicia BadVPN (ajuste o nome do serviço se for diferente)
+    systemctl restart badvpn-udpgw > /dev/null 2>&1
+    
+    echo -e "${AMARELO}[7/7]${NC} Ativando serviços de proteção..."
     ufw --force enable > /dev/null
     systemctl restart fail2ban > /dev/null 2>&1
     
-    echo -e "${VERDE}SEGURANÇA RESTAURADA COM SUCESSO!${NC}"
+    echo -e "${VERDE}✅ SEGURANÇA E SERVIÇOS RESTAURADOS COM SUCESSO!${NC}"
     sleep 3
+}
+
+visualizar_logs() {
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "                ${AMARELO}📊 MONITOR DE LOGS DO SISTEMA${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "  [1] 🦑 Log de Acesso do Squid (Proxy)"
+        echo -e "  [2] 🎮 Log do BadVPN (UDP-GW)"
+        echo -e "  [3] 🛡️  Log do Auto-Kill (Segurança)"
+        echo -e "  [4] 🔐 Log de Autenticação (SSH/Falhas)"
+        echo -e "  [5] ⬅️  Voltar"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Escolha uma opção: " OP_LOG; echo ""
+
+        case $OP_LOG in
+            1)
+                LOG_SQUID="/var/log/squid/access.log"
+                [ ! -f "$LOG_SQUID" ] && LOG_SQUID="/var/log/squid3/access.log"
+                clear
+                echo -e "${VERDE}--- ÚLTIMAS CONEXÕES SQUID ---${NC}"
+                if [ -f "$LOG_SQUID" ]; then
+                    tail -n 20 "$LOG_SQUID" | awk '{print "IP: " $3 " -> Destino: " $7}'
+                else
+                    echo "Arquivo de log não encontrado."
+                fi
+                echo -e "\n${AMARELO}Pressione ENTER para voltar...${NC}"
+                read -r
+                ;;
+            2)
+                clear
+                echo -e "${VERDE}--- ÚLTIMOS LOGS BADVPN ---${NC}"
+                grep "badvpn" /var/log/syslog | tail -n 20
+                echo -e "\n${AMARELO}Pressione ENTER para voltar...${NC}"
+                read -r
+                ;;
+            3)
+                clear
+                echo -e "${VERDE}--- HISTÓRICO AUTO-KILL ---${NC}"
+                if [ -f "/var/log/vps_autokill.log" ]; then
+                    tail -n 20 /var/log/vps_autokill.log
+                else
+                    echo "Nenhum registro de segurança ainda."
+                fi
+                echo -e "\n${AMARELO}Pressione ENTER para voltar...${NC}"
+                read -r
+                ;;
+            4)
+                clear
+                echo -e "${VERDE}--- TENTATIVAS DE ACESSO SSH ---${NC}"
+                tail -n 20 /var/log/auth.log | grep -E "Accepted|Failed|Dropped"
+                echo -e "\n${AMARELO}Pressione ENTER para voltar...${NC}"
+                read -r
+                ;;
+            5)
+                return
+                ;;
+            *)
+                echo -e "${VERMELHO}Opção inválida!${NC}"
+                sleep 1
+                ;;
+        esac
+    done
 }
 
 banir_ip() {
