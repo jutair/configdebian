@@ -95,32 +95,7 @@ monitora_banidos() {
         read -n 1 -p " Escolha uma opção: " OP_BAN; echo ""
 
         case $OP_BAN in
-            1)
-                read -p " Digite o IP para DESBANIR: " IP_DESBAN
-                if [[ $IP_DESBAN =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                    echo -e "${AMARELO}Processando desbloqueio...${NC}"
-                    
-                    # 1. Tenta remover de todas as Jails do Fail2Ban
-                    for jail in $JAILS; do
-                        fail2ban-client set "$jail" unbanip "$IP_DESBAN" > /dev/null 2>&1
-                    done
-                    
-                    # 2. Tenta remover do UFW (Regras de Deny)
-                    sudo ufw delete deny from "$IP_DESBAN" > /dev/null 2>&1
-                    
-                    echo -e "${VERDE}✅ Comandos de desbloqueio enviados para $IP_DESBAN!${NC}"
-                    
-                    # Alerta opcional no Telegram
-                    [ -f /etc/vps_protecao/telegram.conf ] && source /etc/vps_protecao/telegram.conf
-                    if [[ ! -z "$TOKEN" ]]; then
-                        MENSAGEM="🔓 <b>IP DESBANIDO:</b>%0AIP: <code>$IP_DESBAN</code>%0AAutor: <code>$(whoami)</code>"
-                        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
-                    fi
-                else
-                    echo -e "${VERMELHO}Formato de IP inválido!${NC}"
-                fi
-                sleep 2
-                ;;
+            1) desbanir_ip ;;
             2)
                 break
                 ;;
@@ -379,6 +354,27 @@ banir_ip() {
             echo -e "${VERDE}✅ O IP $IP_ALVO foi isolado! (Entrada e Saída bloqueadas)${NC}"
             echo -e "${AMARELO}ℹ️ Clientes VPN não conseguem mais acessar este destino.${NC}"
         fi
+    else
+        echo -e "${VERMELHO}❌ Formato de IP inválido!${NC}"
+    fi
+    echo -e "${AMARELO}---------------------------------------------------------------${NC}"
+    sleep 2
+}
+desbanir_ip() {
+    echo -e "\n${AMARELO}---------------------------------------------------------------${NC}"
+    read -p " Digite o IP para DESBANIR: " IP_DESBAN
+    
+    # 1. Validação de formato de IP
+    if [[ $IP_DESBAN =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "${AMARELO}Processando desbloqueio do IP: $IP_DESBAN...${NC}"
+
+        # 2. REMOÇÃO DAS REGRAS (Entrada e Saída)
+        # O UFW permite deletar a regra passando exatamente os mesmos parâmetros
+        sudo ufw delete deny from "$IP_DESBAN" to any > /dev/null 2>&1
+        sudo ufw delete deny out to "$IP_DESBAN" > /dev/null 2>&1
+
+        echo -e "${VERDE}✅ O IP $IP_DESBAN foi liberado com sucesso!${NC}"
+        echo -e "${AMARELO}ℹ️ Clientes VPN e o servidor já podem acessar este IP novamente.${NC}"
     else
         echo -e "${VERMELHO}❌ Formato de IP inválido!${NC}"
     fi
