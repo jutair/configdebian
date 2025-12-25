@@ -4,11 +4,13 @@
 
 set -e
 
+# --- CONFIGURAÇÕES ---
 DIR_CONFIG="/opt/configdebian"
 BACKUP_DIR="/opt/configdebian/backups"
 DATA=$(date +"%Y%m%d-%H%M%S")
 GITHUB_BASE="https://raw.githubusercontent.com/jutair/configdebian/main"
 
+# Lista de scripts para atualizar
 SCRIPTS=(
   menu.sh
   open_vpn_conf.sh
@@ -35,22 +37,22 @@ fi
 
 clear
 echo -e "${AZUL}===============================================================${NC}"
-echo -e "           🔄 ATUALIZAÇÃO INTELIGENTE DO SISTEMA"
+echo -e "                   🔄 ATUALIZAÇÃO DO SISTEMA"
 echo -e "${AZUL}===============================================================${NC}"
 
-# 2. Atualização de Repositórios e Pacotes
-echo -e "${AMARELO}⌛ Atualizando pacotes do sistema...${NC}"
+# 2. Atualização de Repositórios e Pacotes do Sistema
+echo -e "${AMARELO}⌛ Atualizando dependências do sistema...${NC}"
 apt-get update -y && apt-get upgrade -y
 apt-get install -y openvpn samba speedtest-cli bc sudo curl wget unzip vnstat ufw fail2ban
 
-# 3. Backup de Segurança
+# 3. Backup de Segurança (Antes de sobrescrever)
 mkdir -p "$BACKUP_DIR/$DATA"
 echo -e "${AZUL}📦 Criando backup da versão atual...${NC}"
 for script in "${SCRIPTS[@]}"; do
     [ -f "$DIR_CONFIG/$script" ] && cp "$DIR_CONFIG/$script" "$BACKUP_DIR/$DATA/"
 done
 
-# 4. Download Atômico (Substituição segura de arquivos)
+# 4. Download Atômico e Substituição
 echo -e "${AZUL}⏳ Sincronizando scripts com GitHub...${NC}"
 
 for script in "${SCRIPTS[@]}"; do
@@ -58,39 +60,43 @@ for script in "${SCRIPTS[@]}"; do
     DEST="$DIR_CONFIG/$script"
     TEMP="$DEST.tmp"
 
-    echo -ne "${AMARELO}→ $script ... ${NC}"
+    echo -ne "${AMARELO}→ Atualizando $script ... ${NC}"
 
-    # Tenta baixar para o arquivo temporário
+    # Tenta baixar para o arquivo temporário (.tmp)
     if curl -fsSL "$URL" -o "$TEMP"; then
-        # Se o download foi 100%, substitui o original e dá permissão
+        # Se baixou ok, move substituindo o original
         mv "$TEMP" "$DEST"
         chmod +x "$DEST"
         echo -e "${VERDE}OK!${NC}"
     else
         echo -e "${VERMELHO}FALHA (mantido anterior)${NC}"
-        [ -f "$TEMP" ] && rm "$TEMP"
+        [ -f "$TEMP" ] && rm -f "$TEMP"
     fi
 done
 
-# 5. Reinicialização do Guardião (Aplica as novas regras de CPU/RAM)
-echo -e "${AZUL}🔄 Reiniciando o Guardião (Nova versão)...${NC}"
-# Mata a instância antiga que estava na memória
-pkill -f autokil.sh || true
+# 5. REINICIALIZAÇÃO DO GUARDIÃO (MUITO IMPORTANTE)
+# Isso mata a versão velha na RAM e sobe a nova com as melhorias
+echo -e "${AZUL}🔄 Aplicando melhorias: Reiniciando Guardião (Auto-Kill)...${NC}"
 
-# Inicia a nova versão imediatamente em background (Daemon Mode)
+# Mata instâncias antigas
+pkill -f autokil.sh || true
+sleep 1
+
+# Inicia o novo autokil.sh em segundo plano (Daemon Mode)
 if [ -f "$DIR_CONFIG/autokil.sh" ]; then
+    # O nohup garante que o script não morra quando você sair do terminal
     nohup /bin/bash "$DIR_CONFIG/autokil.sh" > /dev/null 2>&1 &
-    echo -e "${VERDE}✅ Guardião atualizado e rodando em tempo real!${NC}"
+    echo -e "${VERDE}✅ Guardião atualizado e operando com CPU + RAM!${NC}"
 else
-    echo -e "${VERMELHO}⚠️ Erro: autokil.sh não encontrado para inicialização.${NC}"
+    echo -e "${VERMELHO}⚠️ Erro: Script autokil.sh não encontrado para iniciar.${NC}"
 fi
 
-# 6. Limpeza de Backups Antigos (Mais de 7 dias)
+# 6. Limpeza de Backups Antigos (Mantém apenas os últimos 7 dias)
 find "$BACKUP_DIR" -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
 
 echo -e "${AZUL}---------------------------------------------------------------${NC}"
-echo -e "${VERDE}✅ Sistema e scripts atualizados com sucesso!${NC}"
-echo -e "${AMARELO}ℹ️ O Autokil já está operando com proteção de CPU + RAM.${NC}"
+echo -e "${VERDE}✅ ATUALIZAÇÃO COMPLETA COM SUCESSO!${NC}"
+echo -e "${AMARELO}ℹ️ Todas as novas proteções já estão em vigor.${NC}"
 echo -e "${AZUL}===============================================================${NC}"
 
 exit 0
