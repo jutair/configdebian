@@ -42,21 +42,65 @@ monitora_placa() {
 }
 
 monitora_banidos() {
-    clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          ${VERMELHO}RELATÓRIO DE ATAQUES E BANIMENTOS${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    JAILS=$(fail2ban-client status | grep "Jail list" | sed 's/.*list://' | tr -d ',')
-    for jail in $JAILS; do
-        TOTAL=$(fail2ban-client status "$jail" | grep "Total banned" | awk '{print $4}')
-        IPS=$(fail2ban-client status "$jail" | grep "Banned IP list" | sed 's/.*list://')
-        echo -e "${AMARELO}[$jail]${NC} Total histórico: ${VERMELHO}$TOTAL${NC}"
-        echo -e "Banidos agora: ${VERMELHO}${IPS:-Nenhum}${NC}\n"
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "          ${VERMELHO}RELATÓRIO DE ATAQUES E BANIMENTOS${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        
+        # Lista Jails do Fail2Ban
+        JAILS=$(fail2ban-client status | grep "Jail list" | sed 's/.*list://' | tr -d ',')
+        for jail in $JAILS; do
+            TOTAL=$(fail2ban-client status "$jail" | grep "Total banned" | awk '{print $4}')
+            IPS=$(fail2ban-client status "$jail" | grep "Banned IP list" | sed 's/.*list://')
+            echo -e "${AMARELO}[$jail]${NC} Total histórico: ${VERMELHO}$TOTAL${NC}"
+            echo -e "Banidos agora: ${VERMELHO}${IPS:-Nenhum}${NC}\n"
+        done
+
+        echo -e "${AZUL}Últimos ataques (Failed Passwords):${NC}"
+        grep "Failed password" /var/log/auth.log 2>/dev/null | tail -n 3
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo -e " [1] 🔓 Desbanir um IP (Fail2Ban/UFW)"
+        echo -e " [2] ⬅️  Voltar ao Menu"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Escolha uma opção: " OP_BAN; echo ""
+
+        case $OP_BAN in
+            1)
+                read -p " Digite o IP para DESBANIR: " IP_DESBAN
+                if [[ $IP_DESBAN =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo -e "${AMARELO}Processando desbloqueio...${NC}"
+                    
+                    # 1. Tenta remover de todas as Jails do Fail2Ban
+                    for jail in $JAILS; do
+                        fail2ban-client set "$jail" unbanip "$IP_DESBAN" > /dev/null 2>&1
+                    done
+                    
+                    # 2. Tenta remover do UFW (Regras de Deny)
+                    sudo ufw delete deny from "$IP_DESBAN" > /dev/null 2>&1
+                    
+                    echo -e "${VERDE}✅ Comandos de desbloqueio enviados para $IP_DESBAN!${NC}"
+                    
+                    # Alerta opcional no Telegram
+                    [ -f /etc/vps_protecao/telegram.conf ] && source /etc/vps_protecao/telegram.conf
+                    if [[ ! -z "$TOKEN" ]]; then
+                        MENSAGEM="🔓 <b>IP DESBANIDO:</b>%0AIP: <code>$IP_DESBAN</code>%0AAutor: <code>$(whoami)</code>"
+                        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+                    fi
+                else
+                    echo -e "${VERMELHO}Formato de IP inválido!${NC}"
+                fi
+                sleep 2
+                ;;
+            2)
+                break
+                ;;
+            *)
+                echo -e "${AMARELO}Opção inválida.${NC}"
+                sleep 1
+                ;;
+        esac
     done
-    echo -e "${AZUL}Últimos ataques (Failed Passwords):${NC}"
-    grep "Failed password" /var/log/auth.log 2>/dev/null | tail -n 5
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    read -p " Pressione ENTER para retornar..." dummy
 }
 
 ssh_config() {
@@ -257,21 +301,83 @@ visualizar_logs() {
     done
 }
 banir_ip() {
+    local ARQUIVO_WHITE="/etc/vps_protecao/whitelist.conf"
+    
     echo -e "\n${AMARELO}---------------------------------------------------------------${NC}"
     read -p " Digite o IP que deseja BANIR: " IP_ALVO
     
-    # Validação simples de formato de IP
+    # 1. Validação de formato de IP
     if [[ $IP_ALVO =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo -e "${VERMELHO}Bloqueando IP: $IP_ALVO...${NC}"
-        # Adiciona a regra de rejeição no topo para garantir prioridade
-        ufw insert 1 deny from "$IP_ALVO" to any
-        echo -e "${VERDE}O IP $IP_ALVO foi banido com sucesso!${NC}"
+        
+        # 2. VERIFICAÇÃO DE SEGURANÇA (WHITELIST)
+        # Verifica se o IP alvo existe dentro do arquivo de whitelist
+        if [ -f "$ARQUIVO_WHITE" ] && grep -q "^$IP_ALVO$" "$ARQUIVO_WHITE"; then
+            echo -e "${VERMELHO}❌ OPERAÇÃO BLOQUEADA!${NC}"
+            echo -e "${AMARELO}O IP $IP_ALVO está na Lista Branca e não pode ser banido.${NC}"
+            
+            # Alerta o jutair no Telegram sobre a tentativa de banir um IP protegido
+            [ -f /etc/vps_protecao/telegram.conf ] && source /etc/vps_protecao/telegram.conf
+            if [[ ! -z "$TOKEN" ]]; then
+                MENSAGEM="🛡️ <b>AVISO:</b> O usuário <code>$(whoami)</code> tentou banir o IP protegido <code>$IP_ALVO</code>!"
+                curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+            fi
+        else
+            # 3. Executa o banimento se não estiver na whitelist
+            echo -e "${VERMELHO}Bloqueando IP: $IP_ALVO...${NC}"
+            sudo ufw insert 1 deny from "$IP_ALVO" to any
+            echo -e "${VERDE}O IP $IP_ALVO foi banido com sucesso!${NC}"
+        fi
     else
         echo -e "${VERMELHO}Formato de IP inválido!${NC}"
     fi
     echo -e "${AMARELO}---------------------------------------------------------------${NC}"
     sleep 2
 }
+
+gerenciar_whitelist() {
+    # APENAS JUTAIR MEXE NA LISTA
+    if [ "$(whoami)" != "jutair" ]; then
+        echo -e "${VERMELHO}Acesso negado! Apenas o administrador jutair gerencia a Whitelist.${NC}"
+        sleep 2; return
+    fi
+
+    local ARQUIVO_WHITE="/etc/vps_protecao/whitelist.conf"
+    [ ! -d "/etc/vps_protecao" ] && mkdir -p /etc/vps_protecao
+    touch "$ARQUIVO_WHITE"
+
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}GERENCIAR LISTA BRANCA (IP)${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e " [1] Adicionar IP à Lista Branca"
+    echo -e " [2] Ver IPs Protegidos"
+    echo -e " [3] Remover IP da Lista Branca"
+    echo -e " [4] Voltar"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -n 1 -p " Escolha: " OP_W; echo ""
+
+    case $OP_W in
+        1)
+            read -p " IP para proteger: " IP_W
+            if [[ $IP_W =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "$IP_W" >> "$ARQUIVO_WHITE"
+                sudo ufw allow from "$IP_W" to any
+                echo -e "${VERDE}IP $IP_W protegido com sucesso!${NC}"
+            fi ;;
+        2)
+            echo -e "${AMARELO}Lista de IPs Protegidos:${NC}"
+            cat "$ARQUIVO_WHITE"
+            read -p "Pressione enter..." ;;
+        3)
+            read -p " IP para remover a proteção: " IP_R
+            sed -i "/^$IP_R$/d" "$ARQUIVO_WHITE"
+            sudo ufw delete allow from "$IP_R" to any
+            echo -e "${AMARELO}Proteção removida para o IP $IP_R.${NC}" ;;
+        *) return ;;
+    esac
+    sleep 2
+}
+
 diagnostico_ataques() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
@@ -399,18 +505,19 @@ while true; do
 
                 clear
                 echo -e "${AZUL}===============================================================${NC}"
-                echo -e "                ${VERMELHO}DASHBOARD DE SEGURANÇA E FIREWALL${NC}"
+                echo -e "           ${VERMELHO}DASHBOARD DE SEGURANÇA E FIREWALL${NC}"
                 echo -e "${AZUL}===============================================================${NC}"
                 printf "  ${AZUL}%-18s :${NC} ${VERMELHO}%-20s${NC}\n" "TENTATIVAS ATAQUE" "$ATAQUES (Log atual)"
                 printf "  ${AZUL}%-18s :${NC} ${VERDE}%-20s${NC}\n" "PORTAS ABERTAS" "$PORTAS_ABERTAS"
                 echo -e "${AZUL}===============================================================${NC}"
                 echo -e "  [1] 📋 Ver Regras Detalhadas (UFW)"
                 echo -e "  [2] 🚫 Ver IPs Banidos (Fail2Ban)"
-                echo -e "  [3] 🔍 Ranking de IPs Agressores (Top 10)" # <-- NOVA FUNÇÃO
-                echo -e "  [4] 🔨 Banir um IP Manualmente"            # <-- NOVA FUNÇÃO
-                echo -e "  [5] 🔓 Abrir Nova Porta"
-                echo -e "  [6] 🛡️  RESTAURAR SEGURANÇA PADRÃO"
-                echo -e "  [7] ⬅️  Voltar"
+                echo -e "  [3] 🔍 Ranking de IPs Agressores (Top 10)" 
+                echo -e "  [4] 🔨 Banir um IP Manualmente"           
+                echo -e "  [5] 📑 Gerenciar White List"            
+                echo -e "  [6] 🔓 Abrir Nova Porta"
+                echo -e "  [7] 🛡️  RESTAURAR SEGURANÇA PADRÃO"
+                echo -e "  [8] ⬅️  Voltar"
                 echo -e "${AZUL}---------------------------------------------------------------${NC}"
                 read -n 1 -p " Digite a opção: " FO; echo ""
 
@@ -419,9 +526,10 @@ while true; do
                     2) monitora_banidos ;;
                     3) diagnostico_ataques ;; # Chamada da função de Ranking
                     4) banir_ip ;;           # Chamada da função de Banimento
-                    5) read -p " Porta: " P; ufw allow "$P"; echo -e "${VERDE}Porta $P aberta!${NC}"; sleep 2 ;;
-                    6) restaura_seguranca ;;
-                    7) break ;;
+                    5) restaura_seguranca ;;
+                    6) read -p " Porta: " P; ufw allow "$P"; echo -e "${VERDE}Porta $P aberta!${NC}"; sleep 2 ;;
+                    7) restaura seguranca ;;
+                    8) break ;;
                     *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
                 esac
             done ;;
