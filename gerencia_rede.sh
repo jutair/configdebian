@@ -81,7 +81,6 @@ ssh_config() {
         esac
     done
 }
-
 restaura_seguranca() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
@@ -98,11 +97,11 @@ restaura_seguranca() {
     [ -z "$PORTA_SSH" ] && PORTA_SSH="22"
     
     ufw allow "$PORTA_SSH"/tcp  # SSH
-    ufw allow 1194/udp         # OpenVPN
-    ufw allow 80/tcp           # HTTP
-    ufw allow 443/tcp          # HTTPS
-    ufw allow 8080/tcp         # Squid Proxy (Porta padrão)
-    ufw allow 7300/udp         # BadVPN UDPGW (Jogos)
+    ufw allow 1194/udp          # OpenVPN
+    ufw allow 80/tcp            # HTTP
+    ufw allow 443/tcp           # HTTPS
+    ufw allow 8080/tcp          # Squid Proxy
+    ufw allow 7300/udp          # BadVPN UDPGW
     
     echo -e "${AMARELO}[3/7]${NC} Otimizando Kernel (BBR & Anti-Spoofing)..."
     sed -i '/net.ipv4.conf.all.rp_filter/d' /etc/sysctl.conf
@@ -118,17 +117,23 @@ restaura_seguranca() {
     echo "MaxAuthTries 5" >> /etc/ssh/sshd_config
     systemctl restart ssh
 
-    echo -e "${AMARELO}[5/7]${NC} Validando Guardião Auto-Kill (Background)..."
-    if [ -f "/opt/configdebian/auto_kill.sh" ]; then
-        chmod +x /opt/configdebian/auto_kill.sh
-        (crontab -l 2>/dev/null | grep -v "auto_kill.sh"; echo "*/2 * * * * /bin/bash /opt/configdebian/auto_kill.sh") | crontab -
-        /bin/bash /opt/configdebian/auto_kill.sh # Checagem imediata
+    echo -e "${AMARELO}[5/7]${NC} Validando Guardião Auto-Kill..."
+    # Ajustado para o nome correto: autokil.sh
+    if [ -f "/opt/configdebian/autokil.sh" ]; then
+        chmod +x /opt/configdebian/autokil.sh
+        # Verifica se o arquivo de config do Telegram existe
+        if [ ! -f "/etc/vps_protecao/telegram.conf" ]; then
+            echo -e "${VERMELHO}⚠️ Alerta: Configuração do Telegram não encontrada!${NC}"
+        fi
+        # Remove agendamentos antigos e coloca o novo a cada 1 minuto
+        (crontab -l 2>/dev/null | grep -v "autokil.sh"; echo "* * * * * /bin/bash /opt/configdebian/autokil.sh") | crontab -
+        echo -e "${VERDE}   -> Guardião ativado no Cron (1 min).${NC}"
+    else
+        echo -e "${VERMELHO}   -> Erro: Script /opt/configdebian/autokil.sh não encontrado!${NC}"
     fi
 
     echo -e "${AMARELO}[6/7]${NC} Reiniciando Serviços de Conectividade..."
-    # Reinicia Squid se estiver instalado
     systemctl restart squid > /dev/null 2>&1 || systemctl restart squid3 > /dev/null 2>&1
-    # Reinicia BadVPN (ajuste o nome do serviço se for diferente)
     systemctl restart badvpn-udpgw > /dev/null 2>&1
     
     echo -e "${AMARELO}[7/7]${NC} Ativando serviços de proteção..."
@@ -138,6 +143,7 @@ restaura_seguranca() {
     echo -e "${VERDE}✅ SEGURANÇA E SERVIÇOS RESTAURADOS COM SUCESSO!${NC}"
     sleep 3
 }
+
 visualizar_logs() {
     while true; do
         clear
