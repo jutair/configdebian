@@ -32,7 +32,6 @@ fi
 IP_SERVIDOR=$(curl -s --max-time 2 ifconfig.me || echo "Desconectado")
 
 # --- FUNÇÕES ---
-
 dashboard() {
     # Localizador de Log
     STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
@@ -50,19 +49,20 @@ dashboard() {
         VPN_ONLINE=$(grep -E "CLIENT_LIST|Common Name" "$STATUS_LOG" 2>/dev/null | grep -v "HEADER" | grep -cv "Common Name" || echo "0")
         SSH_ONLINE=$(who | wc -l || echo "0")
 
-        # --- CORREÇÃO DO TRÁFEGO ---
-        # Tenta pegar a interface principal de internet (geralmente eth0 ou enp...)
-        IFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
-        
-        # Tenta obter o tráfego do vnstat. Se falhar, usa um comando alternativo ou mostra "Aguardando"
-        TRAFEGO=$(vnstat -i "$IFACE" --oneline 2>/dev/null | cut -d';' -f6)
-        
-        if [[ -z "$TRAFEGO" || "$TRAFEGO" == *"Error"* ]]; then
-            # Alternativa rápida: Mostra o total recebido pela interface via /proc/net/dev se o vnstat falhar
-            RX_BYTES=$(cat /proc/net/dev | grep "$IFACE" | awk '{print $2}')
-            TRAFEGO=$(awk -v bytes="$RX_BYTES" 'BEGIN {printf "%.2f GB (Total)", bytes/1024/1024/1024}')
+        # --- LÓGICA DE TRÁFEGO MENSAL (ETH0) ---
+        IFACE_WEB=$(ip route | grep default | awk '{print $5}' | head -n1)
+        # Campo 11 do vnstat --oneline é o total do mês atual (TX + RX)
+        TRAFEGO_MES=$(vnstat -i "$IFACE_WEB" --oneline 2>/dev/null | cut -d';' -f11)
+        [ -z "$TRAFEGO_MES" ] && TRAFEGO_MES="Coletando dados..."
+
+        # --- LÓGICA DE TRÁFEGO DA SESSÃO VPN (TUN0) ---
+        # Somatória do que os clientes ativos estão consumindo agora
+        if [ -f "$STATUS_LOG" ]; then
+            BYTES_VPN=$(grep "CLIENT_LIST" "$STATUS_LOG" | awk -F',' '{sum += $5 + $6} END {printf "%.2f", sum/1024/1024/1024}')
+            TRAFEGO_VPN="${BYTES_VPN} GB"
+        else
+            TRAFEGO_VPN="0.00 GB"
         fi
-        # ---------------------------
 
         clear
         echo -e "${AZUL}===============================================================${NC}"
@@ -77,15 +77,19 @@ dashboard() {
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
         printf "  %-25s : ${VERDE}%s online${NC}\n" "Usuários VPN" "$VPN_ONLINE"
         printf "  %-25s : ${VERDE}%s online${NC}\n" "Usuários SSH" "$SSH_ONLINE"
-        printf "  %-25s : ${AMARELO}%s${NC}\n" "Tráfego ($IFACE)" "$TRAFEGO"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Mensal Total ($IFACE_WEB)" "$TRAFEGO_MES"
+        printf "  %-25s : ${AMARELO}%s${NC}\n" "Consumo VPN Ativo" "$TRAFEGO_VPN"
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "${AMARELO}Pressione qualquer tecla para sair... (Refresh 5s)${NC}"
         
-        # Aguarda 5 segundos por uma tecla, senão atualiza o dashboard
-        read -t 5 -n 1 && return || true
+        echo -e "${VERDE}Conexões SSH Ativas${NC}"
+        who -u | awk '{print "👤 " $1 "  " $NF}' | sed 's/(//g; s/)//g'
+        
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo -e "${AMARELO}Pressione qualquer tecla para sair...${NC}"
+        if read -t 5 -n 1; then return; fi
     done
 }
-
 # --- MENU PRINCIPAL ---
 
 while true; do
