@@ -118,7 +118,7 @@ menu_ovp() {
         printf "  ${AZUL}%-15s :${NC} ${VERMELHO}%s GB${NC}\n" "LIMITE ATUAL" "$LIMITE_ATUAL"
         echo -e "${AZUL}===============================================================${NC}"
         echo -e "  [1] 👤 Criar / Remover Usuários"
-        echo -e "  [2] 📂 Meus Arquivos .ovpn"
+        echo -e "  [2] 📂 Baixar arquivo do cliente .ovpn"
         echo -e "  [3] 📊 Ver Detalhes dos Online"
         echo -e "  [4] ⚡ Testar Velocidade"
         echo -e "  [5] 📈 Consumo de Banda"
