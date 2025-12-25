@@ -5,7 +5,7 @@
 # ===============================================================
 
 # --- CONFIGURAÇÕES ---
-LIMITE_CPU=50        # Mata processos acima de 50%
+LIMITE_CPU=70        # Mata processos acima de 50%
 INTERVALO=10         # Verifica a cada 10 segundos
 LOG_FILE="/var/log/vps_autokill.log"
 
