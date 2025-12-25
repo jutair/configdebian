@@ -105,8 +105,14 @@ monitora_banidos() {
 
 ssh_config() {
     # --- TRAVA DE SEGURANÇA ---
-    USUARIO_ATUAL=$(whoami)
-    if [ "$USUARIO_ATUAL" != "jutair" ]; then
+    # Tenta pegar o usuário do SUDO, se estiver vazio, pega o usuário logado no SSH
+	USUARIO_REAL=${SUDO_USER:-${USER}}
+
+	# Se por algum motivo ainda falhar, usamos o comando de sistema
+	if [ "$USUARIO_REAL" == "root" ]; then
+	    USUARIO_REAL=$(who am i | awk '{print $1}')
+	fi
+	    if [ "$USUARIO_ATUAL" != "jutair" ]; then
         clear
         echo -e "${VERMELHO}===============================================================${NC}"
         echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
@@ -402,8 +408,14 @@ diagnostico_ataques() {
 }
 configurar_telegram() {
     # --- TRAVA DE SEGURANÇA ---
-    USUARIO_ATUAL=$(whoami)
-    if [ "$USUARIO_ATUAL" != "jutair" ]; then
+    # Tenta pegar o usuário do SUDO, se estiver vazio, pega o usuário logado no SSH
+	USUARIO_REAL=${SUDO_USER:-${USER}}
+
+	# Se por algum motivo ainda falhar, usamos o comando de sistema
+	if [ "$USUARIO_REAL" == "root" ]; then
+	    USUARIO_REAL=$(who am i | awk '{print $1}')
+	fi
+	    if [ "$USUARIO_ATUAL" != "jutair" ]; then
         clear
         echo -e "${VERMELHO}===============================================================${NC}"
         echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
