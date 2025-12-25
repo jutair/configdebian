@@ -69,38 +69,71 @@ listar_online() {
 listar_arquivos_ovpn() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "               ${VERDE}📂 MEUS ARQUIVOS .OVPN${NC}"
+    echo -e "               ${VERDE}📂 GERENCIADOR DE ARQUIVOS .OVPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
 
-    # 1. Define a pasta de busca (Home do usuário real)
+    # 1. Configurações de diretório e IP
     HOME_HUMANA=$(getent passwd "$USER_ATUAL" | cut -d: -f6)
-    PASTA_BUSCA="$HOME_HUMANA/clientes_ovp"
-    
-    # 2. Obtém o IP público do servidor
+    PASTA_BUSCA="$HOME_HUMANA/clientes_ovpn" # Ajustado para o nome comum
     IP_SERVIDOR=$(curl -s https://api.ipify.org)
 
-    echo -e "${AMARELO}Usuário detectado:${NC} $USER_REAL"
-    echo -e "${AMARELO}Diretório:${NC} $PASTA_BUSCA"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-
-    # 3. Lista os arquivos .ovpn
+    # 2. Lista os arquivos em array
     mapfile -t ARQUIVOS < <(ls "$PASTA_BUSCA"/*.ovpn 2>/dev/null)
 
     if [ ${#ARQUIVOS[@]} -eq 0 ]; then
-        echo -e "${VERMELHO}Nenhum arquivo .ovpn encontrado na sua pasta home.${NC}"
-    else
-        echo -e "${VERDE}Arquivos encontrados:${NC}"
-        for arquivo in "${ARQUIVOS[@]}"; do
-            NOME_ARQ=$(basename "$arquivo")
-            echo -e "\n${AMARELO}📄 Arquivo:${NC} $NOME_ARQ"
-            
-            # Gera o comando SCP pronto para o usuário
-            echo -e "${AZUL}Comando para baixar (execute no seu PC):${NC}"
-            echo -e "\033[1;37mscp $USER_REAL@$IP_SERVIDOR:$arquivo ./\033[0m"
-        done
+        echo -e "${VERMELHO}Nenhum arquivo .ovpn encontrado em: $PASTA_BUSCA${NC}"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -p "Pressione ENTER para voltar..." dummy
+        return
     fi
 
+    # 3. Exibição em formato de Lista Limpa
+    echo -e "${AMARELO}Arquivos disponíveis na pasta clientes_ovpn:${NC}"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    
+    # Exibe em colunas para economizar espaço
+    printf "${VERDE}%-30s %-30s${NC}\n" "Nome do Arquivo" "Nome do Arquivo"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    
+    # Lógica para imprimir dois arquivos por linha
+    for ((i=0; i<${#ARQUIVOS[@]}; i+=2)); do
+        arq1=$(basename "${ARQUIVOS[i]}")
+        arq2=$(basename "${ARQUIVOS[i+1]}")
+        printf "%-30s %-30s\n" "$arq1" "$arq2"
+    done
+
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    
+    # 4. Solicitação de download
+    echo -ne "${AMARELO}Digite o nome do cliente (ou parte dele) para baixar: ${NC}"
+    read CLIENTE_BUSCA
+
+    if [ -z "$CLIENTE_BUSCA" ]; then
+        return
+    fi
+
+    # Busca o arquivo exato correspondente
+    ARQUIVO_FINAL=$(ls "$PASTA_BUSCA"/*"$CLIENTE_BUSCA"*.ovpn 2>/dev/null | head -n 1)
+
+    if [ -z "$ARQUIVO_FINAL" ]; then
+        echo -e "${VERMELHO}Arquivo não encontrado para: $CLIENTE_BUSCA${NC}"
+    else
+        NOME_LIMPO=$(basename "$ARQUIVO_FINAL")
+        echo -e "\n${VERDE}✅ Arquivo selecionado:${NC} $NOME_LIMPO"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo -e "${AMARELO}Copie o comando conforme o seu sistema (execute no seu PC):${NC}"
+        
+        # Comando para Linux/Mac
+        echo -e "\n${VERDE}🐧 Linux / 🍎 Mac:${NC}"
+        echo -e "\033[1;37mscp $USER_REAL@$IP_SERVIDOR:$ARQUIVO_FINAL ~/Downloads/\033[0m"
+        
+        # Comando para Windows
+        echo -e "\n${VERDE}🪟 Windows (PowerShell/CMD):${NC}"
+        echo -e "\033[1;37mscp $USER_REAL@$IP_SERVIDOR:$ARQUIVO_FINAL \$env:USERPROFILE\Downloads\\033[0m"
+        
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    fi
+
     read -p "Pressione ENTER para voltar..." dummy
 }
 
