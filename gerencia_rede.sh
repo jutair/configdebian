@@ -255,61 +255,34 @@ diagnostico_ataques() {
     echo -e "Dica: Identifique os IPs acima e use a opção [4] para banir."
     read -p " Pressione ENTER para retornar..." dummy
 }
-
 configurar_telegram() {
-    # 1. Identifica o usuário real
-    local USUARIO_REAL=$(who am i | awk '{print $1}')
-    [[ -z "$USUARIO_REAL" ]] && USUARIO_REAL="$LOGNAME"
-
-    # 2. Restrição de Usuário
-    if [[ "$USUARIO_REAL" != "jutair" ]]; then
-        clear
-        echo -e "${VERMELHO}===============================================================${NC}"
-        echo -e "          🚫 ACESSO NEGADO: USUÁRIO NÃO AUTORIZADO"
-        echo -e "${VERMELHO}===============================================================${NC}"
-        echo -e " O usuário logado é: ${AMARELO}$USUARIO_REAL${NC}"
-        echo -e " Apenas o administrador ${VERDE}jutair${NC} pode alterar estas chaves."
-        echo -e "\n${VERMELHO}Pressione [ENTER] para voltar...${NC}"
-        read -r
-        return
-    fi
-
-    # 3. Interface
     clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          📢  CONFIGURAR ALERTAS DO TELEGRAM  ✈️"
-    echo -e "${AZUL}===============================================================${NC}"
-    read -p " 🔍 Digite o TOKEN do Bot: " TELEGRAM_TOKEN
-    read -p " 🆔 Digite o seu ID do Chat: " TELEGRAM_ID
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    echo -e "\033[1;33m--- CONFIGURAR ALERTA TELEGRAM ---\033[0m"
+    echo ""
+    read -p "Digite o Token do seu Bot: " NOVO_TOKEN
+    read -p "Digite o seu ID do Telegram: " NOVO_ID
+    echo ""
 
-    # 4. Salvando sem usar EOF (Evita erro de aspas/chaves abertas)
-    echo -e " ⌛ ${AMARELO}Salvando configurações...${NC}"
-    mkdir -p "/etc/vps_protecao"
+    # Cria o diretório se não existir
+    mkdir -p /etc/vps_protecao
+
+    # Grava no arquivo usando sudo e aspas corretas
+    echo "TOKEN=\"$NOVO_TOKEN\"" | sudo tee /etc/vps_protecao/telegram.conf > /dev/null
+    echo "ID_CHAT=\"$NOVO_ID\"" | sudo tee -a /etc/vps_protecao/telegram.conf > /dev/null
+
+    # Dá permissão de leitura
+    chmod 644 /etc/vps_protecao/telegram.conf
+
+    echo -e "\033[1;32mConfiguração salva com sucesso!\033[0m"
     
-    # Escreve linha por linha para garantir que não quebre a sintaxe
-    echo "TOKEN=\"$TELEGRAM_TOKEN\"" > "/etc/vps_protecao/telegram.conf"
-    echo "ID_CHAT=\"$TELEGRAM_ID\"" >> "/etc/vps_protecao/telegram.conf"
-
-    chmod 600 "/etc/vps_protecao/telegram.conf"
-    chown root:root "/etc/vps_protecao/telegram.conf"
-
-    # 5. Teste de Envio
-    local TESTE=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" \
-            -d chat_id="$TELEGRAM_ID" \
-            -d text="✅ CONEXÃO ESTABELECIDA" \
-            -d parse_mode="HTML")
-
-    if [[ $TESTE == *"ok\":true"* ]]; then
-        echo -e "\n${VERDE} ✅ Teste de envio OK!${NC}"
-    else
-        echo -e "\n${VERMELHO} ❌ Erro no envio. Verifique os dados.${NC}"
-    fi
-
-    echo -e "\n${AMARELO}Pressione [ENTER] para retornar...${NC}"
-    read -r
+    # Teste de envio imediato
+    echo "Enviando teste para o seu Telegram..."
+    curl -s -X POST "https://api.telegram.org/bot$NOVO_TOKEN/sendMessage" \
+         -d chat_id="$NOVO_ID" \
+         -d text="✅ Alertas da VPS configurados com sucesso!" > /dev/null
+         
+    sleep 2
 }
-
 # --- MENU PRINCIPAL DO MÓDULO ---
 
 while true; do
