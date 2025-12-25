@@ -57,4 +57,9 @@ while true; do
         echo "[$DATA_HORA] EXPULSO: $USER_ALVO | CPU TOTAL: $SOMA_CPU%" >> "$LOG_FILE"
 
         # 📱 ALERTA TELEGRAM
-        MENSAGEM="⚠️ <b>USUÁRIO EXPULSO POR ABUSO</b>%0A👤 <b>Usuário:</b> <code>$USER_ALVO</code>%0
+        MENSAGEM="⚠️ <b>USUÁRIO EXPULSO POR ABUSO</b>%0A👤 <b>Usuário:</b> <code>$USER_ALVO</code>%0A🔥 <b>Consumo Total:</b> <code>$SOMA_CPU%</code>%0A🛡️ <i>A VPS estava em 100% e o Guardião removeu o invasor.</i>"
+        enviar_telegram "$MENSAGEM"
+    done
+
+    sleep "$INTERVALO"
+done
