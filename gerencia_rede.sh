@@ -2,8 +2,27 @@
 # gerencia_rede.sh - Gerenciador de Segurança e Rede Profissional
 # Com alerta no telegram
 # --- VARIÁVEIS E CORES ---
-USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
-HOME_HUMANA=$(getent passwd "$USER_ATUAL" | cut -d: -f6)
+# ===============================================================
+# IDENTIFICAÇÃO DO USUÁRIO REAL (TRAVA ANTI-ROOT)
+# ===============================================================
+# 1. Tenta capturar o usuário que invocou o sudo
+USER_REAL=${SUDO_USER:-${USER}}
+
+# 2. Caso seja um login direto ou sudo falhe, consulta a sessão TTY
+if [[ "$USER_REAL" == "root" ]]; then
+    # Captura o primeiro campo do comando 'who am i' (usuário da linha de comando)
+    USER_REAL=$(who am i | awk '{print $1}')
+fi
+
+# 3. Se ainda assim retornar vazio (em alguns casos de execução via script puro)
+[ -z "$USER_REAL" ] && USER_REAL=$(id -un)
+
+# 4. Localiza o diretório Home real do usuário identificado
+HOME_HUMANA=$(getent passwd "$USER_REAL" | cut -d: -f6)
+
+# Exporta para que sub-scripts (como o autokil.sh) também possam ler se necessário
+export USER_REAL
+export HOME_HUMANA
 SSH_CONF="/etc/ssh/sshd_config"
 
 AZUL='\033[0;34m'
@@ -106,11 +125,11 @@ monitora_banidos() {
 ssh_config() {
     # --- TRAVA DE SEGURANÇA ---
     # Tenta pegar o usuário do SUDO, se estiver vazio, pega o usuário logado no SSH
-	USUARIO_REAL=${SUDO_USER:-${USER}}
+	USUARIO_REAL=$USER_REAL
 
 	# Se por algum motivo ainda falhar, usamos o comando de sistema
 	if [ "$USUARIO_REAL" == "root" ]; then
-	    USUARIO_REAL=$(who am i | awk '{print $1}')
+	    USUARIO_REAL=$USER_REAL
 	fi
 	    if [ "$USUARIO_ATUAL" != "jutair" ]; then
         clear
@@ -342,7 +361,7 @@ banir_ip() {
 
 gerenciar_whitelist() {
     # APENAS JUTAIR MEXE NA LISTA
-    if [ "$(whoami)" != "jutair" ]; then
+    if [ $USER_REAL != "jutair" ]; then
         echo -e "${VERMELHO}Acesso negado! Apenas o administrador jutair gerencia a Whitelist.${NC}"
         sleep 2; return
     fi
@@ -409,11 +428,11 @@ diagnostico_ataques() {
 configurar_telegram() {
     # --- TRAVA DE SEGURANÇA ---
     # Tenta pegar o usuário do SUDO, se estiver vazio, pega o usuário logado no SSH
-	USUARIO_REAL=${SUDO_USER:-${USER}}
+	USUARIO_REAL=$USER_REAL
 
 	# Se por algum motivo ainda falhar, usamos o comando de sistema
 	if [ "$USUARIO_REAL" == "root" ]; then
-	    USUARIO_REAL=$(who am i | awk '{print $1}')
+	    USUARIO_REAL=$USER_REAL
 	fi
 	    if [ "$USUARIO_ATUAL" != "jutair" ]; then
         clear
@@ -518,6 +537,7 @@ while true; do
                 clear
                 echo -e "${AZUL}===============================================================${NC}"
                 echo -e "           ${VERMELHO}DASHBOARD DE SEGURANÇA E FIREWALL${NC}"
+				echo "Usuário logado: $HOME_HUMANA"
                 echo -e "${AZUL}===============================================================${NC}"
                 printf "  ${AZUL}%-18s :${NC} ${VERMELHO}%-20s${NC}\n" "TENTATIVAS ATAQUE" "$ATAQUES (Log atual)"
                 printf "  ${AZUL}%-18s :${NC} ${VERDE}%-20s${NC}\n" "PORTAS ABERTAS" "$PORTAS_ABERTAS"
