@@ -549,7 +549,6 @@ while true; do
                 clear
                 echo -e "${AZUL}===============================================================${NC}"
                 echo -e "           ${VERMELHO}DASHBOARD DE SEGURANÇA E FIREWALL${NC}"
-				echo "Usuário: $USER_REAL"
                 echo -e "${AZUL}===============================================================${NC}"
                 printf "  ${AZUL}%-18s :${NC} ${VERMELHO}%-20s${NC}\n" "TENTATIVAS ATAQUE" "$ATAQUES (Log atual)"
                 printf "  ${AZUL}%-18s :${NC} ${VERDE}%-20s${NC}\n" "PORTAS ABERTAS" "$PORTAS_ABERTAS"
