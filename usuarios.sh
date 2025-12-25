@@ -149,7 +149,61 @@ adicionar_chave_ssh() {
     echo -e "${VERDE}Chave adicionada com sucesso para $USER_ALVO!${NC}"
     sleep 2
 }
+gerenciar_banidos() {
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "             ${VERMELHO}🚫 GERENCIAR IPs BLOQUEADOS${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        
+        # Armazena a lista de IPs bloqueados
+        LISTA_BANS=$(ufw status | grep "DENY" | awk '{print $3}' | grep -v "Anywhere")
+        
+        if [ -z "$LISTA_BANS" ]; then
+            echo -e "         ${VERDE}Nenhum IP bloqueado no momento.${NC}"
+        else
+            echo -e "${AMARELO}IPs Restritos pelo Anti-DDoS/Firewall:${NC}"
+            # Mostra a lista numerada (1. IP, 2. IP...)
+            echo "$LISTA_BANS" | nl -w2 -s'. '
+        fi
+        
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "  [1] 🔓 Desbloquear um IP Específico"
+        echo -e "  [2] ♻️  Limpar Todos os Bloqueios"
+        echo -e "  [3] ⬅️  Voltar"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Escolha uma opção: " OP_BAN; echo ""
 
+        case $OP_BAN in
+            1)
+                echo -e "\n"
+                read -p " Digite o IP que deseja liberar: " IP_REM
+                if [[ ! -z "$IP_REM" ]]; then
+                    ufw delete deny from "$IP_REM" > /dev/null 2>&1
+                    echo -e "${VERDE}✅ IP $IP_REM liberado com sucesso!${NC}"
+                    sleep 1
+                fi
+                ;;
+            2)
+                echo -e "\n${VERMELHO}⚠️ Isso liberará TODOS os IPs atacantes.${NC}"
+                read -p " Confirmar limpeza total? (s/n): " CONFIRM
+                if [[ "$CONFIRM" == "s" || "$CONFIRM" == "S" ]]; then
+                    # Remove todas as regras de DENY de forma segura
+                    ufw status numbered | grep "DENY" | awk -F"[][]" '{print $2}' | sort -rn | xargs -I{} ufw --force delete {} > /dev/null 2>&1
+                    echo -e "${VERDE}✅ Firewall limpo e todos os IPs liberados!${NC}"
+                    sleep 1
+                fi
+                ;;
+            3) 
+                return 
+                ;;
+            *) 
+                echo -e "${VERMELHO}Opção inválida!${NC}"
+                sleep 1 
+                ;;
+        esac
+    done
+}
 ############################ MENU PRINCIPAL ############################
 
 while true; do
@@ -174,12 +228,13 @@ while true; do
 
     echo -e "  [1] 📋 Listar Todos os Usuários"
     echo -e "  [2] 👤 Cadastrar Novo Usuário"
-    echo -e "  [3] 🚫 Remover Usuário"
+    echo -e "  [3] 🗑️  Remover Usuário"
     echo -e "  [4] 🔑 Alterar Senha"
     echo -e "  [5] 🆙 Promover a Root (Sudo)"
     echo -e "  [6] 👁️  Ver Sessões Ativas (Logados)"
-    echo -e "  [7] 🔑 Adicionar chave SSH (somente jutair)"
-    echo -e "  [8] ⬅️  Retornar ao Menu Principal"
+    echo -e "  [7] 🚫 Gerenciar IPs Banidos"
+    echo -e "  [8] 🔑 Adicionar chave SSH (somente jutair)"
+    echo -e "  [9] ⬅️  Retornar ao Menu Principal"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
     read -n 1 -p " Digite a opção: " OP; echo ""
@@ -199,8 +254,9 @@ while true; do
             read -p " Usuário para Sudo: " username
             usermod -aG sudo "$username" && echo "Promovido!"; sleep 2 ;;
         6) monitorar_logados ;;
-        7) adicionar_chave_ssh ;;
-        8) exit 0 ;;
+        7) gerenciar_banidos ;;
+        8) adicionar_chave_ssh ;;
+        9) exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
 done
