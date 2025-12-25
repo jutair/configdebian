@@ -582,7 +582,7 @@ while true; do
                     4) banir_ip ;;           # Chamada da função de Banimento
                     5) gerenciar_whitelist ;;
                     6) read -p " Porta: " P; ufw allow "$P"; echo -e "${VERDE}Porta $P aberta!${NC}"; sleep 2 ;;
-                    7) restaura seguranca ;;
+                    7) restaura_seguranca ;;
                     8) break ;;
                     *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
                 esac
