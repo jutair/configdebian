@@ -255,6 +255,41 @@ diagnostico_ataques() {
     echo -e "Dica: Identifique os IPs acima e use a opção [4] para banir."
     read -p " Pressione ENTER para retornar..." dummy
 }
+
+configurar_telegram() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "          📢 CONFIGURAR ALERTAS DO TELEGRAM"
+    echo -e "${AZUL}===============================================================${NC}"
+    
+    # -r evita que barras invertidas no token causem problemas
+    read -p " Digite o TOKEN do Bot: " TELEGRAM_TOKEN
+    read -p " Digite o seu ID do Chat: " TELEGRAM_ID
+    
+    # Pasta externa ao projeto e segura
+    CONF_DIR="/etc/vps_protecao"
+    mkdir -p "$CONF_DIR"
+    
+    # Usar 'EOF' entre aspas evita expansão indesejada de variáveis durante a escrita
+    cat <<'EOF' > "$CONF_DIR/telegram.conf"
+TOKEN="$TELEGRAM_TOKEN"
+ID_CHAT="$TELEGRAM_ID"
+EOF
+
+    # Agora aplicamos as variáveis reais no arquivo substituindo as strings temporárias
+    # Isso é mais seguro que o método anterior para evitar conflitos de sintaxe
+    sed -i "s|\$TELEGRAM_TOKEN|$TELEGRAM_TOKEN|g" "$CONF_DIR/telegram.conf"
+    sed -i "s|\$TELEGRAM_ID|$TELEGRAM_ID|g" "$CONF_DIR/telegram.conf"
+
+    # PROTEÇÃO: Somente o root lê e escreve (600)
+    chmod 600 "$CONF_DIR/telegram.conf"
+    chown root:root "$CONF_DIR/telegram.conf"
+
+    echo -e "\n${VERDE}✅ Configurações salvas em $CONF_DIR/telegram.conf${NC}"
+    echo -e "${AMARELO}Pressione ENTER para voltar...${NC}"
+    read -r
+}
+
 # --- MENU PRINCIPAL DO MÓDULO ---
 
 while true; do
@@ -280,7 +315,8 @@ while true; do
     echo -e "  [4] 📉 Relatórios de Consumo (VnStat)"
     echo -e "  [5] 🛡️  Firewall e Fail2Ban (Banimentos)"
     echo -e "  [6] 🔑 Configurações do SSH"
-    echo -e "  [7] ⬅️  Retornar ao Menu Principal"
+    echo -e "  [7] 🔑 Configurações do SSH"
+    echo -e "  [8] ⬅️  Retornar ao Menu Principal"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Digite a opção: " OP; echo ""
 
@@ -336,7 +372,8 @@ while true; do
                 esac
             done ;;
         6) ssh_config ;;
-        7) exit 0 ;;
+        7) configurar_telegram ;;
+        8) exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
 done
