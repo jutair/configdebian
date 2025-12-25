@@ -494,6 +494,7 @@ while true; do
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "            ${VERDE}GERENCIAMENTO DE REDE E SEGURANÇA${NC}"
+	echo "Usuário: $USER_REAL"
     echo -e "${AZUL}===============================================================${NC}"
     printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "IP SERVIDOR" "$IP_EXTERNO"
     printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "PORTA SSH" "$PORTA_SSH"
