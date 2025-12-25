@@ -129,7 +129,7 @@ menu_ovp() {
         
         case $OPCAO in
             1) if [ -f "$INSTALLER_PATH" ]; then bash "$INSTALLER_PATH" interactive; organizar_arquivos; else echo "Erro!"; sleep 2; fi ;;
-            2) clear; ls -lh "$DESTINO_USUARIO"/*.ovpn 2>/dev/null || echo "Vazio."; read -p "ENTER..." d ;;
+            2) listar_arquivos_ovpn ;;
             3) listar_online ;;
             4) clear; speedtest-cli --share; read -p "ENTER..." d ;;
             5) clear; vnstat -d; read -p "ENTER..." d ;;
