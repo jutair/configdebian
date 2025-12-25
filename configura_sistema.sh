@@ -97,7 +97,7 @@ echo "⌛ Aplicando as proteções de segurança..."
 
 # Aplicar as mudanças de Kernel imediatamente
 sysctl -p /etc/sysctl.d/99-vps-security.conf
-
+echo "⌛ Aplicando as proteções de segurança..."
 # ===============================================================
 # 4. ATIVAÇÃO DO MONITOR DE INTEGRIDADE (AUTO-KILL)
 # ===============================================================
@@ -128,4 +128,4 @@ if [ -f "/opt/configdebian/autokil.sh" ]; then
 else
     echo -e "${VERMELHO}⚠️ Alerta: /opt/configdebian/autokil.sh não encontrado!${NC}"
 fi
-
+echo "✅ Usuários jutair e guest logarão diretamente no menu."
