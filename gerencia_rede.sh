@@ -2,25 +2,35 @@
 # gerencia_rede.sh - Gerenciador de Segurança e Rede Profissional
 # Com alerta no telegram
 # --- VARIÁVEIS E CORES ---
-# ===============================================================
-# IDENTIFICAÇÃO DO USUÁRIO REAL (TRAVA ANTI-ROOT)
-# ===============================================================
-# 1. Tenta capturar o usuário que invocou o sudo
-USER_REAL=${SUDO_USER:-${USER}}
+# 1. Tenta capturar pelo ambiente do SUDO (mais comum)
+USER_REAL=${SUDO_USER}
 
-# 2. Caso seja um login direto ou sudo falhe, consulta a sessão TTY
-if [[ "$USER_REAL" == "root" ]]; then
-    # Captura o primeiro campo do comando 'who am i' (usuário da linha de comando)
+# 2. Se estiver vazio (login direto), tenta o LOGNAME da sessão
+if [ -z "$USER_REAL" ]; then
+    USER_REAL=${LOGNAME}
+fi
+
+# 3. Se ainda assim for root, usamos o 'logname' que consulta o utmp do sistema
+if [[ "$USER_REAL" == "root" || -z "$USER_REAL" ]]; then
+    USER_REAL=$(logname 2>/dev/null)
+fi
+
+# 4. Último recurso: verifica quem é o dono do terminal atual
+if [[ "$USER_REAL" == "root" || -z "$USER_REAL" ]]; then
     USER_REAL=$(who am i | awk '{print $1}')
 fi
 
-# 3. Se ainda assim retornar vazio (em alguns casos de execução via script puro)
-[ -z "$USER_REAL" ] && USER_REAL=$(id -un)
+# 5. Se após tudo isso ainda for root, e não estivermos logados como root direto
+# pegamos o ID 1000 (geralmente o primeiro usuário criado, como o jutair)
+if [[ "$USER_REAL" == "root" ]]; then
+    # Procura o primeiro usuário humano no /etc/passwd (UID >= 1000)
+    # exceto o 'nobody'
+    USER_REAL=$(awk -F: '$3 >= 1000 && $3 != 65534 {print $1; exit}' /etc/passwd)
+fi
 
-# 4. Localiza o diretório Home real do usuário identificado
+# 6. Define a HOME baseada no veredito final
 HOME_HUMANA=$(getent passwd "$USER_REAL" | cut -d: -f6)
 
-# Exporta para que sub-scripts (como o autokil.sh) também possam ler se necessário
 export USER_REAL
 export HOME_HUMANA
 SSH_CONF="/etc/ssh/sshd_config"
@@ -495,6 +505,7 @@ while true; do
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "            ${VERDE}GERENCIAMENTO DE REDE E SEGURANÇA${NC}"
 	echo "Usuário: $USER_REAL"
+	echo "Home humana: $HOME_HUMANA"
     echo -e "${AZUL}===============================================================${NC}"
     printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "IP SERVIDOR" "$IP_EXTERNO"
     printf "  ${AZUL}%-15s :${NC} ${AMARELO}%-20s${NC}\n" "PORTA SSH" "$PORTA_SSH"
