@@ -60,6 +60,26 @@ monitora_banidos() {
 }
 
 ssh_config() {
+    # --- TRAVA DE SEGURANÇA ---
+    USUARIO_ATUAL=$(whoami)
+    if [ "$USUARIO_ATUAL" != "jutair" ]; then
+        clear
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e "O usuário '${AMARELO}$USUARIO_ATUAL${NC}' não tem permissão para configurar o SSH."
+        echo -e "Esta tentativa foi registrada."
+        
+        # Alerta opcional no Telegram
+        source /etc/vps_protecao/telegram.conf
+        MENSAGEM="🚫 <b>ACESSO NEGADO:</b>%0AO usuário <code>$USUARIO_ATUAL</code> tentou entrar no Menu SSH."
+        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+        
+        sleep 3
+        return # Sai da função e volta para o menu principal
+    fi
+
+    # --- INÍCIO DA FUNÇÃO ORIGINAL (APENAS PARA JUTAIR) ---
     while true; do
         clear
         echo -e "${AZUL}===============================================================${NC}"
@@ -76,7 +96,20 @@ ssh_config() {
             1) read -p " Nova Porta: " NP; ufw allow "$NP"/tcp; sed -i "/^Port /d" $SSH_CONF; echo "Port $NP" >> $SSH_CONF; systemctl restart ssh ;;
             2) echo -e "[1] Permitir [2] Bloquear"; read -n 1 R; [ "$R" == "1" ] && VAL="yes" || VAL="no"; sed -i "/^PermitRootLogin/d" $SSH_CONF; echo "PermitRootLogin $VAL" >> $SSH_CONF; systemctl restart ssh ;;
             3) echo -e "[1] Ativar [2] Desativar"; read -n 1 S; [ "$S" == "1" ] && VAL="yes" || VAL="no"; sed -i "/^PasswordAuthentication/d" $SSH_CONF; echo "PasswordAuthentication $VAL" >> $SSH_CONF; systemctl restart ssh ;;
-            4) clear; who; read -p " Usuário para expulsar: " U; pkill -u "$U" -9; echo "Expulso!"; sleep 2 ;;
+            4) 
+                clear
+                echo -e "${AMARELO}Usuários Conectados:${NC}"
+                who
+                echo ""
+                read -p " Usuário para expulsar: " U
+                # Proteção extra: Não deixa o jutair se expulsar sem querer
+                if [ "$U" == "jutair" ]; then
+                    echo "Você não pode expulsar a si mesmo!"; sleep 2
+                else
+                    pkill -u "$U" -9
+                    echo "Usuário $U expulso!"; sleep 2
+                fi
+                ;;
             5) break ;;
         esac
     done
