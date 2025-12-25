@@ -66,6 +66,43 @@ listar_online() {
 }
 
 # ... (início do seu script open_vpn_conf.sh com a detecção de AUID que já funciona)
+listar_arquivos_ovpn() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "               ${VERDE}📂 MEUS ARQUIVOS .OVPN${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    # 1. Define a pasta de busca (Home do usuário real)
+    HOME_HUMANA=$(getent passwd "$USER_ATUAL" | cut -d: -f6)
+    PASTA_BUSCA="$HOME_HUMANA"
+    
+    # 2. Obtém o IP público do servidor
+    IP_SERVIDOR=$(curl -s https://api.ipify.org)
+
+    echo -e "${AMARELO}Usuário detectado:${NC} $USER_REAL"
+    echo -e "${AMARELO}Diretório:${NC} $PASTA_BUSCA"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    # 3. Lista os arquivos .ovpn
+    mapfile -t ARQUIVOS < <(ls "$PASTA_BUSCA"/*.ovpn 2>/dev/null)
+
+    if [ ${#ARQUIVOS[@]} -eq 0 ]; then
+        echo -e "${VERMELHO}Nenhum arquivo .ovpn encontrado na sua pasta home.${NC}"
+    else
+        echo -e "${VERDE}Arquivos encontrados:${NC}"
+        for arquivo in "${ARQUIVOS[@]}"; do
+            NOME_ARQ=$(basename "$arquivo")
+            echo -e "\n${AMARELO}📄 Arquivo:${NC} $NOME_ARQ"
+            
+            # Gera o comando SCP pronto para o usuário
+            echo -e "${AZUL}Comando para baixar (execute no seu PC):${NC}"
+            echo -e "\033[1;37mscp $USER_REAL@$IP_SERVIDOR:$arquivo ./\033[0m"
+        done
+    fi
+
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -p "Pressione ENTER para voltar..." dummy
+}
 
 menu_ovp() {
     while true; do
