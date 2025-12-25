@@ -331,9 +331,7 @@ while true; do
         1) listar_usuarios_cadastrados ;;
         2) cadastrar_user ;;
         3) remover_usuario_protegido ;;
-        4) 
-            read -p " Usuário para senha: " username
-            passwd "$username"; sleep 2 ;;
+        4) alterar_senha_protegida ;;
         5) promover_a_root ;;
         6) monitorar_logados ;;
         7) gerenciar_banidos ;;
