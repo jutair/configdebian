@@ -246,6 +246,52 @@ promover_a_root() {
     fi
 }
 
+alterar_senha_protegida() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "               ${AMARELO}ALTERAÇÃO DE SENHA PROTEGIDA${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    # 1. Identifica quem está executando o script no momento
+    USUARIO_ATUAL=$(whoami)
+
+    read -p "Digite o nome do usuário que deseja alterar a senha: " USER_ALVO
+
+    # 2. REGRA DE OURO: Somente o jutair pode mexer na própria senha
+    # Se o alvo for o jutair, mas quem está tentando não é o jutair, bloqueia.
+    if [[ "$USER_ALVO" == "jutair" && "$USUARIO_ATUAL" != "jutair" ]]; then
+        echo -e "${VERMELHO}❌ ACESSO NEGADO: Você não tem permissão para alterar a senha de '$USER_ALVO'.${NC}"
+        echo -e "${AMARELO}Apenas o próprio usuário '$USER_ALVO' pode realizar esta ação.${NC}"
+        sleep 3
+        return
+    fi
+
+    # 3. Impede alteração do Root por usuários comuns através do menu
+    if [[ "$USER_ALVO" == "root" && "$USUARIO_ATUAL" != "root" ]]; then
+        echo -e "${VERMELHO}❌ ERRO: Alteração de senha do ROOT bloqueada via menu.${NC}"
+        sleep 3
+        return
+    fi
+
+    # 4. Verifica se o usuário alvo existe no sistema
+    if id "$USER_ALVO" &>/dev/null; then
+        echo -e "${AMARELO}Alterando senha para: $USER_ALVO${NC}"
+        # O comando 'passwd' será chamado para o usuário definido
+        passwd "$USER_ALVO"
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${VERDE}✅ Senha de '$USER_ALVO' alterada com sucesso!${NC}"
+            
+            # Alerta opcional no Telegram quando uma senha for alterada
+            source /etc/vps_protecao/telegram.conf
+            MENSAGEM="🔐 <b>AVISO DE SEGURANÇA</b>%0ASenha do usuário <code>$USER_ALVO</code> foi alterada por <code>$USUARIO_ATUAL</code>."
+            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+        fi
+    else
+        echo -e "${VERMELHO}⚠️ O usuário '$USER_ALVO' não existe.${NC}"
+    fi
+    sleep 2
+}
 ############################ MENU PRINCIPAL ############################
 
 while true; do
