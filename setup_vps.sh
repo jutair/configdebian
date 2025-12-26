@@ -39,7 +39,7 @@ read -p " Nome para o OPERADOR: " OPE_USER
 read -s -p " Senha para o operador $OPE_USER: " OPE_PASS
 echo -e "\n${AZUL}---------------------------------------------------------------${NC}"
 
-# --- 2. PERGUNTA DE CONFIGURAÇÃO IMEDIATA (A funcionalidade que você pediu) ---
+# --- 2. PERGUNTA DE CONFIGURAÇÃO IMEDIATA ---
 echo -e "${AMARELO}📢 Configuração de Alertas Telegram:${NC}"
 echo -e "Deseja configurar o Bot do Telegram agora?"
 echo -e " [1] Sim, configurar agora"
@@ -59,7 +59,6 @@ echo -e "${AZUL}---------------------------------------------------------------$
 mkdir -p "$DIR_PROT"
 mkdir -p "$DIR_CONFIG"
 
-# Gravação dos dados (Padronizado para admin.conf para o gerencia_rede.sh ler)
 echo "ADM_USER=\"$ADM_USER\"" > "$DIR_PROT/admin.conf"
 echo "OPE_USER=\"$OPE_USER\"" >> "$DIR_PROT/admin.conf"
 echo "TOKEN=\"$TOKEN\"" > "$DIR_PROT/telegram.conf"
@@ -94,13 +93,27 @@ usermod -aG sudo "$ADM_USER"
 echo "%sudo ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-vpn-users
 chmod 440 /etc/sudoers.d/90-vpn-users
 
-# --- 7. BLINDAGEM E PROFILE ---
-echo -e "${AMARELO}🛡️  Aplicando travas de segurança...${NC}"
+# --- 7. BLINDAGEM E LIBERAÇÃO DE ACESSO ---
+echo -e "${AMARELO}🛡️  Aplicando travas e liberando SSH por senha...${NC}"
+
+# Ajuste no SSHD_CONFIG para permitir senhas
+SSH_CONF="/etc/ssh/sshd_config"
+sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' $SSH_CONF
+sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' $SSH_CONF
+sed -i 's/^KbdInteractiveAuthentication no/KbdInteractiveAuthentication yes/' $SSH_CONF
+# Garante que o root também possa entrar se necessário inicialmente
+sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' $SSH_CONF
+
+# Configura execução do login.sh no SSH
 sed -i '/login.sh/d' /etc/pam.d/sshd
 echo "session optional pam_exec.so $DIR_CONFIG/login.sh" >> /etc/pam.d/sshd
 
+# Configura o menu automático
 sed -i '/menu.sh/d' /etc/profile
 echo "[ -f $DIR_CONFIG/menu.sh ] && exec bash $DIR_CONFIG/menu.sh" >> /etc/profile
+
+# Reinicia SSH para aplicar mudanças
+systemctl restart ssh
 
 # --- 8. INICIALIZAÇÃO DO GUARDIÃO ---
 echo -e "${AMARELO}🚀 Ativando Guardião...${NC}"
@@ -108,6 +121,7 @@ pkill -f "guardiao.sh" > /dev/null 2>&1 || true
 nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
 
 echo -e "${AZUL}===============================================================${NC}"
-echo -e "    ${VERDE}✅ SISTEMA INSTALADO E BLINDADO COM SUCESSO!${NC}"
-echo -e "    Administrador Cadastrado: ${AMARELO}$ADM_USER${NC}"
+echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
+echo -e "    Administrador: ${AMARELO}$ADM_USER${NC}"
+echo -e "    ${VERDE}Acesso SSH por senha: ATIVADO${NC}"
 echo -e "${AZUL}===============================================================${NC}"
