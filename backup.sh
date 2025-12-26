@@ -27,13 +27,12 @@ fechar_sessao_backup() {
         exit 1
     fi
 }
-# Bloqueia Ctrl+C, Ctrl+Z e envia sinal de kill se houver tentativa de quebra
 trap fechar_sessao_backup SIGINT SIGTSTP SIGQUIT
 
 # --- FUNÇÕES DE APOIO ---
 
 verificar_adm() {
-    if [ "$USER_REAL" != "$ADM_USER" ]; then
+    if [[ "$USER_REAL" != "$ADM_USER" && "$USER_REAL" != "root" ]]; then
         echo -e "${VERMELHO}ERRO: Apenas o administrador ($ADM_USER) pode realizar esta ação!${NC}"
         sleep 3
         return 1
@@ -51,13 +50,13 @@ gerar_backup() {
     
     echo -e "${AMARELO}[1/2]${NC} Coletando arquivos críticos e configurações..."
     
-    # Backup de SSH, Samba, OpenVPN e Proteções do Sistema
+    # Backup de SSH, Samba, OpenVPN, Proteções e o Serviço do Guardião
     tar -czf "$ARQUIVO_BACKUP" \
         /etc/ssh/sshd_config \
-        /etc/samba/smb.conf \
         /etc/openvpn \
         /etc/vps_protecao \
         /opt/configdebian \
+        /etc/systemd/system/guardiao.service \
         2>/dev/null
 
     chmod 600 "$ARQUIVO_BACKUP"
@@ -65,7 +64,6 @@ gerar_backup() {
 }
 
 restaurar_backup() {
-    # Trava de segurança para restauração
     verificar_adm || return
 
     clear
@@ -81,10 +79,12 @@ restaurar_backup() {
         1)
             read -p " Caminho completo do arquivo (.tar.gz): " CAMINHO
             if [ -f "$CAMINHO" ]; then
-                echo -e "${AMARELO}Restaurando...${NC}"
+                echo -e "${AMARELO}Restaurando arquivos...${NC}"
                 tar -xzf "$CAMINHO" -C /
-                echo -e "${VERDE}Sucesso! Reiniciando serviços...${NC}"
-                systemctl restart ssh samba openvpn 2>/dev/null
+                echo -e "${AMARELO}Reiniciando serviços e Guardião...${NC}"
+                systemctl daemon-reload
+                systemctl restart openvpn guardiao 2>/dev/null
+                echo -e "${VERDE}Sucesso total!${NC}"
             else
                 echo -e "${VERMELHO}Arquivo não encontrado!${NC}"
             fi ;;
@@ -95,6 +95,8 @@ restaurar_backup() {
             scp "${R_USER}@${R_IP}:${R_PATH}" /tmp/restaura.tar.gz
             if [ -f /tmp/restaura.tar.gz ]; then
                 tar -xzf /tmp/restaura.tar.gz -C /
+                systemctl daemon-reload
+                systemctl restart guardiao 2>/dev/null
                 echo -e "${VERDE}Restaurado com sucesso!${NC}"
             fi ;;
     esac
