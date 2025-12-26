@@ -70,7 +70,19 @@ chmod 600 "$DIR_PROT/telegram.conf"
 
 # --- 4. INSTALAÇÃO DE PACOTES ---
 echo -e "${AMARELO}🔧 Instalando pacotes necessários...${NC}"
-apt-get update -y && apt-get install -y vnstat ufw fail2ban openvpn sudo curl wget bc unzip procps speedtest-cli
+apt-get update -y && apt-get install -y vnstat ufw fail2ban openvpn sudo curl wget bc jq unzip procps speedtest-cli
+# Inicia o vnstat para evitar erro de banco de dados vazio
+systemctl enable vnstat
+systemctl start vnstat
+# 2. Criação das Pastas (ATUALIZADO)
+mkdir -p "$DIR_PROT"
+mkdir -p "$DIR_CONFIG"
+mkdir -p "$DIR_PROT/clientes_ovpn"
+mkdir -p "$DIR_PROT/consumo_clientes"
+# Aplica permissões iniciais de navegação
+chmod 755 "$DIR_PROT"
+chmod 755 "$DIR_PROT/clientes_ovpn"
+chmod 755 "$DIR_PROT/consumo_clientes"
 
 # --- 5. DOWNLOAD DOS SCRIPTS ---
 echo -e "${AMARELO}⏳ Sincronizando ferramentas do GitHub...${NC}"
