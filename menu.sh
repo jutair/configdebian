@@ -84,14 +84,13 @@ dashboard() {
     local GOLD='\033[1;33m'
     local NC='\033[0m'
     
-    # Define as variáveis de identificação se estiverem vazias
-    [ -z "$IP_SERVIDOR" ] && IP_SERVIDOR=$(curl -s https://api.ipify.org)
-    [ -z "$USER_LOGADO" ] && USER_LOGADO=$(whoami)
-    [ -z "$IP_CONEXAO" ] && IP_CONEXAO=$(who am i | awk '{print $NF}' | tr -d '()')
+    # Detecção correta do log do OpenVPN
+    STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
+    STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
 
     while true; do
         # --- Coleta de Dados ---
-        DATA_ATUAL=$(date +"%d/%m/%Y %H:%M:%S")
+        DATA_MANAUS=$(date +"%d/%m/%Y %H:%M:%S")
         UPTIME=$(uptime -p | sed 's/up //')
         CPU_VAL=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
         CPU_INT=${CPU_VAL%.*}
@@ -104,44 +103,49 @@ dashboard() {
         [ -z "$TRAF_ETH" ] && TRAF_ETH="0 MB"
         [ -z "$TRAF_TUN" ] && TRAF_TUN="0 MB"
 
-        # Segurança & Usuários
-        VPN_ONLINE=$(grep -Ec "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
+        # --- CORREÇÃO: Contagem de Usuários VPN ---
+        # Filtra linhas CLIENT_LIST e remove o cabeçalho "Common Name"
+        VPN_ONLINE=$(grep -E "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | grep -v "Common Name" | wc -l)
         SSH_ONLINE=$(who | wc -l)
         BANS=$(wc -l < /etc/vps_protecao/bans.log 2>/dev/null || echo "0")
         ATUACAO=$(wc -l < /etc/vps_protecao/guardiao_atua.log 2>/dev/null || echo "0")
 
         clear
+        # Cabeçalho Fixo
         echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
         
-        # Título e Data (Manaus)
-        # Note: Usamos printf sem cores para calcular o espaço e depois imprimimos com cores
-        printf "${CYAN}│${NC}  ${GOLD}💎 DASHBOARD VPS PREMIUM${NC} %21s (AMT) ${CYAN}│${NC}\n" "$DATA_ATUAL"
+        # Linha 1: Título e Data (Espaçamento manual para alinhar)
+        echo -e "${CYAN}│${NC}  ${GOLD}💎 DASHBOARD VPS PREMIUM${NC}          ${DATA_MANAUS} (AMT) ${CYAN}│${NC}"
         
-        # IP e Logado como (Tratado como string simples para alinhar)
+        # Linha 2: IP do Servidor
         printf "${CYAN}│${NC}  🌐 IP: %-52s ${CYAN}│${NC}\n" "$IP_SERVIDOR"
-        USER_LINE="👤 Logado como: $USER_LOGADO ($IP_CONEXAO)"
-        printf "${CYAN}│${NC}  %-55s  ${CYAN}│${NC}\n" "$USER_LINE"
+        
+        # Linha 3: Logado como
+        USER_INFO="👤 Logado como: $USER_LOGADO ($IP_CONEXAO)"
+        printf "${CYAN}│${NC}  %-55s  ${CYAN}│${NC}\n" "$USER_INFO"
         
         echo -e "${CYAN}├─────────────────────────────────────────────────────────────┤${NC}"
         
-        # Uptime e Hardware
+        # Linha 4: Uptime
         printf "${CYAN}│${NC}  ⏱️  Uptime: %-46s  ${CYAN}│${NC}\n" "$UPTIME"
-        HW_LINE="💻 CPU: $CPU_INT% | 🧠 RAM: $MEM_PORC% | 💾 DISCO: $(df -h / | awk 'NR==2 {print $5}')"
-        printf "${CYAN}│${NC}  %-55s  ${CYAN}│${NC}\n" "$HW_LINE"
+        
+        # Linha 5: Hardware (Simplificado para não quebrar largura)
+        HW_DATA="💻 CPU: ${CPU_INT}% | 🧠 RAM: ${MEM_PORC}% | 💾 DISCO: $(df -h / | awk 'NR==2 {print $5}')"
+        printf "${CYAN}│${NC}  %-55s  ${CYAN}│${NC}\n" "$HW_DATA"
         
         echo -e "${CYAN}├──────────────┬──────────────────────────────┬───────────────┤${NC}"
         
-        # Colunas de Informação (Hardcoded para evitar quebra de tabela)
+        # Linha 6: Títulos das Colunas (Emojis fora do printf para estabilidade)
         echo -e "${CYAN}│${NC}  ${VERDE}📡 TRÁFEGO${NC}  ${CYAN}│${NC}  ${AMARELO}🛡️  SEGURANÇA${NC}            ${CYAN}│${NC}  ${CYAN}👥 ONLINE${NC}   ${CYAN}│${NC}"
         
-        # Dados das colunas com espaçamento fixo manual
+        # Linha 7 e 8: Dados das Colunas
         printf "${CYAN}│${NC} WEB: %-8s ${CYAN}│${NC} Bans: %-19s ${CYAN}│${NC} VPN: %-7s ${CYAN}│${NC}\n" "$TRAF_ETH" "$BANS" "$VPN_ONLINE"
         printf "${CYAN}│${NC} VPN: %-8s ${CYAN}│${NC} Ações: %-18s ${CYAN}│${NC} SSH: %-7s ${CYAN}│${NC}\n" "$TRAF_TUN" "$ATUACAO" "$SSH_ONLINE"
 
         echo -e "${CYAN}├──────────────┴──────────────────────────────┴───────────────┤${NC}"
         
         # Sessões SSH
-        printf "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CYAN}│${NC}\n"
+        echo -e "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CYAN}│${NC}"
         while read -r line; do
             [ -z "$line" ] && continue
             printf "${CYAN}│${NC}  • %-54s ${CYAN}│${NC}\n" "$line"
