@@ -367,6 +367,74 @@ relatorio_consumo_acumulado() {
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
 }
+relatorio_consumo_detalhado() {
+    clear
+    PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
+    MES_ATUAL=$(date +'%m-%Y')
+    ARQUIVO_CSV="/tmp/consumo_${MES_ATUAL}.csv"
+    
+    # Carrega configurações do Telegram
+    [ -f "/etc/vps_protecao/telegram.conf" ] && source "/etc/vps_protecao/telegram.conf"
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "          ${VERDE}RELATÓRIO DE CONSUMO ACUMULADO (${MES_ATUAL})${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    printf "${AMARELO}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    # Cria o cabeçalho do CSV
+    echo "Cliente,Download (Bytes),Upload (Bytes),Download (Formatado),Upload (Formatado)" > "$ARQUIVO_CSV"
+
+    for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
+        if [ -f "$arq" ]; then
+            NOME=$(basename "$arq" | cut -d'_' -f1)
+            [[ "$NOME" == "Common" || "$NOME" == "ROUTING" || "$NOME" == "GLOBAL" || "$NOME" == "END" ]] && continue
+
+            read -r BRECV BSENT < "$arq"
+            [[ ! "$BRECV" =~ ^[0-9]+$ ]] && BRECV=0
+            [[ ! "$BSENT" =~ ^[0-9]+$ ]] && BSENT=0
+
+            # Formatação para exibição no Terminal
+            RECV_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
+            SENT_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
+            
+            printf "%-18s %-15s %-15s\n" "$NOME" "$RECV_H" "$SENT_H"
+            
+            # Alimenta o arquivo CSV
+            echo "$NOME,$BRECV,$BSENT,$RECV_H,$SENT_H" >> "$ARQUIVO_CSV"
+        fi
+    done
+
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    echo -e "  [1] 📥 Baixar CSV (Salvar em /tmp)"
+    echo -e "  [2] 📤 Enviar Relatório via Telegram"
+    echo -e "  [0] ⬅️  Voltar"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -n 1 -p " Escolha uma ação: " OP_REL; echo ""
+
+    case $OP_REL in
+        1)
+            # Define um local acessível ao usuário (ex: pasta home do usuário logado)
+            DESTINO="$HOME/consumo_${MES_ATUAL}.csv"
+            cp "$ARQUIVO_CSV" "$DESTINO"
+            echo -e "${VERDE}✅ Relatório salvo em: ${AMARELO}$DESTINO${NC}"
+            read -p "Pressione ENTER..."
+            ;;
+        2)
+            if [[ -n "$TOKEN" && -n "$ID_CHAT" ]]; then
+                echo -e "${AMARELO}Enviando arquivo ao Telegram...${NC}"
+                curl -s -F chat_id="$ID_CHAT" -F document=@"$ARQUIVO_CSV" \
+                     -F caption="📊 Relatório de Consumo VPN - Mês: $MES_ATUAL" \
+                     "https://api.telegram.org/bot$TOKEN/sendDocument" > /dev/null
+                echo -e "${VERDE}✅ Relatório enviado com sucesso!${NC}"
+            else
+                echo -e "${VERMELHO}❌ Erro: Token ou ID do Telegram não configurados.${NC}"
+            fi
+            read -p "Pressione ENTER..."
+            ;;
+        *) return ;;
+    esac
+}
 # --- FUNÇÃO: GERENCIAMENTO DE BANDA ---
 gerenciar_banda() {
     clear
@@ -435,29 +503,7 @@ gerenciar_banda() {
             echo -e "${AZUL}---------------------------------------------------------------${NC}"
             read -p "Pressione ENTER..."
             ;;
-        6)
-            clear
-            echo -e "${AZUL}===============================================================${NC}"
-            echo -e "          ${VERDE}CONSUMO MENSAL ACUMULADO POR CLIENTE${NC}"
-            echo -e "                Mês de Referência: $MES_ATUAL"
-            echo -e "${AZUL}===============================================================${NC}"
-            printf "${AMARELO}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
-            echo -e "${AZUL}---------------------------------------------------------------${NC}"
-            
-            for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
-                if [ -f "$arq" ]; then
-                    NOME=$(basename "$arq" | cut -d'_' -f1)
-                    read -r BRECV BSENT < "$arq"
-                    
-                    RECV_H=$(awk "BEGIN {if ($BRECV>1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576}")
-                    SENT_H=$(awk "BEGIN {if ($BSENT>1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576}")
-                    
-                    printf "%-18s %-15s %-15s\n" "$NOME" "$RECV_H" "$SENT_H"
-                fi
-            done
-            echo -e "${AZUL}---------------------------------------------------------------${NC}"
-            read -p "Pressione ENTER..."
-            ;;
+        6) relatorio_consumo_detalhado ;;
         0) return ;;
     esac
 }
