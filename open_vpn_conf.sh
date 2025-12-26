@@ -43,30 +43,28 @@ configurar_servidor_vpn() {
     local DATA_ATUAL=$(date +'%d/%m/%Y')
     local HORA_ATUAL=$(date +'%H:%M:%S')
 
-    # 🛡️ VERIFICAÇÃO DE PERMISSÃO: Apenas o Admin definido no arquivo conf
+    # 🛡️ VERIFICAÇÃO DE PERMISSÃO
     if [[ "$USUARIO_ATUAL" != "$ADM_USER" ]]; then
         echo -e "${VERMELHO}===============================================================${NC}"
         echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
         echo -e "${VERMELHO}===============================================================${NC}"
         echo -e "Tentativa de alteração do servidor por: ${AMARELO}$USUARIO_ATUAL${NC}"
         
-        # Alerta ao Telegram
         if [ -f "$TELEGRAM_CONF" ]; then
             source "$TELEGRAM_CONF"
-            MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>IP:</b> <code>$IP_CONEXAO</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
+            MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
             curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
         fi
-        
         sleep 3
         return
     fi
 
-    # ⚙️ INÍCIO DA CONFIGURAÇÃO (Usuário Admin Confirmado)
+    # ⚙️ INÍCIO DA CONFIGURAÇÃO
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "              ${VERDE}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
 
-    # Prepara o ambiente de diretórios e permissões públicas
+    # Prepara diretórios
     echo -e "${AMARELO}Verificando diretórios de segurança...${NC}"
     sudo mkdir -p "$DIR_CLIENTES"
     sudo mkdir -p /etc/vps_protecao/consumo_clientes
@@ -74,7 +72,12 @@ configurar_servidor_vpn() {
     sudo chmod 755 /etc/vps_protecao
     sudo chmod 755 "$DIR_CLIENTES"
 
-    if [ ! -f "/etc/openvpn/server.conf" ]; then
+    # Define o caminho do arquivo de configuração (comum em Debian/Ubuntu)
+    SERVER_CONF="/etc/openvpn/server.conf"
+    # Se não existir na raiz, tenta o caminho alternativo do instalador
+    [ ! -f "$SERVER_CONF" ] && SERVER_CONF="/etc/openvpn/server/server.conf"
+
+    if [ ! -f "$SERVER_CONF" ]; then
         echo -e "${AMARELO}O OpenVPN não está instalado.${NC}"
         read -p "Deseja instalar agora? (s/n): " INST
         if [[ "$INST" == "s" || "$INST" == "S" ]]; then
@@ -86,14 +89,37 @@ configurar_servidor_vpn() {
         echo -e "${VERDE}Servidor já instalado.${NC}"
         echo -e "  [1] Menu de Gerenciamento do Instalador (Portas/Protocolos/Remover)"
         echo -e "  [2] Reinstalar Script de Instalação (Update)"
+        echo -e "  [3] Forçar Ativação de Logs (Para Monitoramento)"
         echo -e "  [0] Voltar"
         read -n 1 -p " Escolha: " OP_SVR; echo ""
         case $OP_SVR in
             1) bash /root/openvpn-install.sh ;;
             2) wget https://git.io/vpn -O /root/openvpn-install.sh && chmod +x /root/openvpn-install.sh && echo -e "\n${VERDE}Atualizado!${NC}" && sleep 2 ;;
+            3) # Função de Forçar Logs adicionada aqui também para acesso manual
+               ativar_logs_status ;;
             *) return ;;
         esac
     fi
+
+    # --- BLOCO PARA FORÇAR LOGS DE STATUS (Sempre executa ao configurar) ---
+    ativar_logs_status() {
+        echo -e "${AMARELO}Configurando logs de monitoramento...${NC}"
+        # Remove linhas de status antigas para evitar duplicidade
+        sudo sed -i '/^status /d' "$SERVER_CONF"
+        sudo sed -i '/^status-version/d' "$SERVER_CONF"
+        
+        # Insere a nova configuração de status compatível com o Guardião
+        echo "status /etc/openvpn/server/openvpn-status.log" >> "$SERVER_CONF"
+        echo "status-version 2" >> "$SERVER_CONF"
+        
+        # Reinicia para aplicar
+        systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
+        echo -e "${VERDE}Logs de status ativados com sucesso!${NC}"
+        sleep 2
+    }
+    
+    # Chama a ativação automaticamente se o arquivo de configuração existir
+    [ -f "$SERVER_CONF" ] && ativar_logs_status
 }
 
 # --- FUNÇÃO 3: LISTAR CERTIFICADOS ATIVOS ---
