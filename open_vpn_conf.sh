@@ -376,63 +376,56 @@ relatorio_consumo_detalhado() {
     # Carrega configurações do Telegram
     [ -f "/etc/vps_protecao/telegram.conf" ] && source "/etc/vps_protecao/telegram.conf"
 
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          ${VERDE}RELATÓRIO DE CONSUMO ACUMULADO (${MES_ATUAL})${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    printf "${AMARELO}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    echo -e "${CYAN}===============================================================${NC}"
+    echo -e "           ${GOLD}📊 RELATÓRIO DE CONSUMO (${MES_ATUAL})${NC}"
+    echo -e "${CYAN}===============================================================${NC}"
+    printf "${GOLD}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
+    echo -e "${CYAN}---------------------------------------------------------------${NC}"
 
-    # Cria o cabeçalho do CSV
     echo "Cliente,Download (Bytes),Upload (Bytes),Download (Formatado),Upload (Formatado)" > "$ARQUIVO_CSV"
 
+    # Ativa nullglob para evitar erro se a pasta estiver vazia
+    shopt -s nullglob
     for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
-        if [ -f "$arq" ]; then
-            NOME=$(basename "$arq" | cut -d'_' -f1)
-            [[ "$NOME" == "Common" || "$NOME" == "ROUTING" || "$NOME" == "GLOBAL" || "$NOME" == "END" ]] && continue
+        NOME=$(basename "$arq" | cut -d'_' -f1)
+        
+        # Lê os valores ACUMULADOS pelo novo Guardião
+        read -r BRECV BSENT < "$arq"
+        
+        # Garante que são números
+        [[ ! "$BRECV" =~ ^[0-9]+$ ]] && BRECV=0
+        [[ ! "$BSENT" =~ ^[0-9]+$ ]] && BSENT=0
 
-            read -r BRECV BSENT < "$arq"
-            [[ ! "$BRECV" =~ ^[0-9]+$ ]] && BRECV=0
-            [[ ! "$BSENT" =~ ^[0-9]+$ ]] && BSENT=0
-
-            # Formatação para exibição no Terminal
-            RECV_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
-            SENT_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
-            
-            printf "%-18s %-15s %-15s\n" "$NOME" "$RECV_H" "$SENT_H"
-            
-            # Alimenta o arquivo CSV
-            echo "$NOME,$BRECV,$BSENT,$RECV_H,$SENT_H" >> "$ARQUIVO_CSV"
-        fi
+        # Formatação (Calculando sobre o acumulado total)
+        # Invertemos RECV/SENT para bater com a visão do cliente (Download/Upload)
+        DOWNLOAD_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
+        UPLOAD_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
+        
+        printf "%-18s %-15s %-15s\n" "$NOME" "$DOWNLOAD_H" "$UPLOAD_H"
+        echo "$NOME,$BSENT,$BRECV,$DOWNLOAD_H,$UPLOAD_H" >> "$ARQUIVO_CSV"
     done
+    shopt -u nullglob
 
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    echo -e "  [1] 📥 Baixar CSV (Salvar em /tmp)"
-    echo -e "  [2] 📤 Enviar Relatório via Telegram"
-    echo -e "  [0] ⬅️  Voltar"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    read -n 1 -p " Escolha uma ação: " OP_REL; echo ""
+    echo -e "${CYAN}---------------------------------------------------------------${NC}"
+    echo -e "  [1] 📥 Baixar CSV | [2] 📤 Telegram | [0] ⬅️ Voltar"
+    echo -e "${CYAN}---------------------------------------------------------------${NC}"
+    read -n 1 -p " Escolha: " OP_REL; echo ""
 
     case $OP_REL in
         1)
-            # Define um local acessível ao usuário (ex: pasta home do usuário logado)
             DESTINO="$HOME/consumo_${MES_ATUAL}.csv"
             cp "$ARQUIVO_CSV" "$DESTINO"
-            echo -e "${VERDE}✅ Relatório salvo em: ${AMARELO}$DESTINO${NC}"
-            read -p "Pressione ENTER..."
-            ;;
+            echo -e "${VERDE}✅ Salvo em: ${AMARELO}$DESTINO${NC}"; read -p "Enter..." ;;
         2)
             if [[ -n "$TOKEN" && -n "$ID_CHAT" ]]; then
-                echo -e "${AMARELO}Enviando arquivo ao Telegram...${NC}"
                 curl -s -F chat_id="$ID_CHAT" -F document=@"$ARQUIVO_CSV" \
-                     -F caption="📊 Relatório de Consumo VPN - Mês: $MES_ATUAL" \
+                     -F caption="📊 Relatório VPN - $MES_ATUAL" \
                      "https://api.telegram.org/bot$TOKEN/sendDocument" > /dev/null
-                echo -e "${VERDE}✅ Relatório enviado com sucesso!${NC}"
+                echo -e "${VERDE}✅ Enviado!${NC}"
             else
-                echo -e "${VERMELHO}❌ Erro: Token ou ID do Telegram não configurados.${NC}"
+                echo -e "${VERMELHO}❌ Configuração Telegram ausente.${NC}"
             fi
-            read -p "Pressione ENTER..."
-            ;;
-        *) return ;;
+            read -p "Enter..." ;;
     esac
 }
 # --- FUNÇÃO: GERENCIAMENTO DE BANDA ---
