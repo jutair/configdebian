@@ -389,48 +389,48 @@ configurar_telegram() {
 restaura_seguranca() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "             ${AMARELO}RESTAURANDO SEGURANÇA DO SISTEMA${NC}"
+    echo -e "             ${AMARELO}RESTAURANDO SEGURANÇA E SISTEMA${NC}"
     echo -e "${AZUL}===============================================================${NC}"
 
-    # 1. Reset e Reconfiguração do Firewall (UFW)
-    echo -e "${VERDE}[1/3]${NC} Resetando Firewall UFW..."
-    # Desativa e limpa todas as regras
+    # 1. Garante o Horário de Manaus (AMT)
+    echo -e "${VERDE}[1/4]${NC} Sincronizando fuso horário (Manaus)..."
+    sudo timedatectl set-timezone America/Manaus
+    sudo timedatectl set-ntp true
+    echo -e "      ${VERDE}✔ Horário do sistema atualizado: $(date)${NC}"
+
+    # 2. Reset e Reconfiguração do Firewall (UFW)
+    echo -e "${VERDE}[2/4]${NC} Resetando Firewall UFW..."
     echo "y" | sudo ufw reset > /dev/null
-    # Configura políticas padrão (Bloqueia entrada, permite saída)
     sudo ufw default deny incoming > /dev/null
     sudo ufw default allow outgoing > /dev/null
-    # Libera as portas essenciais (Ajuste se usar portas SSH/VPN customizadas)
+    # Libera SSH e Portas de VPN/Dashboard
     sudo ufw allow ssh > /dev/null
-    sudo ufw allow 1194/udp > /dev/null # OpenVPN padrão
-    sudo ufw allow 80/tcp > /dev/null   # HTTP
-    sudo ufw allow 443/tcp > /dev/null  # HTTPS
+    sudo ufw allow 1194/udp > /dev/null
+    sudo ufw allow 80/tcp > /dev/null
+    sudo ufw allow 443/tcp > /dev/null
     echo "y" | sudo ufw enable > /dev/null
-    echo -e "      ${VERDE}✔ Firewall Restaurado (SSH e VPN liberados).${NC}"
+    echo -e "      ${VERDE}✔ Firewall Restaurado e Protegido.${NC}"
 
-    # 2. Reforço de Segurança no SSH
-    echo -e "${VERDE}[2/3]${NC} Aplicando travas no SSH..."
-    # Garante que Root não logue diretamente e remove senhas vazias
+    # 3. Reforço de Segurança no SSH
+    echo -e "${VERDE}[3/4]${NC} Blindando acesso SSH..."
     sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
     sudo sed -i 's/^PermitEmptyPasswords.*/PermitEmptyPasswords no/' /etc/ssh/sshd_config
-    sudo sed -i 's/^#MaxAuthTries.*/MaxAuthTries 5/' /etc/ssh/sshd_config
     sudo systemctl restart ssh > /dev/null
-    echo -e "      ${VERDE}✔ Configurações de SSH reforçadas.${NC}"
+    echo -e "      ${VERDE}✔ SSH configurado para segurança máxima.${NC}"
 
-    # 3. Verificação do Serviço Guardião
-    echo -e "${VERDE}[3/3]${NC} Verificando integridade do Guardião..."
-    if ! systemctl is-active --quiet guardiao.service; then
-        echo -e "${AMARELO}      ⚠ Guardião estava parado. Reiniciando...${NC}"
+    # 4. Verificação do Serviço Guardião
+    echo -e "${VERDE}[4/4]${NC} Reiniciando Guardião..."
+    if systemctl list-unit-files | grep -q guardiao.service; then
         sudo systemctl daemon-reload
         sudo systemctl enable guardiao.service > /dev/null
         sudo systemctl restart guardiao.service > /dev/null
+        echo -e "      ${VERDE}✔ Guardião operando e monitorando.${NC}"
     else
-        echo -e "      ${VERDE}✔ Guardião já está operando normalmente.${NC}"
-        sudo systemctl restart guardiao.service > /dev/null # Reinicia por garantia
+        echo -e "      ${VERMELHO}✘ Alerta: Serviço Guardião não encontrado!${NC}"
     fi
 
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "    ${VERDE}✅ SEGURANÇA RESTAURADA COM SUCESSO!${NC}"
-    echo -e "    O sistema está protegido e monitorado novamente."
+    echo -e "    ${VERDE}✅ SISTEMA RESTAURADO E SINCRONIZADO!${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
 }
