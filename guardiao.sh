@@ -28,31 +28,29 @@ enviar_alerta() {
 }
 
 # --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (ACUMULADO) ---
-# --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (CORRIGIDA) ---
-# --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (CORRIGIDA) ---
 rastrear_clientes_vpn() {
     STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
     MES_ATUAL=$(date +'%m-%Y')
     PASTA_LOGS="/etc/vps_protecao/consumo_clientes"
 
     if [ -f "$STATUS_LOG" ]; then
-        # Extrai os dados do log (Common Name, Bytes Received, Bytes Sent)
+        # Extrai: Common Name ($2), Bytes Received ($6), Bytes Sent ($7)
         grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME IP RECV SENT RESTO; do
             
             if [[ "$NOME" != "Common Name" && -n "$NOME" ]]; then
                 ARQUIVO_HISTORICO="$PASTA_LOGS/${NOME}_${MES_ATUAL}.log"
                 ARQUIVO_SESSAO="/tmp/${NOME}_last_session.tmp"
 
-                # 1. Se não existe histórico, inicia com 0
+                # Cria os arquivos se não existirem
                 [ ! -f "$ARQUIVO_HISTORICO" ] && echo "0 0" > "$ARQUIVO_HISTORICO"
                 [ ! -f "$ARQUIVO_SESSAO" ] && echo "0 0" > "$ARQUIVO_SESSAO"
 
-                # 2. Lê os valores acumulados e o último valor da sessão
+                # Lê o acumulado total e o último registro da sessão atual
                 read -r ACC_RECV ACC_SENT < "$ARQUIVO_HISTORICO"
                 read -r LAST_RECV LAST_SENT < "$ARQUIVO_SESSAO"
 
-                # 3. Calcula a diferença (o que foi consumido desde a última leitura)
-                # Se RECV for menor que LAST_RECV, significa que o usuário reconectou (resetou)
+                # Lógica de Diferença:
+                # Se RECV < LAST_RECV, o usuário reconectou e o contador resetou no OpenVPN
                 if [ "$RECV" -lt "$LAST_RECV" ]; then
                     DIFF_RECV=$RECV
                     DIFF_SENT=$SENT
@@ -61,13 +59,14 @@ rastrear_clientes_vpn() {
                     DIFF_SENT=$((SENT - LAST_SENT))
                 fi
 
-                # 4. Atualiza o Histórico Acumulado Somando a diferença
+                # Soma a diferença ao acumulado total do mês
                 NOVO_ACC_RECV=$((ACC_RECV + DIFF_RECV))
                 NOVO_ACC_SENT=$((ACC_SENT + DIFF_SENT))
 
+                # Salva o novo total no arquivo que o Dashboard lê
                 echo "$NOVO_ACC_RECV $NOVO_ACC_SENT" > "$ARQUIVO_HISTORICO"
                 
-                # 5. Salva o estado atual desta sessão para a próxima comparação
+                # Guarda o estado atual para a próxima comparação em 30 segundos
                 echo "$RECV $SENT" > "$ARQUIVO_SESSAO"
             fi
         done
