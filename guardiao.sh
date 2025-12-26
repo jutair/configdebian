@@ -1,99 +1,114 @@
 #!/bin/bash
-# guardiao.sh - Proteção de Recursos, Ban e Monitor de Shell Crítico
+# setup_vps.sh - Instalador de Segurança e Gestão VPS
 # Atualizado: 26-12-2025
+set -e
 
 # --- CONFIGURAÇÕES ---
-LIMITE_CPU=60
-LIMITE_RAM=50
-TEMPO_BAN=300
-INTERVALO=10
-LOG_FILE="/var/log/vps_autokill.log"
+DIR_CONFIG="/opt/configdebian"
+DIR_PROT="/etc/vps_protecao"
+GITHUB_REPO="https://raw.githubusercontent.com/jutair/configdebian/main"
+# Removido setup_vps.sh da lista de download para não conflitar com a execução atual
+SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "update_sistema.sh" "backup.sh" "guardiao.sh" "login.sh")
 
-# --- 🛡️ CARREGA IDENTIDADES ---
-CONF_VPS="/etc/vps_protecao/config.conf"
-if [ -f "$CONF_VPS" ]; then
-    source "$CONF_VPS"
-else
-    ADM_USER="root" # Se não houver config, root é o admin
+AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
+
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${VERMELHO}❌ Erro: Execute como root.${NC}"
+    exit 1
 fi
 
-# --- CARREGA TELEGRAM ---
-CONF_TELEGRAM="/etc/vps_protecao/telegram.conf"
-if [ -f "$CONF_TELEGRAM" ]; then
-    export $(grep -v '^#' "$CONF_TELEGRAM" | xargs)
-fi
+clear
+echo -e "${AZUL}===============================================================${NC}"
+echo -e "           ${VERDE}INSTALADOR DE SEGURANÇA E GESTÃO VPS${NC}"
+echo -e "                SISTEMA CONFIGDEBIAN 2025${NC}"
+echo -e "${AZUL}===============================================================${NC}"
 
-enviar_telegram() {
-    local msg="$1"
-    if [[ ! -z "$TOKEN" && ! -z "$ID_CHAT" ]]; then
-        /usr/bin/curl -s --connect-timeout 10 -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-             -d "chat_id=${ID_CHAT}" \
-             -d "text=${msg}" \
-             -d "parse_mode=HTML" > /dev/null 2>&1
-    fi
-}
+# 1. Coleta de Dados
+echo -e "${AMARELO}Configuração de Alertas Telegram:${NC}"
+read -p " Token do Bot: " TOKEN
+read -p " ID do Chat: " ID_CHAT
+echo -e "${AZUL}---------------------------------------------------------------${NC}"
+read -p " Nome para o usuário ADMINISTRADOR: " ADM_USER
+read -s -p " Senha para o administrador $ADM_USER: " ADM_PASS
+echo -e "\n"
+read -p " Nome para o usuário OPERADOR: " OPE_USER
+read -s -p " Senha para o operador $OPE_USER: " OPE_PASS
+echo -e "\n${AZUL}---------------------------------------------------------------${NC}"
 
-# Limpa instâncias duplicadas do guardião
-PID_ATUAL=$$
-pgrep -f "guardiao.sh" | grep -v $PID_ATUAL | xargs kill -9 > /dev/null 2>&1 || true
+# 2. Criação das Pastas
+mkdir -p "$DIR_PROT"
+mkdir -p "$DIR_CONFIG"
 
-echo "🚀 Guardião Ativado! Monitorando Shell e Recursos..."
+# 3. Gravação dos Arquivos de Configuração
+echo "ADM_USER=\"$ADM_USER\"" > "$DIR_PROT/config.conf"
+echo "OPE_USER=\"$OPE_USER\"" >> "$DIR_PROT/config.conf"
+echo "TOKEN=\"$TOKEN\"" > "$DIR_PROT/telegram.conf"
+echo "ID_CHAT=\"$ID_CHAT\"" >> "$DIR_PROT/telegram.conf"
 
-AVISADO_SHELL=""
+# 4. Aplicação de Permissões Restritas
+chmod 700 "$DIR_PROT"
+chmod 600 "$DIR_PROT/config.conf"
+chmod 600 "$DIR_PROT/telegram.conf"
 
-while true; do
-    # 🔍 1. MONITOR DE TERMINAL (BASH/SH)
-    # Lista todos os usuários que possuem um processo de shell ativo
-    USUARIOS_NO_SHELL=$(ps -aux | grep -E "bash|sh" | grep -v "grep" | grep -v "menu.sh" | grep -v "guardiao.sh" | awk '{print $1}' | sort -u)
+# 5. Instalação de Pacotes
+echo -e "${AMARELO}🔧 Instalando pacotes necessários...${NC}"
+apt-get update -y && apt-get install -y vnstat ufw fail2ban openvpn sudo curl wget bc unzip procps speedtest-cli
 
-    for USUARIO in $USUARIOS_NO_SHELL; do
-        # Pula daemons de sistema que não são interativos
-        [[ "$USUARIO" == "daemon" || "$USUARIO" == "messagebus" ]] && continue
-
-        if [[ "$USUARIO" == "$ADM_USER" ]]; then
-            # CASO: ADMINISTRADOR NO TERMINAL
-            if [[ ! "$AVISADO_SHELL" =~ "$USUARIO" ]]; then
-                MENSAGEM="🔓 <b>ADMIN NO TERMINAL</b>%0A🌐 <b>VPS:</b> <code>$(hostname)</code>%0A👤 <b>Usuário:</b> <code>$USUARIO</code>%0A⚠️ <b>Aviso:</b> Acesso à linha de comando detectado."
-                enviar_telegram "$MENSAGEM"
-                AVISADO_SHELL+="$USUARIO "
-            fi
-        else
-            # CASO: QUALQUER OUTRO (INCLUINDO ROOT SE NÃO FOR O ADM_USER)
-            MENSAGEM="🚨 <b>BLOQUEIO DE TERMINAL</b>%0A🌐 <b>VPS:</b> <code>$(hostname)</code>%0A👤 <b>Usuário:</b> <code>$USUARIO</code>%0A❌ <b>Ação:</b> Sessão encerrada imediatamente."
-            enviar_telegram "$MENSAGEM"
-            
-            # Derruba a sessão do usuário (seja root ou operador)
-            pkill -u "$USUARIO" -9 2>/dev/null
-        fi
-    done
-
-    # 🔍 2. MONITOR DE RECURSOS (CPU/RAM)
-    LISTA=$(ps -aux | awk -v l_cpu="$LIMITE_CPU" -v l_ram="$LIMITE_RAM" -v adm="$ADM_USER" '
-    NR>1 && $1 != "root" && $1 != adm && $11 !~ /guardiao/ {
-        cpu[$1]+=$3
-        ram[$1]+=$4
-    } 
-    END {
-        for (u in cpu) {
-            motivo=""
-            if (cpu[u] > l_cpu) motivo="CPU"
-            if (ram[u] > l_ram) motivo="RAM"
-            if (motivo != "") {
-                printf "%s|%s|CPU:%.1f%%_RAM:%.1f%%\n", u, motivo, cpu[u], ram[u]
-            }
-        }
-    }')
-
-    if [ ! -z "$LISTA" ]; then
-        echo "$LISTA" | while IFS='|' read -r USER_ALVO MOTIVO STATUS_TOTAL; do
-            pkill -u "$USER_ALVO" -9 2>/dev/null
-            passwd -l "$USER_ALVO" > /dev/null 2>&1
-            (sleep "$TEMPO_BAN" && passwd -u "$USER_ALVO") > /dev/null 2>&1 &
-
-            MENSAGEM="🚫 <b>BAN POR ABUSO</b>%0A👤 <b>Usuário:</b> <code>$USER_ALVO</code>%0A🔥 <b>Motivo:</b> <code>$MOTIVO</code>%0A📊 <b>Uso:</b> <code>$STATUS_TOTAL</code>"
-            enviar_telegram "$MENSAGEM"
-        done
-    fi
-    
-    sleep "$INTERVALO"
+# 6. Download dos Scripts
+echo -e "${AMARELO}⏳ Sincronizando ferramentas do GitHub...${NC}"
+for SCRIPT in "${SCRIPTS[@]}"; do
+    URL_DOWNLOAD="$GITHUB_REPO/$SCRIPT"
+    curl -fsSL "$URL_DOWNLOAD" -o "$DIR_CONFIG/$SCRIPT" || echo -e "${VERMELHO}⚠ Erro ao baixar $SCRIPT${NC}"
+    chmod +x "$DIR_CONFIG/$SCRIPT"
 done
+
+# 7. Criação de Usuários e Privilégios
+echo -e "${AMARELO}👤 Configurando contas de acesso...${NC}"
+for USUARIO in "$ADM_USER" "$OPE_USER"; do
+    if ! id "$USUARIO" &>/dev/null; then
+        useradd -m -s /bin/bash "$USUARIO"
+        [ "$USUARIO" == "$ADM_USER" ] && SENHA="$ADM_PASS" || SENHA="$OPE_PASS"
+        echo "$USUARIO:$SENHA" | chpasswd
+    fi
+done
+
+# Adiciona ADM ao grupo sudo e configura NOPASSWD para todos os usuários do grupo vpn
+usermod -aG sudo "$ADM_USER"
+echo "%sudo ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-vpn-users
+chmod 440 /etc/sudoers.d/90-vpn-users
+
+# 8. Blindagem PAM e Profile
+echo -e "${AMARELO}🛡️  Aplicando travas de segurança...${NC}"
+# Login Alerta
+sed -i '/login.sh/d' /etc/pam.d/sshd
+echo "session optional pam_exec.so /opt/configdebian/login.sh" >> /etc/pam.d/sshd
+
+# Menu Automático
+sed -i '/menu.sh/d' /etc/profile
+echo '[ -f /opt/configdebian/menu.sh ] && exec bash /opt/configdebian/menu.sh' >> /etc/profile
+
+# 9. Inicialização do Guardião via SYSTEMD (Robustez Total)
+echo -e "${AMARELO}🚀 Configurando Serviço do Guardião...${NC}"
+
+# Criando o arquivo de serviço usando printf (mais seguro contra erros de aspas)
+printf "[Unit]\n" > /etc/systemd/system/guardiao.service
+printf "Description=Guardiao VPS ConfigDebian\n" >> /etc/systemd/system/guardiao.service
+printf "After=network.target\n\n" >> /etc/systemd/system/guardiao.service
+printf "[Service]\n" >> /etc/systemd/system/guardiao.service
+printf "Type=simple\n" >> /etc/systemd/system/guardiao.service
+printf "ExecStart=/bin/bash %s/guardiao.sh\n" "$DIR_CONFIG" >> /etc/systemd/system/guardiao.service
+printf "Restart=always\n" >> /etc/systemd/system/guardiao.service
+printf "RestartSec=5\n" >> /etc/systemd/system/guardiao.service
+printf "User=root\n\n" >> /etc/systemd/system/guardiao.service
+printf "[Install]\n" >> /etc/systemd/system/guardiao.service
+printf "WantedBy=multi-user.target\n" >> /etc/systemd/system/guardiao.service
+
+# Comandos de ativação
+systemctl daemon-reload
+systemctl enable guardiao.service
+systemctl restart guardiao.service
+
+echo -e "${AZUL}===============================================================${NC}"
+echo -e "    ${VERDE}✅ SISTEMA INSTALADO E BLINDADO COM SUCESSO!${NC}"
+echo -e "    O Guardião está monitorando o sistema em segundo plano."
+echo -e "${AZUL}===============================================================${NC}"
