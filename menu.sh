@@ -103,56 +103,41 @@ dashboard() {
         [ -z "$TRAF_ETH" ] && TRAF_ETH="0 MB"
         [ -z "$TRAF_TUN" ] && TRAF_TUN="0 MB"
 
-        # --- CORREÇÃO: Contagem de Usuários VPN ---
-        # Filtra linhas CLIENT_LIST e remove o cabeçalho "Common Name"
+        # --- CORREÇÃO DE USUÁRIOS VPN ---
+        # Conta linhas que não sejam cabeçalho no status log
         VPN_ONLINE=$(grep -E "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | grep -v "Common Name" | wc -l)
         SSH_ONLINE=$(who | wc -l)
         BANS=$(wc -l < /etc/vps_protecao/bans.log 2>/dev/null || echo "0")
         ATUACAO=$(wc -l < /etc/vps_protecao/guardiao_atua.log 2>/dev/null || echo "0")
 
         clear
-        # Cabeçalho Fixo
-        echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
+        echo -e "${CYAN}===============================================================${NC}"
+        echo -e "         ${GOLD}DASHBOARD VPS PREMIUM${NC} | ${DATA_MANAUS} (AMT)"
+        echo -e "${CYAN}===============================================================${NC}"
         
-        # Linha 1: Título e Data (Espaçamento manual para alinhar)
-        echo -e "${CYAN}│${NC}  ${GOLD}💎 DASHBOARD VPS PREMIUM${NC}          ${DATA_MANAUS} (AMT) ${CYAN}│${NC}"
+        # Informações de Conexão
+        echo -e " IP Servidor : ${AMARELO}${IP_SERVIDOR}${NC}"
+        echo -e " Usuário     : ${AMARELO}${USER_LOGADO}${NC} (${IP_CONEXAO})"
+        echo -e " Uptime      : ${AMARELO}${UPTIME}${NC}"
         
-        # Linha 2: IP do Servidor
-        printf "${CYAN}│${NC}  🌐 IP: %-52s ${CYAN}│${NC}\n" "$IP_SERVIDOR"
+        echo -e "${CYAN}------------------------- HARDWARE ----------------------------${NC}"
+        printf " CPU: %-5s | RAM: %-5s | DISCO: %-5s\n" "${CPU_INT}%" "${MEM_PORC}%" "$(df -h / | awk 'NR==2 {print $5}')"
         
-        # Linha 3: Logado como
-        USER_INFO="👤 Logado como: $USER_LOGADO ($IP_CONEXAO)"
-        printf "${CYAN}│${NC}  %-55s  ${CYAN}│${NC}\n" "$USER_INFO"
+        echo -e "${CYAN}------------------------- TRÁFEGO -----------------------------${NC}"
+        printf " WEB (Mês): %-15s | VPN (Mês): %-15s\n" "$TRAF_ETH" "$TRAF_TUN"
         
-        echo -e "${CYAN}├─────────────────────────────────────────────────────────────┤${NC}"
+        echo -e "${CYAN}------------------------- SEGURANÇA ---------------------------${NC}"
+        printf " Bans Ativos: %-13s | Ações Guardião: %-13s\n" "$BANS" "$ATUACAO"
         
-        # Linha 4: Uptime
-        printf "${CYAN}│${NC}  ⏱️  Uptime: %-46s  ${CYAN}│${NC}\n" "$UPTIME"
+        echo -e "${CYAN}------------------------- CONEXÕES ----------------------------${NC}"
+        printf " VPN Online : %-13s | SSH Online : %-13s\n" "${VERDE}${VPN_ONLINE}${NC}" "${VERDE}${SSH_ONLINE}${NC}"
         
-        # Linha 5: Hardware (Simplificado para não quebrar largura)
-        HW_DATA="💻 CPU: ${CPU_INT}% | 🧠 RAM: ${MEM_PORC}% | 💾 DISCO: $(df -h / | awk 'NR==2 {print $5}')"
-        printf "${CYAN}│${NC}  %-55s  ${CYAN}│${NC}\n" "$HW_DATA"
+        echo -e "${CYAN}---------------------- SESSÕES ATIVAS -------------------------${NC}"
+        # Lista os usuários SSH ativos
+        who -u | awk '{print " • " $1 " - IP: " $NF}' | sed 's/(//g; s/)//g' | head -n 3
         
-        echo -e "${CYAN}├──────────────┬──────────────────────────────┬───────────────┤${NC}"
-        
-        # Linha 6: Títulos das Colunas (Emojis fora do printf para estabilidade)
-        echo -e "${CYAN}│${NC}  ${VERDE}📡 TRÁFEGO${NC}  ${CYAN}│${NC}  ${AMARELO}🛡️  SEGURANÇA${NC}            ${CYAN}│${NC}  ${CYAN}👥 ONLINE${NC}   ${CYAN}│${NC}"
-        
-        # Linha 7 e 8: Dados das Colunas
-        printf "${CYAN}│${NC} WEB: %-8s ${CYAN}│${NC} Bans: %-19s ${CYAN}│${NC} VPN: %-7s ${CYAN}│${NC}\n" "$TRAF_ETH" "$BANS" "$VPN_ONLINE"
-        printf "${CYAN}│${NC} VPN: %-8s ${CYAN}│${NC} Ações: %-18s ${CYAN}│${NC} SSH: %-7s ${CYAN}│${NC}\n" "$TRAF_TUN" "$ATUACAO" "$SSH_ONLINE"
-
-        echo -e "${CYAN}├──────────────┴──────────────────────────────┴───────────────┤${NC}"
-        
-        # Sessões SSH
-        echo -e "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CYAN}│${NC}"
-        while read -r line; do
-            [ -z "$line" ] && continue
-            printf "${CYAN}│${NC}  • %-54s ${CYAN}│${NC}\n" "$line"
-        done < <(who -u | awk '{print $1 " " $NF}' | sed 's/(//g; s/)//g' | head -n 3)
-        
-        echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
-        echo -e " ${AMARELO}>> Pressione [M] p/ Menu | Atualizando em 5s...${NC}"
+        echo -e "${CYAN}===============================================================${NC}"
+        echo -e " ${AMARELO}>> Pressione [M] para Menu | Atualizando em 5s...${NC}"
         
         read -t 5 -n 1 INPUT
         [[ $INPUT == "m" || $INPUT == "M" ]] && break
