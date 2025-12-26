@@ -296,67 +296,112 @@ listar_usuarios_online() {
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -p "Pressione ENTER para voltar..."
 }
+# --- FUNÇÃO: RELATÓRIO DE CONSUMO ACUMULADO ---
+relatorio_consumo_acumulado() {
+    clear
+    PASTA_DB="/etc/vps_protecao/consumo_clientes"
+    MES_ATUAL=$(date +'%m-%Y')
 
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "              ${VERDE}RELATÓRIO DE CONSUMO MENSAL ($MES_ATUAL)${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    printf "${AMARELO}%-15s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    for arq in "$PASTA_DB"/*_${MES_ATUAL}.log; do
+        [ ! -e "$arq" ] && break
+        
+        NOME=$(basename "$arq" | cut -d'_' -f1)
+        # Lê os bytes salvos
+        read -r RECV SENT DIA < "$arq"
+
+        # Converte para MB ou GB
+        RECV_H=$(awk "BEGIN {if ($RECV>1073741824) printf \"%.2f GB\", $RECV/1073741824; else printf \"%.2f MB\", $RECV/1048576}")
+        SENT_H=$(awk "BEGIN {if ($SENT>1073741824) printf \"%.2f GB\", $SENT/1073741824; else printf \"%.2f MB\", $SENT/1048576}")
+
+        printf "%-15s %-15s %-15s\n" "$NOME" "$RECV_H" "$SENT_H"
+    done
+
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p "Pressione ENTER para voltar..."
+}
 # --- FUNÇÃO: GERENCIAMENTO DE BANDA ---
 gerenciar_banda() {
     clear
-    # Localiza o log do OpenVPN
-    STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
-    STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
-    
+    # Definições de caminhos
+    PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
+    MES_ATUAL=$(date +'%m-%Y')
+    INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
+
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                ${VERDE}📊 GERENCIAMENTO DE BANDA${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] ⚡ Testar Velocidade da Interface (tun0)"
-    echo -e "  [2] 📅 Ver Consumo Diário"
-    echo -e "  [3] 🗓️  Ver Consumo Mensal"
-    echo -e "  [4] 👤 Consumo Acumulado por Usuário (Ativos)"
+    echo -e "  [1] ⚡ Testar Velocidade (tun0)"
+    echo -e "  [2] 📅 Ver Consumo Diário (VPS)"
+    echo -e "  [3] 🗓️  Ver Consumo Mensal (VPS)"
+    echo -e "  [4] 🟢 Usuários Online Agora"
+    echo -e "  [5] 🛰️  Cota Global VPS (Limite 900GB)"
+    echo -e "  [6] 👤 Consumo Acumulado por Cliente (Mês)"
     echo -e "  [0] ⬅️  Voltar"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Escolha uma opção: " OP_BANDA; echo ""
 
     case $OP_BANDA in
         1)
-            echo -e "${AMARELO}Iniciando teste de velocidade na interface tun0...${NC}"
-            if ! command -v speedtest-cli &>/dev/null; then apt install speedtest-cli -y; fi
-            # Testando via interface tun0
+            echo -e "${AMARELO}Iniciando speedtest...${NC}"
             speedtest-cli --source $(ip -4 addr show tun0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}') 2>/dev/null || speedtest-cli
             read -p "Pressione ENTER..."
             ;;
-        2)
-            echo -e "${VERDE}Consumo Diário (Interface Física):${NC}"
-            vnstat -d
+        2) vnstat -d; read -p "Pressione ENTER..." ;;
+        3) vnstat -m; read -p "Pressione ENTER..." ;;
+        4) listar_usuarios_online ;; # Chama a função que já criamos
+        5)
+            clear
+            CONSUMO_JSON=$(vnstat --json m | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0]")
+            RX=$(echo "$CONSUMO_JSON" | jq -r ".rx")
+            TX=$(echo "$CONSUMO_JSON" | jq -r ".tx")
+            TOTAL_GB=$(echo "($RX + $TX) / 1024 / 1024 / 1024" | bc -l | xargs printf "%.2f")
+            
+            echo -e "${AZUL}===============================================================${NC}"
+            echo -e "              ${VERDE}STATUS DA COTA GLOBAL (900GB)${NC}"
+            echo -e "${AZUL}===============================================================${NC}"
+            echo -e " Interface: $INTERFACE_PRINCIPAL | Consumo: ${AMARELO}$TOTAL_GB GB${NC}"
+            
+            # Barra de progresso
+            PORC=$(echo "($TOTAL_GB * 100) / 900" | bc)
+            echo -ne " [ "
+            for i in {1..20}; do
+                if [ $((i*5)) -le $PORC ]; then echo -ne "${VERDE}#${NC}"; else echo -ne "."; fi
+            done
+            echo -e " ] $PORC%"
             read -p "Pressione ENTER..."
             ;;
-        3)
-            echo -e "${VERDE}Consumo Mensal (Interface Física):${NC}"
-            vnstat -m
-            read -p "Pressione ENTER..."
-            ;;
-        4)
+        6)
             clear
             echo -e "${AZUL}===============================================================${NC}"
-            echo -e "          ${VERDE}CONSUMO ACUMULADO POR USUÁRIO (SESSÃO)${NC}"
+            echo -e "          ${VERDE}CONSUMO MENSAL ACUMULADO POR CLIENTE${NC}"
+            echo -e "                Mês de Referência: $MES_ATUAL"
             echo -e "${AZUL}===============================================================${NC}"
-            if [ -f "$STATUS_LOG" ]; then
-                printf "${AMARELO}%-15s %-15s %-15s${NC}\n" "USUÁRIO" "RECEBIDO" "ENVIADO"
-                echo -e "${AZUL}---------------------------------------------------------------${NC}"
-                
-                # Extrai dados da CLIENT_LIST
-                sed -n '/CLIENT_LIST/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE "HEADER|CLIENT_LIST|ROUTING TABLE" | while IFS=',' read -r NOME IP RECV SENT DATA; do
-                    # Converte Bytes para MB ou GB
-                    RECV_HUMAN=$(awk "BEGIN {if ($RECV>1073741824) printf \"%.2f GB\", $RECV/1073741824; else printf \"%.2f MB\", $RECV/1048576}")
-                    SENT_HUMAN=$(awk "BEGIN {if ($SENT>1073741824) printf \"%.2f GB\", $SENT/1073741824; else printf \"%.2f MB\", $SENT/1048576}")
+            printf "${AMARELO}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
+            echo -e "${AZUL}---------------------------------------------------------------${NC}"
+            
+            # Busca arquivos criados pelo Guardião
+            for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
+                if [ -f "$arq" ]; then
+                    NOME=$(basename "$arq" | cut -d'_' -f1)
+                    read -r BRECV BSENT DATA_ULT < "$arq"
                     
-                    printf "%-15s %-15s %-15s\n" "$NOME" "$RECV_HUMAN" "$SENT_HUMAN"
-                done
-            else
-                echo -e "${VERMELHO}Log de status não encontrado!${NC}"
-            fi
+                    # Conversão humana
+                    RECV_H=$(awk "BEGIN {if ($BRECV>1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576}")
+                    SENT_H=$(awk "BEGIN {if ($BSENT>1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576}")
+                    
+                    printf "%-18s %-15s %-15s\n" "$NOME" "$RECV_H" "$SENT_H"
+                fi
+            done
             echo -e "${AZUL}---------------------------------------------------------------${NC}"
             read -p "Pressione ENTER..."
             ;;
-        *) return ;;
+        0) return ;;
     esac
 }
 
