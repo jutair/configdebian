@@ -71,6 +71,10 @@ chmod 600 "$DIR_PROT/telegram.conf"
 # --- 4. INSTALAÇÃO DE PACOTES ---
 echo -e "${AMARELO}🔧 Instalando pacotes necessários...${NC}"
 apt-get update -y && apt-get install -y vnstat ufw fail2ban openvpn sudo curl wget bc jq unzip procps speedtest-cli
+# Define o fuso horário para Manaus
+sudo timedatectl set-timezone America/Manaus
+# Sincroniza o relógio com os servidores NTP
+sudo timedatectl set-ntp true
 # Inicia o vnstat para evitar erro de banco de dados vazio
 systemctl enable vnstat
 systemctl start vnstat
