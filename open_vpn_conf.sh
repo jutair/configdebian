@@ -255,14 +255,54 @@ enviar_ovpn_telegram_manual() {
     sleep 2
 }
 # --- MENU LOCAL ---
+listar_usuarios_online() {
+    clear
+    # Localiza o arquivo de status dinamicamente
+    STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
+    STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}USUÁRIOS OPENVPN ONLINE${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    if [ ! -f "$STATUS_LOG" ]; then
+        echo -e "${VERMELHO}Erro: Arquivo de status não encontrado!${NC}"
+        echo -e "Certifique-se que o OpenVPN está rodando."
+        read -p "Pressione ENTER..." ; return
+    fi
+
+    # Cabeçalho da Tabela
+    printf "${AMARELO}%-15s %-18s %-12s %-10s${NC}\n" "USUÁRIO" "IP REAL" "RECEBIDO" "ENVIADO"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    # Extrai os dados entre "ROUTING TABLE" e "GLOBAL STATS" ou "CLIENT_LIST"
+    # Lógica para converter Bytes em MB de forma legível
+    sed -n '/CLIENT_LIST/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE "HEADER|CLIENT_LIST|ROUTING TABLE" | while IFS=',' read -r NOME IP_PORTA RECV SENT DATA; do
+        
+        # Limpa o IP (remove a porta)
+        IP_REAL=$(echo $IP_PORTA | cut -d: -f1)
+
+        # Converte Bytes para Megabytes (MB)
+        RECV_MB=$(awk "BEGIN {printf \"%.2f\", $RECV/[1024*1024]}")
+        SENT_MB=$(awk "BEGIN {printf \"%.2f\", $SENT/[1024*1024]}")
+
+        printf "%-15s %-18s %-12s %-10s\n" "$NOME" "$IP_REAL" "${RECV_MB}MB" "${SENT_MB}MB"
+    done
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e " Total de conexões: ${VERDE}$(grep -cv "Common Name" <(sed -n '/CLIENT_LIST/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE "HEADER|CLIENT_LIST|ROUTING TABLE"))${NC}"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -p "Pressione ENTER para voltar..."
+}
 while true; do
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                ${VERDE}GERENCIAMENTO OPENVPN PRO${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] 👤 Criar Usuário           [4] ⚙️  Configurar Servidor"
-    echo -e "  [2] 🗑️  Remover Usuário         [5] 📂 Listar Downloads (SCP)"
-    echo -e "  [3] 📋 Listar Ativos           [6] 📤 Enviar Telegram (Manual)"
+    echo -e "  [1] 👤 Criar Usuário            [5] ⚙️  Configurar Servidor"
+    echo -e "  [2] 🗑️  Remover Usuário         [6] 📂 Listar Downloads (SCP)"
+    echo -e "  [3] 📋 Listar Cadastros         [7] 📤 Enviar Telegram (Manual)"
+    echo -e "  [4] 🟢 Ver Usuários Online      "
     echo -e "  [0] ⬅️  Voltar ao Painel Principal"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Escolha uma opção: " OP; echo ""
@@ -270,9 +310,10 @@ while true; do
         1) criar_usuario ;;
         2) remover_usuario ;;
         3) listar_usuarios ;;
-        4) configurar_servidor_vpn ;;
-        5) listar_arquivos_ovpn ;;
-        6) enviar_ovpn_telegram_manual ;;
+        4) listar_usuarios_online ;;
+        5) configurar_servidor_vpn ;;
+        6) listar_arquivos_ovpn ;;
+        7) enviar_ovpn_telegram_manual ;;
         0) exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
