@@ -533,6 +533,123 @@ gerenciar_banda() {
         0) return ;;
     esac
 }
+bloq_servicos() {
+    BLOQ_DIR="/etc/vps_protecao/dns_bloqueios"
+    BLOQ_FILE="$BLOQ_DIR/bancos.conf"
+    DNSMASQ_CONF="/etc/dnsmasq.d/vps_bloqueios.conf"
+    SERVER_CONF="/etc/openvpn/server/server.conf"
+
+    mkdir -p "$BLOQ_DIR"
+
+    instalar_dnsmasq() {
+        if ! command -v dnsmasq &>/dev/null; then
+            apt update -y && apt install dnsmasq -y
+        fi
+    }
+
+    configurar_dnsmasq() {
+        echo "conf-dir=$BLOQ_DIR" > "$DNSMASQ_CONF"
+
+        if ! grep -q "10.8.0.1" /etc/dnsmasq.conf 2>/dev/null; then
+            cat >> /etc/dnsmasq.conf << 'EOF'
+
+# VPS Proteção - DNS VPN
+listen-address=127.0.0.1,10.8.0.1
+bind-interfaces
+EOF
+        fi
+
+        systemctl restart dnsmasq
+        systemctl enable dnsmasq
+    }
+
+    forcar_dns_vpn() {
+        if [ -f "$SERVER_CONF" ]; then
+            sed -i '/dhcp-option DNS/d' "$SERVER_CONF"
+            echo 'push "dhcp-option DNS 10.8.0.1"' >> "$SERVER_CONF"
+            echo 'push "block-outside-dns"' >> "$SERVER_CONF"
+            systemctl restart openvpn-server@server
+        fi
+    }
+
+    bloquear_bancos_padrao() {
+        cat > "$BLOQ_FILE" << 'EOF'
+# === BLOQUEIO GLOBAL - BANCOS ===
+
+address=/itau.com.br/0.0.0.0
+address=/bradesco.com.br/0.0.0.0
+address=/nubank.com.br/0.0.0.0
+address=/bb.com.br/0.0.0.0
+address=/caixa.gov.br/0.0.0.0
+address=/santander.com.br/0.0.0.0
+
+address=/nubank.com/0.0.0.0
+address=/itau.com/0.0.0.0
+address=/bradesco.com/0.0.0.0
+address=/santander.com/0.0.0.0
+EOF
+        echo "✔ Bancos bloqueados com sucesso."
+    }
+
+    adicionar_manual() {
+        read -p "Digite o domínio (ex: netflix.com): " DOM
+        [ -z "$DOM" ] && return
+
+        if grep -q "/$DOM/" "$BLOQ_DIR"/*.conf 2>/dev/null; then
+            echo "⚠️ Domínio já está bloqueado."
+            sleep 2
+            return
+        fi
+
+        echo "address=/$DOM/0.0.0.0" >> "$BLOQ_FILE"
+        echo "✔ $DOM bloqueado com sucesso."
+    }
+
+    listar_bloqueios() {
+        clear
+        echo "================ DOMÍNIOS BLOQUEADOS ================"
+        grep "address=/" "$BLOQ_DIR"/*.conf | awk -F'/' '{print $2}' | sort -u
+        echo "====================================================="
+        read -p "ENTER para voltar..." _
+    }
+
+    remover_bloqueio() {
+        read -p "Digite o domínio para remover: " DOM
+        [ -z "$DOM" ] && return
+        sed -i "/\/$DOM\//d" "$BLOQ_DIR"/*.conf
+        echo "✔ Bloqueio removido (se existia)."
+    }
+
+    instalar_dnsmasq
+    configurar_dnsmasq
+    forcar_dns_vpn
+
+    while true; do
+        clear
+        echo "==============================================================="
+        echo "        🔒 BLOQUEIO GLOBAL DE SERVIÇOS (DNS VPN)"
+        echo "==============================================================="
+        echo " [1] 🏦 Bloquear bancos (padrão)"
+        echo " [2] ➕ Adicionar bloqueio manual"
+        echo " [3] 📄 Listar domínios bloqueados"
+        echo " [4] ❌ Remover bloqueio"
+        echo " [0] ⬅️  Voltar"
+        echo "---------------------------------------------------------------"
+        read -n 1 -p "Escolha: " OP
+        echo ""
+
+        case $OP in
+            1) bloquear_bancos_padrao; sleep 2 ;;
+            2) adicionar_manual; sleep 2 ;;
+            3) listar_bloqueios ;;
+            4) remover_bloqueio; sleep 2 ;;
+            0) return ;;
+            *) echo "Opção inválida"; sleep 1 ;;
+        esac
+
+        systemctl restart dnsmasq
+    done
+}
 
 while true; do
     clear
@@ -543,7 +660,7 @@ while true; do
     echo -e "  [2] 🗑️  Remover Usuário                [6] 📂 Listar Downloads (SCP)"
     echo -e "  [3] 📋 Listar Cadastros               [7] 📤 Enviar Telegram (Manual)"
     echo -e "  [4] 🟢 Ver Usuários Online            [8] 📊 Gerenciamento de Banda"
-    echo -e "  [0] ⬅️  Voltar ao Painel Principal"
+    echo -e "  [0] 🔒 Bloqueio de Serviços           [9] ⬅️  Voltar ao Painel Principal"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Escolha uma opção: " OP; echo ""
     case $OP in
@@ -555,6 +672,7 @@ while true; do
         6) listar_arquivos_ovpn ;;
         7) enviar_ovpn_telegram_manual ;;
         8) gerenciar_banda ;;
+        9) bloq_servicos ;;
         0) exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
