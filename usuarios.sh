@@ -1,5 +1,5 @@
 #!/bin/bash
-# usuarios.sh - Gerenciador de Usuários e Acessos Profissional
+# usuarios.sh - Gerenciador de Usuários e Acessos
 
 # --- CONFIGURAÇÕES E CORES ---
 DIR_PROT="/etc/vps_protecao"
@@ -41,7 +41,6 @@ listar_usuarios_cadastrados() {
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                📋 USUÁRIOS CADASTRADOS NO SISTEMA"
     echo -e "${AZUL}===============================================================${NC}"
-    # Filtra apenas usuários reais (UID >= 1000)
     printf "${AMARELO}%-20s %-10s %-15s${NC}\n" "USUÁRIO" "UID" "STATUS"
     echo "---------------------------------------------------------------"
     while IFS=: read -r user pass uid gid info home shell; do
@@ -55,42 +54,33 @@ listar_usuarios_cadastrados() {
     read -p " Pressione ENTER para voltar..." dummy
 }
 
-cadastrar_user() {
-    read -p " Nome do novo usuário: " NU
-    if id "$NU" &>/dev/null; then
-        echo -e "${VERMELHO}Erro: Usuário já existe!${NC}"; sleep 2
-    else
-        read -s -p " Senha para $NU: " NS; echo ""
-        useradd -m -s /bin/bash "$NU"
-        echo "$NU:$NS" | chpasswd
-        echo -e "${VERDE}✅ Usuário $NU criado com sucesso!${NC}"; sleep 2
-    fi
-}
-
-remover_usuario() {
+adicionar_chave_ssh() {
     verificar_admin || return
-    read -p " Nome do usuário para remover: " UR
-    if [[ "$UR" == "$ADM_USER" || "$UR" == "root" ]]; then 
-        echo -e "${VERMELHO}❌ Erro: O usuário '$UR' é protegido pelo sistema!${NC}"; sleep 2
-    elif id "$UR" &>/dev/null; then
-        pkill -u "$UR" 2>/dev/null
-        userdel -r "$UR" 2>/dev/null
-        echo -e "${VERDE}✅ Usuário $UR removido com sucesso.${NC}"; sleep 2
-    else 
-        echo -e "${VERMELHO}Usuário não encontrado.${NC}"; sleep 2
-    fi
-}
+    
+    read -p " Nome do usuário que receberá a chave: " UA
+    if id "$UA" &>/dev/null; then
+        echo -e "${AMARELO}Cole a chave pública (começa com ssh-rsa ou ssh-ed25519):${NC}"
+        read -r CK
+        
+        if [[ -z "$CK" ]]; then
+            echo -e "${VERMELHO}Chave inválida!${NC}"; sleep 2; return
+        fi
 
-alterar_senha_vps() {
-    read -p " Alterar a senha de qual usuário? " USER_ALVO
-    if [[ "$USER_ALVO" == "$ADM_USER" && "$USER_ATUAL" != "$ADM_USER" ]]; then
-        verificar_admin; return
-    fi
-    if id "$USER_ALVO" &>/dev/null; then
-        passwd "$USER_ALVO"
-        echo -e "${VERDE}✅ Senha atualizada!${NC}"
+        # Define o caminho do diretório .ssh do usuário
+        USER_HOME=$(eval echo ~$UA)
+        mkdir -p "$USER_HOME/.ssh"
+        
+        # Adiciona a chave
+        echo "$CK" >> "$USER_HOME/.ssh/authorized_keys"
+        
+        # Ajusta permissões (Crítico para o SSH aceitar)
+        chown -R "$UA:$UA" "$USER_HOME/.ssh"
+        chmod 700 "$USER_HOME/.ssh"
+        chmod 600 "$USER_HOME/.ssh/authorized_keys"
+        
+        echo -e "${VERDE}✅ Chave SSH adicionada com sucesso para $UA!${NC}"
     else
-        echo -e "${VERMELHO}⚠️ Usuário não encontrado.${NC}"
+        echo -e "${VERMELHO}Usuário não encontrado.${NC}"
     fi
     sleep 2
 }
@@ -107,45 +97,58 @@ monitorar_logados() {
 ############################ MENU PRINCIPAL ############################
 
 while true; do
-    STATUS_ROOT=$(groups "$USER_ATUAL" | grep -q "\bsudo\b" && echo -e "${VERDE}SIM (ROOT)${NC}" || echo -e "${VERMELHO}NÃO${NC}")
-
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "            ${VERDE}GERENCIAMENTO DE USUÁRIOS E ACESSOS${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "  OPERADOR ATUAL : ${AMARELO}$USER_ATUAL${NC} | ADMIN: ${VERDE}$ADM_USER${NC}"
-    echo -e "  STATUS PRIVILEGIO: $STATUS_ROOT"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "  [1] 📋 Listar Todos os Usuários"
-    echo -e "  [2] 👤 Cadastrar Novo Usuário"
-    echo -e "  [3] 🗑️  Remover Usuário (RESTRITO)"
-    echo -e "  [4] 🔑 Alterar Senha (RESTRITO AO ADMIN)"
+    echo -e "  [2] 👤 Cadastrar Novo Usuário (Admin Only)"
+    echo -e "  [3] 🗑️  Remover Usuário (Admin Only)"
+    echo -e "  [4] 🔑 Alterar Senha de Usuário"
     echo -e "  [5] 🆙 Promover a Root (Sudo)"
     echo -e "  [6] 👁️  Ver Sessões / Derrubar Usuário"
-    echo -e "  [7] ⬅️  Sair"
+    echo -e "  [7] 🔑 Adicionar Chave SSH (Admin Only)"
+    echo -e "  [8] ⬅️  Sair"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
     read -n 1 -p " Digite a opção: " OP; echo ""
     case $OP in
         1) listar_usuarios_cadastrados ;;
-        2) cadastrar_user ;;
-        3) remover_usuario ;;
-        4) alterar_senha_vps ;;
-        5) verificar_admin && { 
-               read -p "Usuário: " UP; usermod -aG sudo "$UP"
-               echo -e "${VERDE}Promovido!${NC}"; sleep 2; 
+        2) verificar_admin && {
+             read -p "Nome do novo usuário: " NU
+             read -s -p "Senha para $NU: " NS; echo ""
+             useradd -m -s /bin/bash "$NU"
+             echo "$NU:$NS" | chpasswd
+             echo -e "${VERDE}Usuário criado!${NC}"; sleep 2
            } ;;
+        3) verificar_admin && {
+             read -p "Remover qual usuário?: " UR
+             if [[ "$UR" != "$ADM_USER" ]]; then
+                userdel -r "$UR" && echo "Removido." || echo "Erro."
+             else
+                echo "Não pode remover o admin.";
+             fi
+             sleep 2
+           } ;;
+        4) # Alterar Senha
+           read -p "Alterar senha de: " UA
+           if [[ "$UA" == "$ADM_USER" ]]; then verificar_admin || continue; fi
+           passwd "$UA" && echo "Sucesso."; sleep 2 ;;
+        5) verificar_admin && { read -p "Usuário: " UP; usermod -aG sudo "$UP"; sleep 2; } ;;
         6) monitorar_logados 
-           read -p "Deseja derrubar um usuário logado? (s/n): " RESP
+           read -p "Deseja derrubar um usuário? (s/n): " RESP
            if [[ "$RESP" == "s" ]]; then
                read -p "Qual nome?: " DERRUBAR
                if [[ "$DERRUBAR" == "$ADM_USER" || "$DERRUBAR" == "root" ]]; then
-                   echo -e "${VERMELHO}❌ Ação negada! Não é possível derrubar o Administrador.${NC}"; sleep 2
+                   echo -e "${VERMELHO}❌ Proibido derrubar Administrador!${NC}"; sleep 2
                else
-                   verificar_admin && { pkill -u "$DERRUBAR"; echo "Conexão encerrada."; sleep 2; }
+                   verificar_admin && { pkill -u "$DERRUBAR"; sleep 2; }
                fi
            fi ;;
-        7) exit 0 ;;
+        7) adicionar_chave_ssh ;;
+        8) exit 0 ;;
         *) sleep 1 ;;
     esac
 done
