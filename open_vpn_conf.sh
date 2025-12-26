@@ -7,10 +7,10 @@ ADMIN_CONF="/etc/vps_protecao/admin.conf"
 TELEGRAM_CONF="/etc/vps_protecao/telegram.conf"
 AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
 
-# Cria o diretório de backup dos arquivos .ovpn se não existir
+# Cria o diretório de armazenamento dos arquivos se não existir
 mkdir -p "$DIR_CLIENTES"
 
-# --- FUNÇÃO: ENVIAR TELEGRAM ---
+# --- FUNÇÃO 1: ENVIAR TELEGRAM (CORE) ---
 enviar_telegram() {
     local ARQUIVO=$1
     local NOME_USER=$2
@@ -18,23 +18,22 @@ enviar_telegram() {
     if [ -f "$TELEGRAM_CONF" ]; then
         source "$TELEGRAM_CONF"
         if [[ -n "$TOKEN" && -f "$ARQUIVO" ]]; then
-            # Mensagem de texto formatada
-            MENSAGEM="✅ <b>NOVO USUÁRIO VPN GERADO</b>%0A👤 Nome: <code>$NOME_USER</code>%0A📅 Data: $(date +'%d/%m/%Y')%0A⏰ Hora: $(date +'%H:%M:%S')"
+            MENSAGEM="✅ <b>ARQUIVO VPN DISPONÍVEL</b>%0A👤 Usuário: <code>$NOME_USER</code>%0A📅 Data: $(date +'%d/%m/%Y')%0A⏰ Hora: $(date +'%H:%M:%S')"
             
+            # Envia aviso
             curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
-                -d chat_id="$ID_CHAT" \
-                -d text="$MENSAGEM" \
-                -d parse_mode="HTML" > /dev/null
+                -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
             
-            # Envio do arquivo .ovpn
-            curl -s -F chat_id="$ID_CHAT" \
-                -F document=@"$ARQUIVO" \
+            # Envia o documento .ovpn
+            curl -s -F chat_id="$ID_CHAT" -F document=@"$ARQUIVO" \
                 "https://api.telegram.org/bot$TOKEN/sendDocument" > /dev/null
+            return 0
         fi
     fi
+    return 1
 }
 
-# --- FUNÇÃO: CONFIGURAR SERVIDOR ---
+# --- FUNÇÃO 2: CONFIGURAR SERVIDOR ---
 configurar_servidor_vpn() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
@@ -51,8 +50,8 @@ configurar_servidor_vpn() {
         fi
     else
         echo -e "${VERDE}Servidor já instalado.${NC}"
-        echo -e "  [1] Adicionar/Remover/Modificar via Script Oficial"
-        echo -e "  [2] Reinstalar/Atualizar Script de Instalação"
+        echo -e "  [1] Menu de Gerenciamento do Instalador (Portas/Protocolos/Remover)"
+        echo -e "  [2] Reinstalar Script de Instalação (Update)"
         echo -e "  [0] Voltar"
         read -n 1 -p " Escolha: " OP_SVR
         case $OP_SVR in
@@ -62,105 +61,86 @@ configurar_servidor_vpn() {
     fi
 }
 
-# --- FUNÇÃO: LISTAR USUÁRIOS ---
+# --- FUNÇÃO 3: LISTAR CERTIFICADOS ATIVOS ---
 listar_usuarios() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}USUÁRIOS VPN ATIVOS (CERTIFICADOS)${NC}"
+    echo -e "                ${VERDE}CERTIFICADOS EMITIDOS NO SISTEMA${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    
-    # Busca na pasta do Easy-RSA
     ISSUED_DIR="/etc/openvpn/server/easy-rsa/pki/issued"
     [ ! -d "$ISSUED_DIR" ] && ISSUED_DIR="/etc/openvpn/easy-rsa/pki/issued"
 
     if [ -d "$ISSUED_DIR" ]; then
         ls "$ISSUED_DIR" | grep ".crt" | sed 's/.crt//' | grep -v "server" | while read -r user; do
-            echo -e " 👤 Usuário: ${AMARELO}$user${NC}"
+            echo -e " 👤 Certificado: ${AMARELO}$user${NC}"
         done
     else
         echo -e "${VERMELHO}Erro: Pasta de certificados não localizada.${NC}"
     fi
-    
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
 }
 
-# --- FUNÇÃO: CRIAR USUÁRIO ---
+# --- FUNÇÃO 4: CRIAR USUÁRIO ---
 criar_usuario() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                  ${VERDE}CRIAR NOVO USUÁRIO VPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     read -p " Nome do usuário: " NOVO_USER
-    
-    if [[ -z "$NOVO_USER" ]]; then
-        echo -e "${VERMELHO}Nome vazio!${NC}"; sleep 2; return
-    fi
+    [[ -z "$NOVO_USER" ]] && return
 
     if [ -f "/root/openvpn-install.sh" ]; then
-        # Automação das respostas para o script oficial
-        export MENU_OPTION=1
-        export CLIENT="$NOVO_USER"
-        export PASS=1
+        export MENU_OPTION=1; export CLIENT="$NOVO_USER"; export PASS=1
         bash /root/openvpn-install.sh
         
-        # Localiza o arquivo gerado
         ARQUIVO_ORIGEM="/root/$NOVO_USER.ovpn"
         [ ! -f "$ARQUIVO_ORIGEM" ] && ARQUIVO_ORIGEM="$HOME/$NOVO_USER.ovpn"
 
         if [ -f "$ARQUIVO_ORIGEM" ]; then
             mv "$ARQUIVO_ORIGEM" "$DIR_CLIENTES/"
             echo -e "${VERDE}Usuário criado com sucesso!${NC}"
-            echo -e "Enviando para o Telegram..."
             enviar_telegram "$DIR_CLIENTES/$NOVO_USER.ovpn" "$NOVO_USER"
         fi
     else
-        echo -e "${VERMELHO}Instalador /root/openvpn-install.sh não encontrado.${NC}"
+        echo -e "${VERMELHO}Instalador não encontrado.${NC}"
     fi
-    sleep 3
+    sleep 2
 }
 
-# --- FUNÇÃO: REMOVER USUÁRIO ---
+# --- FUNÇÃO 5: REMOVER USUÁRIO ---
 remover_usuario() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                  ${VERMELHO}REMOVER USUÁRIO VPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     read -p " Nome do usuário para remover: " USER_DEL
+    [[ -z "$USER_DEL" ]] && return
 
     if [ -f "/root/openvpn-install.sh" ]; then
-        export MENU_OPTION=2
-        export CLIENT="$USER_DEL"
+        export MENU_OPTION=2; export CLIENT="$USER_DEL"
         bash /root/openvpn-install.sh
         rm -f "$DIR_CLIENTES/$USER_DEL.ovpn"
-        echo -e "${AMARELO}Usuário $USER_DEL removido e arquivo deletado.${NC}"
-    else
-        echo -e "${VERMELHO}Instalador não encontrado.${NC}"
+        echo -e "${AMARELO}Usuário e arquivo removidos.${NC}"
     fi
-    sleep 3
+    sleep 2
 }
 
-# --- MENU PRINCIPAL UNIFICADO ---
-while true; do
+# --- FUNÇÃO 6: LISTAR E GERAR LINKS SCP ---
+listar_arquivos_ovpn() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}GERENCIAMENTO OPENVPN PRO${NC}"
+    echo -e "                ${VERDE}📂 GERENCIADOR DE DOWNLOADS (SCP)${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] 👤 Criar Usuário (Envia Telegram)"
-    echo -e "  [2] 🗑️  Remover Usuário"
-    echo -e "  [3] 📋 Listar Usuários Ativos"
-    echo -e "  [4] ⚙️  Configurar/Instalar Servidor"
-    echo -e "  [0] ⬅️  Voltar ao Painel Principal"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    read -n 1 -p " Escolha uma opção: " OP
-    echo ""
+    IP_EXT=$(curl -s ifconfig.me)
+    mapfile -t ARQUIVOS < <(ls "$DIR_CLIENTES"/*.ovpn 2>/dev/null)
 
-    case $OP in
-        1) criar_usuario ;;
-        2) remover_usuario ;;
-        3) listar_usuarios ;;
-        4) configurar_servidor_vpn ;;
-        0) exit 0 ;;
-        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
-    esac
-done
+    if [ ${#ARQUIVOS[@]} -eq 0 ]; then
+        echo -e "${VERMELHO}Nenhum arquivo encontrado.${NC}"; sleep 2; return
+    fi
+
+    for ((i=0; i<${#ARQUIVOS[@]}; i+=2)); do
+        printf "  %-28s  %-28s\n" "$(basename "${ARQUIVOS[i]}")" "$(basename "${ARQUIVOS[i+1]}")"
+    done
+
+    echo -ne "\n${AMARE
