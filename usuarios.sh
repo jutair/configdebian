@@ -5,14 +5,22 @@
 DIR_PROT="/etc/vps_protecao"
 AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
 
-# Carrega o Administrador Oficial
+# --- 1. VERIFICAÇÃO DE ROOT/SUDO (CORREÇÃO APLICADA) ---
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${VERMELHO}❌ Erro: Este script exige privilégios administrativos.${NC}"
+   echo -e "${AMARELO}O menu deve chamá-lo com 'sudo -E'.${NC}"
+   sleep 2
+   exit 1
+fi
+
+# --- 2. CARREGAMENTO DE IDENTIDADE ---
 if [ -f "$DIR_PROT/config.conf" ]; then
     source "$DIR_PROT/config.conf"
 else
     ADM_USER="root"
 fi
 
-# Detecta quem está executando o script agora
+# Detecta quem está operando o menu (mesmo sob sudo)
 AUID=$(cat /proc/self/loginuid 2>/dev/null)
 if [ -n "$AUID" ] && [ "$AUID" != "4294967295" ] && [ "$AUID" != "0" ]; then
     USER_ATUAL=$(getent passwd "$AUID" | cut -d: -f1)
@@ -21,22 +29,14 @@ else
 fi
 
 # --- 🛡️ SEGURANÇA MÁXIMA ---
-# Bloqueia Ctrl+C, Ctrl+Z e saídas inesperadas para o terminal
 fechar_por_seguranca() {
-    if [ "$USER_ATUAL" != "$ADM_USER" ]; then
+    if [[ "$USER_ATUAL" != "$ADM_USER" && "$USER_ATUAL" != "root" ]]; then
         echo -e "\n${VERMELHO}⚠️ ACESSO NEGADO! Encerrando sessão...${NC}"
         pkill -u "$USER_ATUAL" -9
         exit 1
     fi
 }
 trap fechar_por_seguranca SIGINT SIGTSTP SIGQUIT
-
-# Verifica ROOT para execução
-if [ "$EUID" -ne 0 ]; then
-  echo -e "${VERMELHO}Erro: Este script deve rodar como root/sudo!${NC}"
-  sleep 2
-  exit 1
-fi
 
 ############################ FUNÇÕES DE GESTÃO ############################
 
@@ -52,8 +52,12 @@ cadastrar_user() {
         echo -e "${VERMELHO}Erro: Usuário já existe!${NC}"; sleep 2; return
     fi
 
-    # Cria usuário com shell bash
+    read -s -p " Senha para o usuário $NOME_USUARIO: " SENHA_NOVO
+    echo ""
+
     useradd -m -s /bin/bash "$NOME_USUARIO"
+    echo "$NOME_USUARIO:$SENHA_NOVO" | chpasswd
+    
     HOME_USER="/home/$NOME_USUARIO"
 
     # Configura o .bashrc para abrir o menu em modo PRISÃO (exec)
@@ -67,13 +71,11 @@ EOF
     chown "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER/.bashrc"
     
     echo -e "${VERDE}✅ Usuário $NOME_USUARIO criado com sucesso!${NC}"
-    echo -e "${AMARELO}O menu iniciará automaticamente e bloqueará o shell.${NC}"
     sleep 2
 }
 
 adicionar_chave_ssh() {
-    # Somente o administrador definido pode gerenciar chaves
-    if [ "$USER_ATUAL" != "$ADM_USER" ]; then
+    if [[ "$USER_ATUAL" != "$ADM_USER" && "$USER_ATUAL" != "root" ]]; then
         echo -e "${VERMELHO}❌ Apenas o Administrador ($ADM_USER) pode gerenciar chaves!${NC}"
         sleep 2; return
     fi
@@ -106,8 +108,7 @@ remover_usuario_protegido() {
     echo -e "${AZUL}===============================================================${NC}"
     read -p " Nome do usuário para remover: " USER_REM
 
-    # Proteção de contas do sistema
-    if [[ "$USER_REM" == "$ADM_USER" || "$USER_REM" == "root" || "$USER_REM" == "$OPE_USER" ]]; then
+    if [[ "$USER_REM" == "$ADM_USER" || "$USER_REM" == "root" ]]; then
         echo -e "${VERMELHO}❌ ERRO: O usuário '$USER_REM' está protegido pelo sistema!${NC}"
         sleep 3; return
     fi
@@ -129,10 +130,8 @@ alterar_senha_vps() {
     echo -e "${AZUL}===============================================================${NC}"
     read -p " Alterar a senha de qual usuário? " USER_ALVO
 
-    # Se tentar mudar a senha do admin sem ser o admin
     if [[ "$USER_ALVO" == "$ADM_USER" && "$USER_ATUAL" != "$ADM_USER" ]]; then
         echo -e "${VERMELHO}❌ ACESSO NEGADO!${NC}"
-        # Alerta opcional no telegram (source /etc/vps_protecao/telegram.conf...)
         sleep 3; return
     fi
 
@@ -145,15 +144,20 @@ alterar_senha_vps() {
     sleep 2
 }
 
-# ... (Funções listar_usuarios_cadastrados, monitorar_logados e gerenciar_banidos permanecem similares) ...
-# [Mantenha-as como no seu original, apenas garantindo o uso das variáveis de cores]
+listar_usuarios_cadastrados() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "             ${VERDE}USUÁRIOS CADASTRADOS NO SISTEMA${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    # Lista apenas usuários com diretório em /home (usuários reais)
+    column -t -s: /etc/passwd | grep "/home" | awk '{print "👤 Usuário: " $1 "\t ID: " $3}'
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p "Pressione ENTER para voltar..."
+}
 
-############################ MENU PRINCIPAL USUÁRIOS ############################
-
+# --- LOOP MENU PRINCIPAL ---
 while true; do
-    TOTAL_USERS=$(grep -c "/home" /etc/passwd)
     LOGADOS_AGORA=$(who | wc -l)
-
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "            ${VERDE}GERENCIAMENTO DE ACESSOS${NC}"
@@ -166,11 +170,9 @@ while true; do
     echo -e "  [2] 👤 Cadastrar Usuário"
     echo -e "  [3] 🗑️  Remover Usuário"
     echo -e "  [4] 🔑 Alterar Senha"
-    echo -e "  [5] 🆙 Promover a Admin"
-    echo -e "  [6] 👁️  Sessões Ativas"
-    echo -e "  [7] 🚫 IPs Banidos"
+    echo -e "  [5] 🆙 Promover a Admin (Sudo)"
     echo -e "  [8] 🔑 Adicionar Chave SSH (Apenas $ADM_USER)"
-    echo -e "  [9] ⬅️  Voltar ao Menu"
+    echo -e "  [9] ⬅️  Voltar ao Menu Principal"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
     read -n 1 -p " Escolha: " OP; echo ""
@@ -184,14 +186,13 @@ while true; do
                 read -p "Usuário para promover: " U_P
                 usermod -aG sudo "$U_P"
                 echo "$U_P ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/90-vpn-users
+                echo -e "${VERDE}✅ $U_P promovido!${NC}"; sleep 2
             else
                 echo -e "${VERMELHO}Ação restrita ao Administrador.${NC}"; sleep 2
             fi
             ;;
-        6) monitorar_logados ;;
-        7) gerenciar_banidos ;;
         8) adicionar_chave_ssh ;;
-        9) exit 0 ;; # Retorna ao menu.sh (que está com exec)
+        9) exit 0 ;;
         *) sleep 1 ;;
     esac
 done
