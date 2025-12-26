@@ -193,6 +193,77 @@ gerenciar_whitelist() {
         sleep 1
     done
 }
+
+banir_ip() {
+    local ARQUIVO_WHITE="/etc/vps_protecao/whitelist.conf"
+    
+    echo -e "\n${AMARELO}---------------------------------------------------------------${NC}"
+    read -p " Digite o IP que deseja BANIR (Bloqueio Total): " IP_ALVO
+    
+    # 1. Validação de formato de IP
+    if [[ $IP_ALVO =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        
+        # 2. VERIFICAÇÃO DE SEGURANÇA (WHITELIST)
+        if [ -f "$ARQUIVO_WHITE" ] && grep -q "^$IP_ALVO$" "$ARQUIVO_WHITE"; then
+            echo -e "${VERMELHO}❌ OPERAÇÃO BLOQUEADA!${NC}"
+            echo -e "${AMARELO}O IP $IP_ALVO está na Lista Branca.${NC}"
+            
+            [ -f /etc/vps_protecao/telegram.conf ] && source /etc/vps_protecao/telegram.conf
+            if [[ ! -z "$TOKEN" ]]; then
+                MENSAGEM="🛡️ <b>AVISO:</b> Tentativa de banir IP Protegido: <code>$IP_ALVO</code>"
+                curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+            fi
+        else
+            # 3. EXECUTA O BANIMENTO NAS 3 CAMADAS (INPUT, OUTPUT, FORWARD)
+            echo -e "${VERMELHO}Bloqueando IP: $IP_ALVO em todas as camadas...${NC}"
+
+            # Bloqueia a VPS de acessar o IP (Para o seu PING)
+            sudo iptables -I OUTPUT -d "$IP_ALVO" -j DROP
+            
+            # Bloqueia o IP de tentar entrar na VPS (Segurança)
+            sudo iptables -I INPUT -s "$IP_ALVO" -j DROP
+            
+            # Bloqueia Clientes VPN de acessarem esse IP (O Segredo)
+            sudo iptables -I FORWARD -d "$IP_ALVO" -j DROP
+
+            # Opcional: Mantém o UFW sincronizado
+            sudo ufw insert 1 deny from "$IP_ALVO" to any > /dev/null 2>&1
+            sudo ufw insert 1 deny out to "$IP_ALVO" > /dev/null 2>&1
+
+            echo -e "${VERDE}✅ IP $IP_ALVO ISOLADO COM SUCESSO!${NC}"
+            echo -e "${AMARELO}Teste agora o PING ou acesso pela VPN.${NC}"
+        fi
+    else
+        echo -e "${VERMELHO}❌ Formato de IP inválido!${NC}"
+    fi
+    echo -e "${AMARELO}---------------------------------------------------------------${NC}"
+    sleep 2
+}
+
+desbanir_ip() {
+    echo -e "\n${AMARELO}---------------------------------------------------------------${NC}"
+    read -p " Digite o IP para DESBANIR: " IP_DESBAN
+    
+    if [[ $IP_DESBAN =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "${AMARELO}Limpando regras para o IP: $IP_DESBAN...${NC}"
+
+        # 1. Remove do IPTABLES (Usa -D para deletar)
+        sudo iptables -D OUTPUT -d "$IP_DESBAN" -j DROP > /dev/null 2>&1
+        sudo iptables -D INPUT -s "$IP_DESBAN" -j DROP > /dev/null 2>&1
+        sudo iptables -D FORWARD -d "$IP_DESBAN" -j DROP > /dev/null 2>&1
+
+        # 2. Remove do UFW (Sincronização)
+        sudo ufw delete deny from "$IP_DESBAN" to any > /dev/null 2>&1
+        sudo ufw delete deny out to "$IP_DESBAN" > /dev/null 2>&1
+
+        echo -e "${VERDE}✅ O IP $IP_DESBAN foi liberado para o Servidor e VPN!${NC}"
+    else
+        echo -e "${VERMELHO}❌ Formato de IP inválido!${NC}"
+    fi
+    echo -e "${AMARELO}---------------------------------------------------------------${NC}"
+    sleep 2
+}
+
 firewall() {
     while true; do
         clear
