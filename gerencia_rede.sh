@@ -386,6 +386,55 @@ configurar_telegram() {
     echo "Salvo!"; sleep 2
 }
 
+restaura_seguranca() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "             ${AMARELO}RESTAURANDO SEGURANÇA DO SISTEMA${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    # 1. Reset e Reconfiguração do Firewall (UFW)
+    echo -e "${VERDE}[1/3]${NC} Resetando Firewall UFW..."
+    # Desativa e limpa todas as regras
+    echo "y" | sudo ufw reset > /dev/null
+    # Configura políticas padrão (Bloqueia entrada, permite saída)
+    sudo ufw default deny incoming > /dev/null
+    sudo ufw default allow outgoing > /dev/null
+    # Libera as portas essenciais (Ajuste se usar portas SSH/VPN customizadas)
+    sudo ufw allow ssh > /dev/null
+    sudo ufw allow 1194/udp > /dev/null # OpenVPN padrão
+    sudo ufw allow 80/tcp > /dev/null   # HTTP
+    sudo ufw allow 443/tcp > /dev/null  # HTTPS
+    echo "y" | sudo ufw enable > /dev/null
+    echo -e "      ${VERDE}✔ Firewall Restaurado (SSH e VPN liberados).${NC}"
+
+    # 2. Reforço de Segurança no SSH
+    echo -e "${VERDE}[2/3]${NC} Aplicando travas no SSH..."
+    # Garante que Root não logue diretamente e remove senhas vazias
+    sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+    sudo sed -i 's/^PermitEmptyPasswords.*/PermitEmptyPasswords no/' /etc/ssh/sshd_config
+    sudo sed -i 's/^#MaxAuthTries.*/MaxAuthTries 5/' /etc/ssh/sshd_config
+    sudo systemctl restart ssh > /dev/null
+    echo -e "      ${VERDE}✔ Configurações de SSH reforçadas.${NC}"
+
+    # 3. Verificação do Serviço Guardião
+    echo -e "${VERDE}[3/3]${NC} Verificando integridade do Guardião..."
+    if ! systemctl is-active --quiet guardiao.service; then
+        echo -e "${AMARELO}      ⚠ Guardião estava parado. Reiniciando...${NC}"
+        sudo systemctl daemon-reload
+        sudo systemctl enable guardiao.service > /dev/null
+        sudo systemctl restart guardiao.service > /dev/null
+    else
+        echo -e "      ${VERDE}✔ Guardião já está operando normalmente.${NC}"
+        sudo systemctl restart guardiao.service > /dev/null # Reinicia por garantia
+    fi
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "    ${VERDE}✅ SEGURANÇA RESTAURADA COM SUCESSO!${NC}"
+    echo -e "    O sistema está protegido e monitorado novamente."
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p "Pressione ENTER para voltar..."
+}
+
 # --- ESTRUTURA DO MENU PRINCIPAL ---
 while true; do
     # Atualiza dados em cada ciclo do menu
@@ -400,10 +449,10 @@ while true; do
     printf "  %-15s : ${AMARELO}%-20s${NC}\n" "IP SERVIDOR" "$IP_EXT"
     printf "  %-15s : ${AMARELO}%-20s${NC}\n" "PORTA SSH" "$PORTA_SSH"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] 📜 Logs do Sistema         [2] 🛡️  Firewall e Segurança"
-    echo -e "  [3] ⚡ Testar Velocidade       [4] 🔑 SSH Config (Admin)"
-    echo -e "  [5] 📉 VnStat (Consumo)        [6] 📢 Alerta Telegram (Admin)"
-    echo -e "                                 [0] 🔄 Voltar ao Menu Inicial"
+    echo -e "  [1] 📜 Logs do Sistema               [2] 🛡️  Firewall e Segurança"
+    echo -e "  [3] ⚡ Testar Velocidade             [4] 🔑 SSH Config (Admin)"
+    echo -e "  [5] 📉 VnStat (Consumo)              [6] 📢 Alerta Telegram (Admin)"
+    echo -e "  [7] 🛡️ Restaurar Segurança Padrão    [0]🔄 Voltar ao Menu Inicial  "
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     
     read -n 1 -p " Digite a opção: " OP; echo ""
@@ -415,6 +464,7 @@ while true; do
         4) ssh_config ;;
         5) clear; vnstat -d; echo -e "\n${AMARELO}Pressione ENTER para voltar...${NC}"; read -r ;;
         6) configurar_telegram ;;
+        7) restaura_seguranca ;;
         0) 
             echo -e "${AMARELO}Saindo e recarregando menu.sh...${NC}"
             sleep 1
