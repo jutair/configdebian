@@ -34,21 +34,23 @@ enviar_telegram() {
 }
 
 # --- FUNÇÃO 2: CONFIGURAR SERVIDOR ---
-# --- FUNÇÃO 2: CONFIGURAR SERVIDOR (PROTEGIDA) ---
 configurar_servidor_vpn() {
     clear
+    # 1. Carrega o Admin cadastrado para garantir a verificação
+    [ -f "$ADMIN_CONF" ] && source "$ADMIN_CONF"
+    
     local USUARIO_ATUAL=$(logname 2>/dev/null || whoami)
     local DATA_ATUAL=$(date +'%d/%m/%Y')
     local HORA_ATUAL=$(date +'%H:%M:%S')
 
-    # 🛡️ VERIFICAÇÃO DE PERMISSÃO
+    # 🛡️ VERIFICAÇÃO DE PERMISSÃO: Apenas o Admin definido no arquivo conf
     if [[ "$USUARIO_ATUAL" != "$ADM_USER" ]]; then
         echo -e "${VERMELHO}===============================================================${NC}"
         echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
         echo -e "${VERMELHO}===============================================================${NC}"
         echo -e "Tentativa de alteração do servidor por: ${AMARELO}$USUARIO_ATUAL${NC}"
         
-        # Envia alerta crítico ao Telegram
+        # Alerta ao Telegram
         if [ -f "$TELEGRAM_CONF" ]; then
             source "$TELEGRAM_CONF"
             MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>IP:</b> <code>$IP_CONEXAO</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
@@ -56,13 +58,19 @@ configurar_servidor_vpn() {
         fi
         
         sleep 3
-        return # Volta ao menu sem executar nada
+        return
     fi
 
-    # ⚙️ SE FOR O ADMIN, PROSEGUE COM A CONFIGURAÇÃO
+    # ⚙️ INÍCIO DA CONFIGURAÇÃO (Usuário Admin Confirmado)
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "              ${VERDE}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
+
+    # Prepara o ambiente de diretórios e permissões públicas
+    echo -e "${AMARELO}Verificando diretórios de segurança...${NC}"
+    sudo mkdir -p "$DIR_CLIENTES"
+    sudo chmod 755 /etc/vps_protecao
+    sudo chmod 755 "$DIR_CLIENTES"
 
     if [ ! -f "/etc/openvpn/server.conf" ]; then
         echo -e "${AMARELO}O OpenVPN não está instalado.${NC}"
