@@ -48,6 +48,27 @@ verificar_permissao() {
     return 0
 }
 
+ssh_config() {
+    verificar_permissao || return
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "                ${VERDE}CONFIGURAÇÃO DE ACESSO SSH${NC}"
+        echo -e "  ADMINISTRADOR ATIVO: ${AMARELO}$ADM_USER${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "  [1] 🚪 Mudar Porta SSH\n  [2] 👤 Permitir/Bloquear Login Root\n  [3] 🔑 Password Auth\n  [4] 👢 Desconectar Usuário Ativo\n  [5] ⬅️  Voltar"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Digite a opção: " OP; echo ""
+        case $OP in
+            1) read -p " Nova Porta: " NP; ufw allow "$NP"/tcp; sed -i "/^Port /d" $SSH_CONF; echo "Port $NP" >> $SSH_CONF; systemctl restart ssh ;;
+            2) echo -e "[1] Permitir [2] Bloquear"; read -n 1 R; [ "$R" == "1" ] && VAL="yes" || VAL="no"; sed -i "/^PermitRootLogin/d" $SSH_CONF; echo "PermitRootLogin $VAL" >> $SSH_CONF; systemctl restart ssh ;;
+            3) echo -e "[1] Ativar [2] Desativar"; read -n 1 S; [ "$S" == "1" ] && VAL="yes" || VAL="no"; sed -i "/^PasswordAuthentication/d" $SSH_CONF; echo "PasswordAuthentication $VAL" >> $SSH_CONF; systemctl restart ssh ;;
+            4) clear; who; read -p " Usuário para expulsar: " U; [[ "$U" == "$ADM_USER" ]] && echo "Erro: Auto-expulsão negada!" || pkill -u "$U" -9 ;;
+            5) break ;;
+        esac
+    done
+}
+
 # --- 3. FUNÇÕES DE PERFORMANCE E REDE ---
 
 testa_velocidade() {
