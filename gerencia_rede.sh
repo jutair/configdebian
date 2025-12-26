@@ -263,6 +263,37 @@ desbanir_ip() {
     echo -e "${AMARELO}---------------------------------------------------------------${NC}"
     sleep 2
 }
+
+firewall() {
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "                ${VERMELHO}🛡️  CENTRAL DE FIREWALL${NC}"
+        echo -e "  ADMIN ATIVO: ${VERDE}$ADM_USER${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "  [1] 🚫 Banir IP (Manual)"
+        echo -e "  [2] ✅ Desbanir IP (Manual/Fail2Ban)"
+        echo -e "  [3] 📋 Ver IPs Bloqueados (IPTables)"
+        echo -e "  [4] 🚨 Monitorar Fail2Ban (Automático)"
+        echo -e "  [5] ⚪ Gerenciar Whitelist (Lista Branca)"
+        echo -e "  [6] 🕵️  Diagnóstico de Ataques (Ranking)"
+        echo -e "  [0] ⬅️  Voltar ao Menu Principal"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Escolha: " OP_F; echo ""
+
+        case $OP_F in
+            1) banir_ip ;;
+            2) desbanir_ip ;;
+            3) clear; iptables -L INPUT -n | grep "DROP"; read -p "Pressione ENTER..." ;;
+            4) monitora_banidos ;;
+            5) gerenciar_whitelist ;;
+            6) diagnostico_ataques ;;
+            0) return ;; # Volta para o loop do menu principal
+            *) echo -e "Opção inválida"; sleep 1 ;;
+        esac
+    done
+}
+
 ssh_config() {
     # Validação de permissão antes de qualquer ação
     verificar_permissao || return
