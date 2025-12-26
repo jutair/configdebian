@@ -82,9 +82,10 @@ manutencao() {
 dashboard() {
     local CYAN='\033[0;36m'
     local GOLD='\033[1;33m'
+    local VERDE='\033[0;32m'
+    local AMARELO='\033[1;33m'
     local NC='\033[0m'
     
-    # Detecção correta do log do OpenVPN
     STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
     STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
 
@@ -103,8 +104,7 @@ dashboard() {
         [ -z "$TRAF_ETH" ] && TRAF_ETH="0 MB"
         [ -z "$TRAF_TUN" ] && TRAF_TUN="0 MB"
 
-        # --- CORREÇÃO DE USUÁRIOS VPN ---
-        # Conta linhas que não sejam cabeçalho no status log
+        # Usuários e Segurança
         VPN_ONLINE=$(grep -E "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | grep -v "Common Name" | wc -l)
         SSH_ONLINE=$(who | wc -l)
         BANS=$(wc -l < /etc/vps_protecao/bans.log 2>/dev/null || echo "0")
@@ -112,29 +112,35 @@ dashboard() {
 
         clear
         echo -e "${CYAN}===============================================================${NC}"
-        echo -e "         ${GOLD}DASHBOARD VPS PREMIUM${NC} | ${DATA_MANAUS} (AMT)"
+        echo -e "      ${GOLD}💎 DASHBOARD VPS PREMIUM${NC} | ${DATA_MANAUS} (AMT)"
         echo -e "${CYAN}===============================================================${NC}"
         
-        # Informações de Conexão
-        echo -e " IP Servidor : ${AMARELO}${IP_SERVIDOR}${NC}"
-        echo -e " Usuário     : ${AMARELO}${USER_LOGADO}${NC} (${IP_CONEXAO})"
-        echo -e " Uptime      : ${AMARELO}${UPTIME}${NC}"
+        echo -e " 🌐 IP Servidor : ${AMARELO}${IP_SERVIDOR}${NC}"
+        echo -e " 👤 Usuário     : ${AMARELO}${USER_LOGADO}${NC} (${IP_CONEXAO})"
+        echo -e " ⏱️  Uptime      : ${AMARELO}${UPTIME}${NC}"
         
         echo -e "${CYAN}------------------------- HARDWARE ----------------------------${NC}"
-        printf " CPU: %-5s | RAM: %-5s | DISCO: %-5s\n" "${CPU_INT}%" "${MEM_PORC}%" "$(df -h / | awk 'NR==2 {print $5}')"
+        # Usando echo -e para as cores e printf apenas para o alinhamento do texto
+        echo -ne " 💻 CPU: ${AMARELO}${CPU_INT}%${NC}"
+        printf " %-10s" "" 
+        echo -ne " 🧠 RAM: ${AMARELO}${MEM_PORC}%${NC}"
+        printf " %-10s" ""
+        echo -e " 💾 DISCO: ${AMARELO}$(df -h / | awk 'NR==2 {print $5}')${NC}"
         
         echo -e "${CYAN}------------------------- TRÁFEGO -----------------------------${NC}"
-        printf " WEB (Mês): %-15s | VPN (Mês): %-15s\n" "$TRAF_ETH" "$TRAF_TUN"
+        echo -e " 📡 WEB (Mês): ${VERDE}${TRAF_ETH}${NC}"
+        echo -e " 📡 VPN (Mês): ${VERDE}${TRAF_TUN}${NC}"
         
         echo -e "${CYAN}------------------------- SEGURANÇA ---------------------------${NC}"
-        printf " Bans Ativos: %-13s | Ações Guardião: %-13s\n" "$BANS" "$ATUACAO"
+        echo -e " 🛡️  Bans Ativos      : ${AMARELO}${BANS}${NC}"
+        echo -e " 🛡️  Ações Guardião   : ${AMARELO}${ATUACAO}${NC}"
         
         echo -e "${CYAN}------------------------- CONEXÕES ----------------------------${NC}"
-        printf " VPN Online : %-13s | SSH Online : %-13s\n" "${VERDE}${VPN_ONLINE}${NC}" "${VERDE}${SSH_ONLINE}${NC}"
+        echo -e " 👥 VPN Online : ${VERDE}${VPN_ONLINE}${NC}"
+        echo -e " 👥 SSH Online : ${VERDE}${SSH_ONLINE}${NC}"
         
         echo -e "${CYAN}---------------------- SESSÕES ATIVAS -------------------------${NC}"
-        # Lista os usuários SSH ativos
-        who -u | awk '{print " • " $1 " - IP: " $NF}' | sed 's/(//g; s/)//g' | head -n 3
+        who -u | awk '{print " 🔌 " $1 " - IP: " $NF}' | sed 's/(//g; s/)//g' | head -n 3
         
         echo -e "${CYAN}===============================================================${NC}"
         echo -e " ${AMARELO}>> Pressione [M] para Menu | Atualizando em 5s...${NC}"
