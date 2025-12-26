@@ -126,6 +126,27 @@ echo "[ -f $DIR_CONFIG/menu.sh ] && exec bash $DIR_CONFIG/menu.sh" >> /etc/profi
 
 # Reinicia SSH para aplicar mudanças
 systemctl restart ssh
+# 10. Proteção contra Fork Bomb e Limite de Processos
+echo -e "${AMARELO}🛡️  Configurando limites de processos (Anti-ForkBomb)...${NC}"
+
+# Usamos 'EOF' com aspas para evitar erros de interpretação de variáveis e caracteres
+cat <<'EOF' > /etc/security/limits.d/99-vpn-limits.conf
+* soft    nproc           100
+* hard    nproc           150
+* soft    nofile          1024
+* hard    nofile          2048
+root            soft    nproc           unlimited
+root            hard    nproc           unlimited
+EOF
+
+# Adiciona a exceção para o seu usuário ADM via comando separado para evitar erro de sintaxe
+echo "$ADM_USER       soft    nproc           unlimited" >> /etc/security/limits.d/99-vpn-limits.conf
+echo "$ADM_USER       hard    nproc           unlimited" >> /etc/security/limits.d/99-vpn-limits.conf
+
+# Garante que o PAM aplique esses limites nas sessões
+if ! grep -q "pam_limits.so" /etc/pam.d/common-session; then
+    echo "session required pam_limits.so" >> /etc/pam.d/common-session
+fi
 
 # --- 8. INICIALIZAÇÃO DO GUARDIÃO ---
 echo -e "${AMARELO}🚀 Ativando Guardião...${NC}"
