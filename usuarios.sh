@@ -21,8 +21,11 @@ trap '' SIGINT SIGTSTP
 
 ############################ FUNÇÕES DE VALIDAÇÃO ############################
 verificar_admin() {
+    # Captura o usuário atual no momento da execução
+    # Tenta pegar o nome via logname (mais preciso para SSH) ou whoami
+    USUARIO_DA_SESSAO=$(logname 2>/dev/null || whoami)
+    
     # 1. Captura o IP de origem de forma robusta
-    # Tenta via SSH_CLIENT, se falhar usa o 'who'
     IP_USER=$(echo $SSH_CLIENT | awk '{print $1}')
     [ -z "$IP_USER" ] && IP_USER=$(who -m | awk '{print $NF}' | tr -d '()')
     [ -z "$IP_USER" ] && IP_USER="Local/Desconhecido"
@@ -32,7 +35,7 @@ verificar_admin() {
     HORA_ATUAL=$(date +'%H:%M:%S')
 
     # 3. Validação de Administrador
-    if [[ "$USER_REAL" != "$ADM_USER" ]]; then
+    if [[ "$USUARIO_DA_SESSAO" != "$ADM_USER" ]]; then
         clear
         echo -e "${VERMELHO}❌ AÇÃO NEGADA! Apenas o administrador '$ADM_USER' tem permissão.${NC}"
         
@@ -40,7 +43,8 @@ verificar_admin() {
         [ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
 
         if [[ -n "$TOKEN" && "$TOKEN" != "NAO_DEFINIDO" ]]; then
-            MENSAGEM="⚠️ <b>Houve uma tentativa de alterar acesso de usuários do sistema!</b>%0A%0A<b>Usuário:</b> <code>$USER_REAL</code>%0A<b>Ip do usuário:</b> <code>$IP_USER</code>%0A<b>Data:</b> $DATA_ATUAL%0A<b>Hora:</b> $HORA_ATUAL"
+            # Montagem da mensagem usando a captura em tempo real
+            MENSAGEM="⚠️ <b>Houve uma tentativa de alterar acesso de usuários do sistema!</b>%0A%0A<b>Usuário:</b> <code>$USUARIO_DA_SESSAO</code>%0A<b>Ip do usuário:</b> <code>$IP_USER</code>%0A<b>Data:</b> $DATA_ATUAL%0A<b>Hora:</b> $HORA_ATUAL"
             
             curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
                  -d chat_id="$ID_CHAT" \
