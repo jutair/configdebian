@@ -33,43 +33,41 @@ rastrear_clientes_vpn() {
     MES_ATUAL=$(date +'%m-%Y')
     PASTA_LOGS="/etc/vps_protecao/consumo_clientes"
 
-    if [ -f "$STATUS_LOG" ]; then
-        # Extrai os dados: Common Name ($2), Bytes Received ($6), Bytes Sent ($7)
-        grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME IP RECV SENT RESTO; do
-            
-            if [[ "$NOME" != "Common Name" && -n "$NOME" ]]; then
-                ARQUIVO_HISTORICO="$PASTA_LOGS/${NOME}_${MES_ATUAL}.log"
-                ARQUIVO_SESSAO="/tmp/${NOME}_last_session.tmp"
+    [ ! -f "$STATUS_LOG" ] && return
 
-                # 1. Garante que os arquivos existam para evitar erro de leitura
-                [ ! -f "$ARQUIVO_HISTORICO" ] && echo "0 0" > "$ARQUIVO_HISTORICO"
-                [ ! -f "$ARQUIVO_SESSAO" ] && echo "0 0" > "$ARQUIVO_SESSAO"
+    grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r \
+        TIPO NOME IP_REAL IP_VPN BYTES_RECV BYTES_SENT CONECTADO RESTO; do
 
-                # 2. Lê os valores acumulados e o último registro da sessão
-                read -r ACC_RECV ACC_SENT < "$ARQUIVO_HISTORICO"
-                read -r LAST_RECV LAST_SENT < "$ARQUIVO_SESSAO"
+        # Ignora cabeçalho
+        [[ "$NOME" == "Common Name" || -z "$NOME" ]] && continue
 
-                # 3. Cálculo Diferencial
-                # Se o valor atual (RECV) for menor que o anterior, o usuário reconectou
-                if [ "$RECV" -lt "$LAST_RECV" ]; then
-                    DIFF_RECV=$RECV
-                    DIFF_SENT=$SENT
-                else
-                    DIFF_RECV=$((RECV - LAST_RECV))
-                    DIFF_SENT=$((SENT - LAST_SENT))
-                fi
+        ARQUIVO_HISTORICO="$PASTA_LOGS/${NOME}_${MES_ATUAL}.log"
+        ARQUIVO_SESSAO="/tmp/${NOME}_last_session.tmp"
 
-                # 4. Soma a diferença ao histórico acumulado
-                NOVO_ACC_RECV=$((ACC_RECV + DIFF_RECV))
-                NOVO_ACC_SENT=$((ACC_SENT + DIFF_SENT))
+        # Garante arquivos
+        [ ! -f "$ARQUIVO_HISTORICO" ] && echo "0 0" > "$ARQUIVO_HISTORICO"
+        [ ! -f "$ARQUIVO_SESSAO" ] && echo "0 0" > "$ARQUIVO_SESSAO"
 
-                # 5. Salva os novos totais
-                echo "$NOVO_ACC_RECV $NOVO_ACC_SENT" > "$ARQUIVO_HISTORICO"
-                echo "$RECV $SENT" > "$ARQUIVO_SESSAO"
-            fi
-        done
-    fi
+        read -r ACC_RECV ACC_SENT < "$ARQUIVO_HISTORICO"
+        read -r LAST_RECV LAST_SENT < "$ARQUIVO_SESSAO"
+
+        # Trata reconexão
+        if (( BYTES_RECV < LAST_RECV )); then
+            DIFF_RECV=$BYTES_RECV
+            DIFF_SENT=$BYTES_SENT
+        else
+            DIFF_RECV=$((BYTES_RECV - LAST_RECV))
+            DIFF_SENT=$((BYTES_SENT - LAST_SENT))
+        fi
+
+        NOVO_ACC_RECV=$((ACC_RECV + DIFF_RECV))
+        NOVO_ACC_SENT=$((ACC_SENT + DIFF_SENT))
+
+        echo "$NOVO_ACC_RECV $NOVO_ACC_SENT" > "$ARQUIVO_HISTORICO"
+        echo "$BYTES_RECV $BYTES_SENT" > "$ARQUIVO_SESSAO"
+    done
 }
+
 
 # --- FUNÇÃO: MONITORAR COTA GLOBAL (900GB) ---
 verificar_cota_vps() {
