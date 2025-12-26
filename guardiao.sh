@@ -33,11 +33,14 @@ rastrear_clientes_vpn() {
     MES_ATUAL=$(date +'%m-%Y')
     
     if [ -f "$STATUS_LOG" ]; then
-        # Extrai Nome, Bytes Recebidos e Bytes Enviados da lista de clientes
-        sed -n '/CLIENT_LIST/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE "HEADER|CLIENT_LIST|ROUTING TABLE" | while IFS=',' read -r NOME IP RECV SENT DATA; do
-            if [[ -n "$NOME" && "$NOME" != "Common Name" ]]; then
-                # Grava o consumo da sessão atual para consulta no menu
-                echo "$RECV $SENT" > "$PASTA_CONSUMO/${NOME}_${MES_ATUAL}.log"
+        # Filtra apenas as linhas que começam EXATAMENTE com CLIENT_LIST
+        # O grep garante que END, GLOBAL e ROUTING sejam ignorados antes de começar
+        grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME IP RECV SENT RESTO; do
+            
+            # Validação extra: O nome não pode ser "Common Name" nem vazio
+            if [[ "$NOME" != "Common Name" && -n "$NOME" ]]; then
+                # Salva os bytes recebidos e enviados
+                echo "$RECV $SENT" > "/etc/vps_protecao/consumo_clientes/${NOME}_${MES_ATUAL}.log"
             fi
         done
     fi
