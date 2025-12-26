@@ -1,6 +1,12 @@
 #!/bin/bash
 # setup_vps.sh - Instalador de Segurança e Gestão VPS
 # Versão: 26-12-2025
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${VERMELHO}❌ ERRO: O instalador deve ser rodado como ROOT.${NC}"
+   echo -e "${AMARELO}Use: sudo ./setup_vps.sh ou logue como root.${NC}"
+   exit 1
+fi
+
 set -e
 
 DIR_CONFIG="/opt/configdebian"
