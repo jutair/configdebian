@@ -123,44 +123,27 @@ criar_usuario() {
     read -p " Nome do usuário: " NOVO_USER
     [[ -z "$NOVO_USER" ]] && return
 
-    # 1. Garante que as credenciais do Telegram estão carregadas antes de começar
-    if [ -f "$TELEGRAM_CONF" ]; then
-        source "$TELEGRAM_CONF"
-    fi
-
     if [ -f "/root/openvpn-install.sh" ]; then
-        # 2. Executa a criação
-        export MENU_OPTION=1
-        export CLIENT="$NOVO_USER"
-        export PASS=1
+        export MENU_OPTION=1; export CLIENT="$NOVO_USER"; export PASS=1
         bash /root/openvpn-install.sh
         
-        # 3. Tenta localizar o arquivo em múltiplos caminhos possíveis
         ARQUIVO_ORIGEM="/root/$NOVO_USER.ovpn"
         [ ! -f "$ARQUIVO_ORIGEM" ] && ARQUIVO_ORIGEM="$HOME/$NOVO_USER.ovpn"
-        [ ! -f "$ARQUIVO_ORIGEM" ] && ARQUIVO_ORIGEM="$(pwd)/$NOVO_USER.ovpn"
 
         if [ -f "$ARQUIVO_ORIGEM" ]; then
-            # Move para a pasta central de clientes
+            # Move para a nova pasta pública
             mv "$ARQUIVO_ORIGEM" "$DIR_CLIENTES/"
-            echo -e "${VERDE}✅ Usuário criado com sucesso!${NC}"
             
-            # 4. Tenta enviar e verifica se houve erro
-            echo -e "${AMARELO}Enviando para o Telegram...${NC}"
+            # 🛡️ AJUSTE DE PERMISSÃO: Permite que qualquer usuário baixe o arquivo
+            chmod 644 "$DIR_CLIENTES/$NOVO_USER.ovpn"
+            
+            echo -e "${VERDE}Usuário criado com sucesso!${NC}"
             enviar_telegram "$DIR_CLIENTES/$NOVO_USER.ovpn" "$NOVO_USER"
-            
-            if [ $? -eq 0 ]; then
-                echo -e "${VERDE}🚀 Arquivo enviado com sucesso!${NC}"
-            else
-                echo -e "${VERMELHO}❌ Falha ao enviar. Verifique seu Token e ID no arquivo telegram.conf${NC}"
-            fi
-        else
-            echo -e "${VERMELHO}❌ Erro: O arquivo .ovpn não foi encontrado após a criação.${NC}"
         fi
     else
-        echo -e "${VERMELHO}❌ Erro: Instalador /root/openvpn-install.sh não encontrado.${NC}"
+        echo -e "${VERMELHO}Instalador não encontrado.${NC}"
     fi
-    sleep 3
+    sleep 2
 }
 
 # --- FUNÇÃO 5: REMOVER USUÁRIO ---
