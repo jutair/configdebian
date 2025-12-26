@@ -79,20 +79,18 @@ manutencao() {
         exit
     fi
 }
-
 dashboard() {
     # Localiza o arquivo de log do OpenVPN dinamicamente
     STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
     STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
     
-    # Caminhos para logs de atuação
     LOG_BANS="/etc/vps_protecao/bans.log"
     LOG_GUARDIAO="/etc/vps_protecao/guardiao_atua.log"
 
     while true; do
-        # --- Configuração de Data e Hora (Manaus) ---
-        # TZ=America/Manaus força o comando date a usar o fuso -4
+        # --- Tempo de Atividade e Hora ---
         DATA_MANAUS=$(TZ="America/Manaus" date +"%d/%m/%Y %H:%M:%S")
+        UPTIME=$(uptime -p | sed 's/up //')
 
         # --- Coleta de Hardware ---
         CPU=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{printf "%.1f%%", 100 - $1}')
@@ -104,18 +102,24 @@ dashboard() {
         VPN_ONLINE=$(grep -E "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | grep -v "HEADER" | wc -l || echo "0")
         SSH_ONLINE=$(who | wc -l || echo "0")
 
-        # --- Coleta de Segurança (Firewall e Guardião) ---
+        # --- Coleta de Segurança ---
         TOTAL_BANS=$( [ -f "$LOG_BANS" ] && wc -l < "$LOG_BANS" || echo "0" )
         ATUA_GUARDIAO=$( [ -f "$LOG_GUARDIAO" ] && wc -l < "$LOG_GUARDIAO" || echo "0" )
 
-        # --- Lógica de Tráfego Mensal ---
+        # --- Lógica de Tráfego Mensal (Compatível com vnStat 2.x) ---
         IFACE_WEB=$(ip route | grep default | awk '{print $5}' | head -n1)
         
         get_traff() {
             local iface=$1
             if command -v vnstat &>/dev/null; then
-                # Pega tráfego do mês atual (TX+RX formatado)
-                vnstat -i "$iface" --oneline | cut -d';' -f11 2>/dev/null || echo "0 MB"
+                # No vnStat 2.x, o --oneline traz os dados. 
+                # Se a interface for nova, ele pode retornar vazio, então tratamos:
+                local DATA=$(vnstat -i "$iface" --oneline 2>/dev/null | cut -d';' -f11)
+                if [[ -z "$DATA" || "$DATA" == "n/a" ]]; then
+                    echo "0 MB"
+                else
+                    echo "$DATA"
+                fi
             else
                 echo "N/A"
             fi
@@ -127,7 +131,8 @@ dashboard() {
         clear
         echo -e "${AZUL}===============================================================${NC}"
         echo -e "                    ${VERDE}DASHBOARD VPS PRO${NC}"
-        echo -e "             ${AMARELO}Manaus (AMT): $DATA_MANAUS${NC}"
+        echo -e "  ${AMARELO}Manaus (AMT): $DATA_MANAUS${NC}"
+        echo -e "  ${AMARELO}Uptime: $UPTIME${NC}"
         echo -e "${AZUL}===============================================================${NC}"
         printf "  %-25s : ${AMARELO}%s${NC}\n" "IP do Servidor" "$IP_SERVIDOR"
         printf "  %-25s : ${AMARELO}%s${NC}\n" "Logado como" "$USER_LOGADO ($IP_CONEXAO)"
@@ -153,7 +158,6 @@ dashboard() {
         if [[ $INPUT == "m" || $INPUT == "M" ]]; then return; fi
     done
 }
-
 # --- MENU PRINCIPAL ---
 while true; do
     clear
