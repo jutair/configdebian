@@ -236,7 +236,7 @@ configurar_telegram() {
 
 # --- ESTRUTURA DO MENU PRINCIPAL ---
 while true; do
-    # Atualiza dados em cada ciclo do menu para refletir mudanças em tempo real
+    # Atualiza dados em cada ciclo do menu
     IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "OFFLINE")
     PORTA_SSH=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}'); [ -z "$PORTA_SSH" ] && PORTA_SSH="22"
 
@@ -248,27 +248,27 @@ while true; do
     printf "  %-15s : ${AMARELO}%-20s${NC}\n" "IP SERVIDOR" "$IP_EXT"
     printf "  %-15s : ${AMARELO}%-20s${NC}\n" "PORTA SSH" "$PORTA_SSH"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] 📜 Logs do Sistema         [5] 🛡️  Firewall e Segurança"
-    echo -e "  [2] ⚡ Testar Velocidade       [6] 🔑 SSH Config (Admin)"
-    echo -e "  [3] 📉 VnStat (Consumo)        [7] 📢 Alerta Telegram (Admin)"
-    echo -e "  [4] 🔄 Reiniciar Menu          [0] 🚪 Sair"
+    echo -e "  [1] 📜 Logs do Sistema         [2] 🛡️  Firewall e Segurança"
+    echo -e "  [3] ⚡ Testar Velocidade       [4] 🔑 SSH Config (Admin)"
+    echo -e "  [5] 📉 VnStat (Consumo)        [6] 📢 Alerta Telegram (Admin)"
+    echo -e "                                 [0] 🔄 Voltar ao Menu Inicial"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     
     read -n 1 -p " Digite a opção: " OP; echo ""
 
     case $OP in
         1) visualizar_logs ;;
-        2) testa_velocidade ;;
-        3) clear; vnstat -d; echo -e "\n${AMARELO}Pressione ENTER para voltar...${NC}"; read -r ;;
-        4) 
-            echo -e "${AMARELO}A reiniciar o menu principal...${NC}"
+        2) firewall ;; 
+        3) testa_velocidade ;;
+        4) ssh_config ;;
+        5) clear; vnstat -d; echo -e "\n${AMARELO}Pressione ENTER para voltar...${NC}"; read -r ;;
+        6) configurar_telegram ;;
+        0) 
+            echo -e "${AMARELO}Saindo e recarregando menu.sh...${NC}"
             sleep 1
-            continue 
+            # O comando exec substitui o processo atual pelo novo, reiniciando o script
+            exec bash menu.sh 
             ;;
-        5) firewall ;; # Centraliza Banir, Desbanir, Monitorar e Whitelist
-        6) ssh_config ;;
-        7) configurar_telegram ;;
-        0) break ;; # Sai do loop caso o terminal não esteja travado por trap
         *) 
             echo -e "${VERMELHO}Opção inválida!${NC}"
             sleep 1
