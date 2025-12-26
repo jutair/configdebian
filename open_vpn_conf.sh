@@ -328,6 +328,10 @@ relatorio_consumo_acumulado() {
 # --- FUNÇÃO: GERENCIAMENTO DE BANDA ---
 gerenciar_banda() {
     clear
+    # Detecta a interface de rede principal (ex: eth0 ou ens3)
+    INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
+    # Garante que a variável não seja vazia (fallback para eth0)
+    [[ -z "$INTERFACE_PRINCIPAL" ]] && INTERFACE_PRINCIPAL="eth0"
     # Definições de caminhos
     PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
     MES_ATUAL=$(date +'%m-%Y')
@@ -356,24 +360,51 @@ gerenciar_banda() {
         3) vnstat -m; read -p "Pressione ENTER..." ;;
         4) listar_usuarios_online ;; # Chama a função que já criamos
         5)
+            5)
             clear
-            CONSUMO_JSON=$(vnstat --json m | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0]")
-            RX=$(echo "$CONSUMO_JSON" | jq -r ".rx")
-            TX=$(echo "$CONSUMO_JSON" | jq -r ".tx")
-            TOTAL_GB=$(echo "($RX + $TX) / 1024 / 1024 / 1024" | bc -l | xargs printf "%.2f")
+            # 1. Verifica se as dependências estão instaladas
+            if ! command -v jq &>/dev/null || ! command -v bc &>/dev/null; then
+                echo -e "${VERMELHO}Erro: jq ou bc não instalados. Rode o setup_vps.sh novamente.${NC}"
+                read -p "Pressione ENTER..."; return
+            fi
+
+            # 2. Garante que a interface principal está definida
+            INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
+            [[ -z "$INTERFACE_PRINCIPAL" ]] && INTERFACE_PRINCIPAL="eth0"
+
+            # 3. Captura o JSON com tratamento de erro
+            DATA_JSON=$(vnstat --json m 2>/dev/null)
+            
+            # 4. Extrai RX e TX com tratamento para valores nulos
+            RX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0].rx" 2>/dev/null)
+            TX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0].tx" 2>/dev/null)
+            
+            # Converte 'null' ou vazio para 0 para não quebrar o cálculo matemático
+            [[ "$RX" == "null" || -z "$RX" ]] && RX=0
+            [[ "$TX" == "null" || -z "$TX" ]] && TX=0
+
+            # 5. Cálculo do Total em GB (scale=2 garante as casas decimais)
+            TOTAL_GB=$(echo "scale=2; ($RX + $TX) / 1024 / 1024 / 1024" | bc -l)
+            
+            # Se o resultado começar com ponto (.50), adiciona o zero (0.50)
+            [[ "$TOTAL_GB" == .* ]] && TOTAL_GB="0$TOTAL_GB"
+            TOTAL_GB_FORMAT=$(printf "%.2f" "$TOTAL_GB")
             
             echo -e "${AZUL}===============================================================${NC}"
             echo -e "              ${VERDE}STATUS DA COTA GLOBAL (900GB)${NC}"
             echo -e "${AZUL}===============================================================${NC}"
-            echo -e " Interface: $INTERFACE_PRINCIPAL | Consumo: ${AMARELO}$TOTAL_GB GB${NC}"
+            echo -e " Interface: $INTERFACE_PRINCIPAL | Consumo: ${AMARELO}$TOTAL_GB_FORMAT GB${NC}"
             
-            # Barra de progresso
-            PORC=$(echo "($TOTAL_GB * 100) / 900" | bc)
+            # 6. Cálculo de porcentagem (usa a parte inteira para a barra)
+            INT_GB=$(echo "$TOTAL_GB / 1" | bc 2>/dev/null || echo 0)
+            PORC=$(( INT_GB * 100 / 900 ))
+            
             echo -ne " [ "
             for i in {1..20}; do
                 if [ $((i*5)) -le $PORC ]; then echo -ne "${VERDE}#${NC}"; else echo -ne "."; fi
             done
             echo -e " ] $PORC%"
+            echo -e "${AZUL}---------------------------------------------------------------${NC}"
             read -p "Pressione ENTER..."
             ;;
         6)
