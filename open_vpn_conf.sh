@@ -143,4 +143,61 @@ listar_arquivos_ovpn() {
         printf "  %-28s  %-28s\n" "$(basename "${ARQUIVOS[i]}")" "$(basename "${ARQUIVOS[i+1]}")"
     done
 
-    echo -ne "\n${AMARE
+    echo -ne "\n${AMARELO}Digite o nome para gerar comando de download: ${NC}"
+    read BUSCA
+    ARQ=$(ls "$DIR_CLIENTES"/*"$BUSCA"*.ovpn 2>/dev/null | head -n 1)
+
+    if [ -f "$ARQ" ]; then
+        echo -e "\n${VERDE}🐧 Linux/Mac:${NC}\nscp $USER_LOGADO@$IP_EXT:$ARQ ~/Downloads/"
+        echo -e "\n${VERDE}🪟 Windows:${NC}\nscp $USER_LOGADO@$IP_EXT:$ARQ \$env:USERPROFILE\Downloads\\"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -p "Pressione ENTER..."
+    fi
+}
+
+# --- FUNÇÃO 7: ENVIAR TELEGRAM MANUAL ---
+enviar_ovpn_telegram_manual() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}📤 REENVIAR VIA TELEGRAM${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    mapfile -t ARQUIVOS < <(ls "$DIR_CLIENTES"/*.ovpn 2>/dev/null)
+    
+    for ((i=0; i<${#ARQUIVOS[@]}; i+=2)); do
+        printf "  %-28s  %-28s\n" "$(basename "${ARQUIVOS[i]}")" "$(basename "${ARQUIVOS[i+1]}")"
+    done
+
+    echo -ne "\n${AMARELO}Digite o nome do cliente para enviar: ${NC}"
+    read BUSCA
+    ARQ=$(ls "$DIR_CLIENTES"/*"$BUSCA"*.ovpn 2>/dev/null | head -n 1)
+
+    if [ -f "$ARQ" ]; then
+        echo -e "${VERDE}Enviando...${NC}"
+        enviar_telegram "$ARQ" "$(basename "$ARQ")"
+        echo -e "${VERDE}Concluído!${NC}"; sleep 2
+    fi
+}
+
+# --- MENU LOCAL ---
+while true; do
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}GERENCIAMENTO OPENVPN PRO${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "  [1] 👤 Criar Usuário           [4] ⚙️  Configurar Servidor"
+    echo -e "  [2] 🗑️  Remover Usuário         [5] 📂 Listar Downloads (SCP)"
+    echo -e "  [3] 📋 Listar Ativos           [6] 📤 Enviar Telegram (Manual)"
+    echo -e "  [0] ⬅️  Voltar ao Painel Principal"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -n 1 -p " Escolha uma opção: " OP; echo ""
+    case $OP in
+        1) criar_usuario ;;
+        2) remover_usuario ;;
+        3) listar_usuarios ;;
+        4) configurar_servidor_vpn ;;
+        5) listar_arquivos_ovpn ;;
+        6) enviar_ovpn_telegram_manual ;;
+        0) exit 0 ;;
+        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
+    esac
+done
