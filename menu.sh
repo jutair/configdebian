@@ -80,42 +80,22 @@ manutencao() {
     fi
 }
 dashboard() {
-    # Cores Locais
     local CYAN='\033[0;36m'
     local GOLD='\033[1;33m'
+    local NC='\033[0m'
     
-    # Garante que o diretório e logs existam para não dar erro de leitura
-    mkdir -p /etc/vps_protecao
-    touch /etc/vps_protecao/bans.log /etc/vps_protecao/guardiao_atua.log
-
-    STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
-    STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
+    # Pega o IP do Servidor se não estiver definido
+    [ -z "$IP_SERVIDOR" ] && IP_SERVIDOR=$(curl -s https://api.ipify.org)
 
     while true; do
         # --- Coleta de Dados ---
         DATA_ATUAL=$(date +"%d/%m/%Y %H:%M:%S")
         UPTIME=$(uptime -p | sed 's/up //')
-        
-        # CPU & RAM
         CPU_VAL=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
         CPU_INT=${CPU_VAL%.*}
-        MEM_TOTAL_KB=$(free | awk '/Mem:/{print $2}')
-        MEM_USADA_KB=$(free | awk '/Mem:/{print $3}')
-        MEM_PORC=$(( MEM_USADA_KB * 100 / MEM_TOTAL_KB ))
+        MEM_PORC=$(free | awk '/Mem:/{printf("%d", $3/$2*100)}')
         
-        # Função interna para desenhar a barra
-        draw_bar() {
-            local perc=$1
-            local size=10
-            local filled=$(( perc * size / 100 ))
-            local empty=$(( size - filled ))
-            local bar=""
-            for i in $(seq 1 $filled); do bar="${bar}#"; done
-            for i in $(seq 1 $empty); do bar="${bar}."; done
-            echo -ne "[$bar]"
-        }
-
-        # Tráfego (Lógica Vnstat 2.x)
+        # Tráfego
         IFACE_WEB=$(ip route | grep default | awk '{print $5}' | head -n1)
         TRAF_ETH=$(vnstat -i "$IFACE_WEB" --oneline 2>/dev/null | cut -d';' -f11)
         TRAF_TUN=$(vnstat -i "tun0" --oneline 2>/dev/null | cut -d';' -f11)
@@ -130,28 +110,35 @@ dashboard() {
 
         clear
         echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
-        printf "${CYAN}│${NC}  ${GOLD}💎 DASHBOARD VPS PREMIUM${NC}            %-19s ${CYAN}│${NC}\n" "$DATA_ATUAL"
-        printf "${CYAN}│${NC}  ${CYAN}⏱️  Uptime:${NC} %-45s ${CYAN}│${NC}\n" "$UPTIME"
+        
+        # Título e IP do Servidor
+        printf "${CYAN}│${NC}  ${GOLD}💎 DASHBOARD VPS PREMIUM${NC} %33s ${CYAN}│${NC}\n" "$DATA_ATUAL"
+        printf "${CYAN}│${NC}  🌐 IP: %-52s ${CYAN}│${NC}\n" "$IP_SERVIDOR"
+        
+        # Usuário Atual Logado (Sua sessão)
+        USER_IP_STR="👤 Logado como: $USER_LOGADO ($IP_CONEXAO)"
+        printf "${CYAN}│${NC}  %-56s ${CYAN}│${NC}\n" "$USER_IP_STR"
+        
         echo -e "${CYAN}├─────────────────────────────────────────────────────────────┤${NC}"
         
-        # Bloco de Hardware
-        CPU_BAR=$(draw_bar $CPU_INT)
-        RAM_BAR=$(draw_bar $MEM_PORC)
-        printf "${CYAN}│${NC}  ${AZUL}💻 CPU:${NC} %s %-3s%%   ${AZUL}🧠 RAM:${NC} %s %-3s%%            ${CYAN}│${NC}\n" "$CPU_BAR" "$CPU_INT" "$RAM_BAR" "$MEM_PORC"
-        printf "${CYAN}│${NC}  ${AZUL}💾 DISCO:${NC} %-46s ${CYAN}│${NC}\n" "$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")" }')"
+        # Uptime e Hardware
+        printf "${CYAN}│${NC}  ⏱️  Uptime: %-45s ${CYAN}│${NC}\n" "$UPTIME"
+        HW_STR="💻 CPU: $CPU_INT% | 🧠 RAM: $MEM_PORC% | 💾 DISCO: $(df -h / | awk 'NR==2 {print $5}')"
+        printf "${CYAN}│${NC}  %-56s ${CYAN}│${NC}\n" "$HW_STR"
         
         echo -e "${CYAN}├──────────────┬──────────────────────────────┬───────────────┤${NC}"
         
-        # Bloco de Colunas (Corrigido para não bugar o alinhamento)
-        printf "${CYAN}│${NC}  ${VERDE}📡 TRÁFEGO${NC}  ${CYAN}│${NC}  ${AMARELO}🛡️  SEGURANÇA${NC}            ${CYAN}│${NC}  ${CYAN}👥 ONLINE${NC}   ${CYAN}│${NC}\n"
+        # Colunas de Informação
+        echo -e "${CYAN}│${NC}  ${VERDE}📡 TRÁFEGO${NC}  ${CYAN}│${NC}  ${AMARELO}🛡️  SEGURANÇA${NC}            ${CYAN}│${NC}  ${CYAN}👥 ONLINE${NC}   ${CYAN}│${NC}"
         printf "${CYAN}│${NC} WEB: %-8s ${CYAN}│${NC} Bans: %-19s ${CYAN}│${NC} VPN: %-7s ${CYAN}│${NC}\n" "$TRAF_ETH" "$BANS" "$VPN_ONLINE"
         printf "${CYAN}│${NC} VPN: %-8s ${CYAN}│${NC} Ações: %-18s ${CYAN}│${NC} SSH: %-7s ${CYAN}│${NC}\n" "$TRAF_TUN" "$ATUACAO" "$SSH_ONLINE"
 
         echo -e "${CYAN}├──────────────┴──────────────────────────────┴───────────────┤${NC}"
         
-        # Sessões SSH
-        printf "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CYAN}│${NC}\n"
+        # Sessões SSH Ativas (Lista detalhada)
+        echo -e "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CYAN}│${NC}"
         while read -r line; do
+            [ -z "$line" ] && continue
             printf "${CYAN}│${NC}  • %-54s ${CYAN}│${NC}\n" "$line"
         done < <(who -u | awk '{print $1 " (" $NF ")"}' | sed 's/(//g; s/)//g' | head -n 3)
         
