@@ -84,8 +84,10 @@ dashboard() {
     local GOLD='\033[1;33m'
     local NC='\033[0m'
     
-    # Pega o IP do Servidor se não estiver definido
+    # Define as variáveis de identificação se estiverem vazias
     [ -z "$IP_SERVIDOR" ] && IP_SERVIDOR=$(curl -s https://api.ipify.org)
+    [ -z "$USER_LOGADO" ] && USER_LOGADO=$(whoami)
+    [ -z "$IP_CONEXAO" ] && IP_CONEXAO=$(who am i | awk '{print $NF}' | tr -d '()')
 
     while true; do
         # --- Coleta de Dados ---
@@ -111,44 +113,35 @@ dashboard() {
         clear
         echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
         
-        # Título e IP do Servidor
-        printf "${CYAN}│${NC}  ${GOLD}💎 DASHBOARD VPS PREMIUM${NC} %33s ${CYAN}│${NC}\n" "$DATA_ATUAL"
-        printf "${CYAN}│${NC}  🌐 IP: %-52s ${CYAN}│${NC}\n" "$IP_SERVIDOR"
+        # Título e Data (Manaus)
+        # Note: Usamos printf sem cores para calcular o espaço e depois imprimimos com cores
+        printf "${CYAN}│${NC}  ${GOLD}💎 DASHBOARD VPS PREMIUM${NC} %21s (AMT) ${CYAN}│${NC}\n" "$DATA_ATUAL"
         
-        # Usuário Atual Logado (Sua sessão)
-        USER_IP_STR="👤 Logado como: $USER_LOGADO ($IP_CONEXAO)"
-        printf "${CYAN}│${NC}  %-56s ${CYAN}│${NC}\n" "$USER_IP_STR"
+        # IP e Logado como (Tratado como string simples para alinhar)
+        printf "${CYAN}│${NC}  🌐 IP: %-52s ${CYAN}│${NC}\n" "$IP_SERVIDOR"
+        USER_LINE="👤 Logado como: $USER_LOGADO ($IP_CONEXAO)"
+        printf "${CYAN}│${NC}  %-55s  ${CYAN}│${NC}\n" "$USER_LINE"
         
         echo -e "${CYAN}├─────────────────────────────────────────────────────────────┤${NC}"
         
         # Uptime e Hardware
-        printf "${CYAN}│${NC}  ⏱️  Uptime: %-45s ${CYAN}│${NC}\n" "$UPTIME"
-        HW_STR="💻 CPU: $CPU_INT% | 🧠 RAM: $MEM_PORC% | 💾 DISCO: $(df -h / | awk 'NR==2 {print $5}')"
-        printf "${CYAN}│${NC}  %-56s ${CYAN}│${NC}\n" "$HW_STR"
+        printf "${CYAN}│${NC}  ⏱️  Uptime: %-46s  ${CYAN}│${NC}\n" "$UPTIME"
+        HW_LINE="💻 CPU: $CPU_INT% | 🧠 RAM: $MEM_PORC% | 💾 DISCO: $(df -h / | awk 'NR==2 {print $5}')"
+        printf "${CYAN}│${NC}  %-55s  ${CYAN}│${NC}\n" "$HW_LINE"
         
         echo -e "${CYAN}├──────────────┬──────────────────────────────┬───────────────┤${NC}"
         
-        # Colunas de Informação
+        # Colunas de Informação (Hardcoded para evitar quebra de tabela)
         echo -e "${CYAN}│${NC}  ${VERDE}📡 TRÁFEGO${NC}  ${CYAN}│${NC}  ${AMARELO}🛡️  SEGURANÇA${NC}            ${CYAN}│${NC}  ${CYAN}👥 ONLINE${NC}   ${CYAN}│${NC}"
+        
+        # Dados das colunas com espaçamento fixo manual
         printf "${CYAN}│${NC} WEB: %-8s ${CYAN}│${NC} Bans: %-19s ${CYAN}│${NC} VPN: %-7s ${CYAN}│${NC}\n" "$TRAF_ETH" "$BANS" "$VPN_ONLINE"
         printf "${CYAN}│${NC} VPN: %-8s ${CYAN}│${NC} Ações: %-18s ${CYAN}│${NC} SSH: %-7s ${CYAN}│${NC}\n" "$TRAF_TUN" "$ATUACAO" "$SSH_ONLINE"
 
         echo -e "${CYAN}├──────────────┴──────────────────────────────┴───────────────┤${NC}"
         
-        # Sessões SSH Ativas (Lista detalhada)
-        echo -e "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CYAN}│${NC}"
-        while read -r line; do
-            [ -z "$line" ] && continue
-            printf "${CYAN}│${NC}  • %-54s ${CYAN}│${NC}\n" "$line"
-        done < <(who -u | awk '{print $1 " (" $NF ")"}' | sed 's/(//g; s/)//g' | head -n 3)
-        
-        echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
-        echo -e " ${AMARELO}>> Pressione [M] p/ Menu | Atualizando em 5s...${NC}"
-        
-        read -t 5 -n 1 INPUT
-        [[ $INPUT == "m" || $INPUT == "M" ]] && break
-    done
-}
+        # Sessões SSH
+        printf "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CY
 # --- MENU PRINCIPAL ---
 while true; do
     clear
