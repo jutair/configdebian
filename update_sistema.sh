@@ -1,16 +1,21 @@
 #!/bin/bash
-# update_sistema.sh - Atualização Blindada e Atômica (Versão 26/12/2025)
+# ===============================================================
+# update_sistema.sh - Atualização Blindada e Atômica
+# Versão: 26-12-2025
+# ===============================================================
 
-# --- CONFIGURAÇÕES DE IDENTIDADE E SEGURANÇA ---
+# --- CONFIGURAÇÕES DE AMBIENTE ---
 DIR_PROT="/etc/vps_protecao"
 DIR_CONFIG="/opt/configdebian"
 BACKUP_DIR="/opt/configdebian/backups"
+DATA_ATUAL=$(date +"%Y%m%d-%H%M%S")
+GITHUB_BASE="https://raw.githubusercontent.com/jutair/configdebian/main"
+
 AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
 
-# 1. Carrega o Administrador Oficial para referência
+# --- 1. IDENTIFICAÇÃO E PROTEÇÃO ---
 [ -f "$DIR_PROT/config.conf" ] && source "$DIR_PROT/config.conf" || ADM_USER="root"
 
-# 2. Detecção AUID (Quem está rodando o script agora)
 AUID=$(cat /proc/self/loginuid 2>/dev/null)
 if [ -n "$AUID" ] && [ "$AUID" != "4294967295" ] && [ "$AUID" != "0" ]; then
     USER_OPERADOR=$(getent passwd "$AUID" | cut -d: -f1)
@@ -18,53 +23,58 @@ else
     USER_OPERADOR=$(whoami)
 fi
 
-# --- 🛡️ TRAVA ANTI-TERMINAL ---
+# Bloqueio de interrupção (Anti-Shell)
 finalizar_sessao_update() {
-    # Se não for o administrador, qualquer tentativa de interrupção mata a conexão
     if [ "$USER_OPERADOR" != "$ADM_USER" ]; then
-        echo -e "\n${VERMELHO}⚠️ ATUALIZAÇÃO INTERROMPIDA! Desconectando por segurança...${NC}"
+        echo -e "\n${VERMELHO}⚠️ ATUALIZAÇÃO INTERROMPIDA! Desconectando...${NC}"
         pkill -u "$USER_OPERADOR" -9
         exit 1
     else
-        echo -e "\n${AMARELO}Interrupção detectada pelo Administrador. Cancelando...${NC}"
+        echo -e "\n${AMARELO}Cancelado pelo Administrador.${NC}"
         exit 1
     fi
 }
-# Bloqueia Ctrl+C, Ctrl+Z e saídas forçadas
 trap finalizar_sessao_update SIGINT SIGTSTP SIGQUIT
 
-# --- INÍCIO DA ATUALIZAÇÃO ---
-
+# --- 2. VERIFICAÇÃO DE PRIVILÉGIO ---
 if [ "$EUID" -ne 0 ]; then
-  echo -e "${VERMELHO}Erro: Execute com sudo!${NC}"
-  sleep 2; exit 1
+    echo -e "${VERMELHO}❌ Erro: Execute como root/sudo.${NC}"
+    sleep 2; exit 1
 fi
 
 clear
 echo -e "${AZUL}===============================================================${NC}"
-echo -e "                🔄 ATUALIZAÇÃO CENTRALIZADA"
+echo -e "                🔄 ATUALIZAÇÃO DO SISTEMA"
 echo -e "  Operador: ${AMARELO}$USER_OPERADOR${NC}"
 echo -e "${AZUL}===============================================================${NC}"
 
-# 1. Sincronismo de Pacotes do Sistema
-echo -e "${AMARELO}⌛ Sincronizando repositórios e dependências...${NC}"
+# --- 3. ATUALIZAÇÃO DE PACOTES ---
+echo -e "${AMARELO}⌛ Atualizando dependências e pacotes...${NC}"
 apt-get update -y && apt-get upgrade -y
-apt-get install -y curl wget vnstat ufw fail2ban bc
+apt-get install -y curl wget vnstat ufw fail2ban bc procps
 
-# 2. Backup de Segurança
-DATA_BKP=$(date +"%Y%m%d-%H%M%S")
-mkdir -p "$BACKUP_DIR/$DATA_BKP"
-echo -e "${AZUL}📦 Criando backup preventivo em $BACKUP_DIR...${NC}"
+# --- 4. BACKUP PREVENTIVO ---
+mkdir -p "$BACKUP_DIR/$DATA_ATUAL"
+echo -e "${AZUL}📦 Criando backup da versão atual...${NC}"
 
-SCRIPTS=(menu.sh open_vpn_conf.sh gerencia_rede.sh usuarios.sh configura_sistema.sh backup.sh update_sistema.sh autokil.sh)
+SCRIPTS=(
+    menu.sh
+    open_vpn_conf.sh
+    gerencia_rede.sh
+    usuarios.sh
+    configura_sistema.sh
+    backup.sh
+    update_sistema.sh
+    guardiao.sh
+    login.sh
+)
 
 for script in "${SCRIPTS[@]}"; do
-    [ -f "$DIR_CONFIG/$script" ] && cp "$DIR_CONFIG/$script" "$BACKUP_DIR/$DATA_BKP/"
+    [ -f "$DIR_CONFIG/$script" ] && cp "$DIR_CONFIG/$script" "$BACKUP_DIR/$DATA_ATUAL/"
 done
 
-# 3. Download e Substituição Atômica (.tmp -> original)
-GITHUB_BASE="https://raw.githubusercontent.com/jutair/configdebian/main"
-echo -e "${AZUL}⏳ Baixando novas versões do GitHub...${NC}"
+# --- 5. DOWNLOAD ATÔMICO (GITHUB) ---
+echo -e "${AZUL}⏳ Sincronizando scripts com o repositório...${NC}"
 
 for script in "${SCRIPTS[@]}"; do
     URL="$GITHUB_BASE/$script"
@@ -75,33 +85,42 @@ for script in "${SCRIPTS[@]}"; do
     if curl -fsSL "$URL" -o "$TEMP"; then
         mv "$TEMP" "$DEST"
         chmod +x "$DEST"
-        echo -e "${VERDE}ATUALIZADO${NC}"
+        echo -e "${VERDE}OK!${NC}"
     else
         echo -e "${VERMELHO}FALHA (Mantido anterior)${NC}"
-        rm -f "$TEMP"
+        [ -f "$TEMP" ] && rm -f "$TEMP"
     fi
 done
 
-# 4. Reinicialização do Guardião (Auto-Kill)
-echo -e "${AZUL}🔄 Recarregando Guardião na Memória RAM...${NC}"
-pkill -f autokil.sh || true
-sleep 1
+# --- 6. APLICANDO REGRAS DE SEGURANÇA (PAM & SHELL) ---
+echo -e "${AZUL}🛡️  Configurando travas de login e shell...${NC}"
 
-if [ -f "$DIR_CONFIG/autokil.sh" ]; then
-    nohup /bin/bash "$DIR_CONFIG/autokil.sh" > /dev/null 2>&1 &
-    echo -e "${VERDE}✅ Guardião reiniciado com sucesso!${NC}"
+# Garante a regra do login.sh no PAM
+sed -i '/login.sh/d' /etc/pam.d/sshd
+echo "session optional pam_exec.so /opt/configdebian/login.sh" >> /etc/pam.d/sshd
+
+# Garante a jaula do menu no Profile
+sed -i '/menu.sh/d' /etc/profile
+echo '[ -f /opt/configdebian/menu.sh ] && exec bash /opt/configdebian/menu.sh' >> /etc/profile
+
+# --- 7. REINICIALIZAÇÃO DO GUARDIÃO ---
+echo -e "${AZUL}🔄 Reiniciando Guardião (Monitor de Shell)...${NC}"
+pkill -f guardiao.sh || true
+sleep 1
+if [ -f "$DIR_CONFIG/guardiao.sh" ]; then
+    nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
+    echo -e "${VERDE}✅ Guardião atualizado e operando!${NC}"
 else
-    echo -e "${VERMELHO}⚠️ Alerta: autokil.sh não encontrado!${NC}"
+    echo -e "${VERMELHO}⚠️ Erro: guardiao.sh não encontrado.${NC}"
 fi
 
-# 5. Limpeza de Logs e Backups Antigos (Mais de 7 dias)
+# Limpeza de backups com mais de 7 dias
 find "$BACKUP_DIR" -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
 
 echo -e "${AZUL}---------------------------------------------------------------${NC}"
-echo -e "${VERDE}✅ SISTEMA ATUALIZADO COM SUCESSO!${NC}"
-echo -e "${AMARELO}Pressione ENTER para retornar ao menu...${NC}"
+echo -e "${VERDE}✅ ATUALIZAÇÃO COMPLETA! Todas as proteções estão ativas.${NC}"
+echo -e "${AMARELO}Pressione ENTER para voltar ao menu...${NC}"
 echo -e "${AZUL}===============================================================${NC}"
 
-# Mantém o usuário preso até ele dar ENTER para voltar ao menu pai
 read -r
 exit 0
