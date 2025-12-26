@@ -285,9 +285,10 @@ enviar_ovpn_telegram_manual() {
 # --- MENU LOCAL ---
 listar_usuarios_online() {
     clear
-    # Localiza o arquivo de status dinamicamente
-    STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
-    STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
+    # Busca o caminho do log na configuração
+    STATUS_LOG=$(grep -E "^status " /etc/openvpn/server.conf | awk '{print $2}')
+    [ -z "$STATUS_LOG" ] && STATUS_LOG=$(grep -E "^status " /etc/openvpn/server/server.conf | awk '{print $2}')
+    [[ -z "$STATUS_LOG" ]] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
 
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                ${VERDE}USUÁRIOS OPENVPN ONLINE${NC}"
@@ -295,30 +296,33 @@ listar_usuarios_online() {
 
     if [ ! -f "$STATUS_LOG" ]; then
         echo -e "${VERMELHO}Erro: Arquivo de status não encontrado!${NC}"
-        echo -e "Certifique-se que o OpenVPN está rodando."
         read -p "Pressione ENTER..." ; return
     fi
 
-    # Cabeçalho da Tabela
     printf "${AMARELO}%-15s %-18s %-12s %-10s${NC}\n" "USUÁRIO" "IP REAL" "RECEBIDO" "ENVIADO"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    # Extrai os dados entre "ROUTING TABLE" e "GLOBAL STATS" ou "CLIENT_LIST"
-    # Lógica para converter Bytes em MB de forma legível
-    sed -n '/CLIENT_LIST/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE "HEADER|CLIENT_LIST|ROUTING TABLE" | while IFS=',' read -r NOME IP_PORTA RECV SENT DATA; do
-        
-        # Limpa o IP (remove a porta)
-        IP_REAL=$(echo $IP_PORTA | cut -d: -f1)
+    # Contador de usuários reais
+    local TOTAL_CON=0
 
-        # Converte Bytes para Megabytes (MB)
-        RECV_MB=$(awk "BEGIN {printf \"%.2f\", $RECV/[1024*1024]}")
-        SENT_MB=$(awk "BEGIN {printf \"%.2f\", $SENT/[1024*1024]}")
+    # Filtramos apenas linhas que começam com CLIENT_LIST e ignoramos o HEADER
+    while IFS=',' read -r TIPO NOME IP_PORTA REAL_IP RECV SENT DATA_RAW; do
+        if [[ "$TIPO" == "CLIENT_LIST" && "$NOME" != "Common Name" ]]; then
+            
+            # Cálculo seguro de MB usando awk sem regex complexa
+            RECV_MB=$(awk "BEGIN {printf \"%.2f\", $RECV / 1048576}")
+            SENT_MB=$(awk "BEGIN {printf \"%.2f\", $SENT / 1048576}")
+            
+            # Limpa a porta do IP (ex: 1.2.3.4:5678 -> 1.2.3.4)
+            IP_LMP=$(echo "$IP_PORTA" | cut -d: -f1)
 
-        printf "%-15s %-18s %-12s %-10s\n" "$NOME" "$IP_REAL" "${RECV_MB}MB" "${SENT_MB}MB"
-    done
+            printf "%-15s %-18s %-12s %-10s\n" "$NOME" "$IP_LMP" "${RECV_MB}MB" "${SENT_MB}MB"
+            ((TOTAL_CON++))
+        fi
+    done < "$STATUS_LOG"
 
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e " Total de conexões: ${VERDE}$(grep -cv "Common Name" <(sed -n '/CLIENT_LIST/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE "HEADER|CLIENT_LIST|ROUTING TABLE"))${NC}"
+    echo -e " Total de conexões ativas: ${VERDE}$TOTAL_CON${NC}"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -p "Pressione ENTER para voltar..."
 }
