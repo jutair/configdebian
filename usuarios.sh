@@ -21,16 +21,22 @@ trap '' SIGINT SIGTSTP
 
 ############################ FUNÇÕES DE VALIDAÇÃO ############################
 verificar_admin() {
-    # Captura dados de quem está tentando acessar
-    IP_USER=$(who am i | awk '{print $NF}' | tr -d '()')
+    # 1. Captura o IP de origem de forma robusta
+    # Tenta via SSH_CLIENT, se falhar usa o 'who'
+    IP_USER=$(echo $SSH_CLIENT | awk '{print $1}')
+    [ -z "$IP_USER" ] && IP_USER=$(who -m | awk '{print $NF}' | tr -d '()')
+    [ -z "$IP_USER" ] && IP_USER="Local/Desconhecido"
+
+    # 2. Captura Data e Hora
     DATA_ATUAL=$(date +'%d/%m/%Y')
     HORA_ATUAL=$(date +'%H:%M:%S')
 
+    # 3. Validação de Administrador
     if [[ "$USER_REAL" != "$ADM_USER" ]]; then
         clear
         echo -e "${VERMELHO}❌ AÇÃO NEGADA! Apenas o administrador '$ADM_USER' tem permissão.${NC}"
         
-        # Tenta carregar as credenciais do Telegram se o arquivo existir
+        # Carrega as credenciais do Telegram
         [ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
 
         if [[ -n "$TOKEN" && "$TOKEN" != "NAO_DEFINIDO" ]]; then
