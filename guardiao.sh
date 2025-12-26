@@ -29,31 +29,46 @@ enviar_alerta() {
 
 # --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (ACUMULADO) ---
 # --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (CORRIGIDA) ---
+# --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (CORRIGIDA) ---
 rastrear_clientes_vpn() {
     STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
     MES_ATUAL=$(date +'%m-%Y')
-    
+    PASTA_LOGS="/etc/vps_protecao/consumo_clientes"
+
     if [ -f "$STATUS_LOG" ]; then
-        # Extrai a lista de clientes (Ignora cabeçalho e roteamento)
+        # Extrai os dados do log (Common Name, Bytes Received, Bytes Sent)
         grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME IP RECV SENT RESTO; do
             
             if [[ "$NOME" != "Common Name" && -n "$NOME" ]]; then
-                ARQUIVO_LOG="/etc/vps_protecao/consumo_clientes/${NOME}_${MES_ATUAL}.log"
-                
-                # Se o arquivo não existe, cria com zero
-                [ ! -f "$ARQUIVO_LOG" ] && echo "0 0" > "$ARQUIVO_LOG"
-                
-                # Lê o que já estava salvo (Total acumulado)
-                read -r ACC_RECV ACC_SENT < "$ARQUIVO_LOG"
-                
-                # IMPORTANTE: O OpenVPN reporta o acumulado da SESSÃO.
-                # Para um relatório simples de "Consumo Mensal", vamos considerar 
-                # o maior valor reportado na sessão atual para evitar loops complexos.
-                # Se o valor atual for menor que o salvo, o usuário reconectou, então somamos.
-                
-                if [ "$RECV" -gt "$ACC_RECV" ] || [ "$SENT" -gt "$ACC_SENT" ]; then
-                     echo "$RECV $SENT" > "$ARQUIVO_LOG"
+                ARQUIVO_HISTORICO="$PASTA_LOGS/${NOME}_${MES_ATUAL}.log"
+                ARQUIVO_SESSAO="/tmp/${NOME}_last_session.tmp"
+
+                # 1. Se não existe histórico, inicia com 0
+                [ ! -f "$ARQUIVO_HISTORICO" ] && echo "0 0" > "$ARQUIVO_HISTORICO"
+                [ ! -f "$ARQUIVO_SESSAO" ] && echo "0 0" > "$ARQUIVO_SESSAO"
+
+                # 2. Lê os valores acumulados e o último valor da sessão
+                read -r ACC_RECV ACC_SENT < "$ARQUIVO_HISTORICO"
+                read -r LAST_RECV LAST_SENT < "$ARQUIVO_SESSAO"
+
+                # 3. Calcula a diferença (o que foi consumido desde a última leitura)
+                # Se RECV for menor que LAST_RECV, significa que o usuário reconectou (resetou)
+                if [ "$RECV" -lt "$LAST_RECV" ]; then
+                    DIFF_RECV=$RECV
+                    DIFF_SENT=$SENT
+                else
+                    DIFF_RECV=$((RECV - LAST_RECV))
+                    DIFF_SENT=$((SENT - LAST_SENT))
                 fi
+
+                # 4. Atualiza o Histórico Acumulado Somando a diferença
+                NOVO_ACC_RECV=$((ACC_RECV + DIFF_RECV))
+                NOVO_ACC_SENT=$((ACC_SENT + DIFF_SENT))
+
+                echo "$NOVO_ACC_RECV $NOVO_ACC_SENT" > "$ARQUIVO_HISTORICO"
+                
+                # 5. Salva o estado atual desta sessão para a próxima comparação
+                echo "$RECV $SENT" > "$ARQUIVO_SESSAO"
             fi
         done
     fi
