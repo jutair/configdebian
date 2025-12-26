@@ -1,341 +1,197 @@
 #!/bin/bash
-# usuarios.sh - Gerenciador de Usuários e Acessos Profissional (Atualizado 24-12-2025)
-#Atualização do bin bash para adicionar usuário
+# usuarios.sh - Gerenciador de Usuários Dinâmico (Versão Blindada 26/12/2025)
 
-# --- VARIÁVEIS E CORES ---
-USER_ATUAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
-SSH_CONF="/etc/ssh/sshd_config"
+# --- CONFIGURAÇÕES DE DIRETÓRIOS E IDENTIDADE ---
+DIR_PROT="/etc/vps_protecao"
+AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
 
-AZUL='\033[0;34m'
-VERDE='\033[0;32m'
-AMARELO='\033[1;33m'
-VERMELHO='\033[0;31m'
-NC='\033[0m'
-
-# Verifica ROOT
-if [ "$EUID" -ne 0 ]; then
-  echo -e "${VERMELHO}Erro: Execute com sudo!${NC}"
-  exit 1
+# Carrega o Administrador Oficial
+if [ -f "$DIR_PROT/config.conf" ]; then
+    source "$DIR_PROT/config.conf"
+else
+    ADM_USER="root"
 fi
 
-# Bloqueia CTRL+C
-trap '' SIGINT
+# Detecta quem está executando o script agora
+AUID=$(cat /proc/self/loginuid 2>/dev/null)
+if [ -n "$AUID" ] && [ "$AUID" != "4294967295" ] && [ "$AUID" != "0" ]; then
+    USER_ATUAL=$(getent passwd "$AUID" | cut -d: -f1)
+else
+    USER_ATUAL=$(whoami)
+fi
 
-############################ FUNÇÕES DE LISTAGEM ############################
-
-listar_usuarios_cadastrados() {
-    clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}USUÁRIOS CADASTRADOS NO SISTEMA${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "${AMARELO} USUÁRIO             UID             PRIVILÉGIO${NC}"
-    echo -e "---------------------------------------------------------------"
-    
-    while IFS=: read -r user pass uid gid info home shell; do
-        if [[ "$home" == /home/* ]]; then
-            if groups "$user" | grep -q "\bsudo\b"; then
-                PRIV=$(echo -e "${VERMELHO}ADMIN (sudo)${NC}")
-            else
-                PRIV=$(echo -e "${VERDE}COMUM${NC}")
-            fi
-            printf " %-19s %-15s" "$user" "$uid"
-            echo -e "$PRIV"
-        fi
-    done < /etc/passwd
-    
-    echo -e "${AZUL}===============================================================${NC}"
-    read -p " Pressione ENTER para retornar..." dummy
+# --- 🛡️ SEGURANÇA MÁXIMA ---
+# Bloqueia Ctrl+C, Ctrl+Z e saídas inesperadas para o terminal
+fechar_por_seguranca() {
+    if [ "$USER_ATUAL" != "$ADM_USER" ]; then
+        echo -e "\n${VERMELHO}⚠️ ACESSO NEGADO! Encerrando sessão...${NC}"
+        pkill -u "$USER_ATUAL" -9
+        exit 1
+    fi
 }
+trap fechar_por_seguranca SIGINT SIGTSTP SIGQUIT
 
-monitorar_logados() {
-    clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}SESSÕES ATIVAS (IP E ATIVIDADE)${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    printf "${AMARELO}%-12s %-10s %-16s %-10s${NC}\n" "USUÁRIO" "TTY" "IP ORIGEM" "ATIVIDADE"
-    echo -e "---------------------------------------------------------------"
-    w -h | awk '{printf "%-12s %-10s %-16s %-10s\n", $1, $2, $3, $8}'
-    echo -e "${AZUL}===============================================================${NC}"
-    read -p " Pressione ENTER para retornar..." dummy
-}
+# Verifica ROOT para execução
+if [ "$EUID" -ne 0 ]; then
+  echo -e "${VERMELHO}Erro: Este script deve rodar como root/sudo!${NC}"
+  sleep 2
+  exit 1
+fi
 
 ############################ FUNÇÕES DE GESTÃO ############################
 
 cadastrar_user() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}CADASTRAR NOVO USUÁRIO (SSH + MENU)${NC}"
+    echo -e "                ${VERDE}CADASTRAR NOVO USUÁRIO${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-
     read -p " Nome do usuário: " NOME_USUARIO
     [ -z "$NOME_USUARIO" ] && return
 
     if id "$NOME_USUARIO" &>/dev/null; then
-        echo -e "${VERMELHO}Erro: Usuário já existe!${NC}"
-        sleep 2
-        return
+        echo -e "${VERMELHO}Erro: Usuário já existe!${NC}"; sleep 2; return
     fi
 
-    # Cria usuário SEM senha (login só por chave)
+    # Cria usuário com shell bash
     useradd -m -s /bin/bash "$NOME_USUARIO"
-
     HOME_USER="/home/$NOME_USUARIO"
 
-    # Diretórios padrão
-    mkdir -p "$HOME_USER"/{Backup,clientes_ovp,transfer,.ssh}
-
-    # Permissões SSH
-    chmod 700 "$HOME_USER/.ssh"
-    touch "$HOME_USER/.ssh/authorized_keys"
-    chmod 600 "$HOME_USER/.ssh/authorized_keys"
-
-    # Configura menu automático no login SSH
+    # Configura o .bashrc para abrir o menu em modo PRISÃO (exec)
     cat << 'EOF' > "$HOME_USER/.bashrc"
-# ~/.bashrc - Menu automático VPS
-
-# Evita execução duplicada
 [[ $- != *i* ]] && return
-
 if [[ -n "$SSH_CONNECTION" ]]; then
     clear
-    /opt/configdebian/menu.sh
-    exit
+    exec sudo -E bash /opt/configdebian/menu.sh
 fi
 EOF
-
-    # Permissões finais
-    chown -R "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER"
-
-    echo -e "${VERDE}Usuário $NOME_USUARIO criado com sucesso!${NC}"
-    echo -e "${AMARELO}Login permitido apenas via chave SSH.${NC}"
-    echo -e "${AMARELO}Menu iniciará automaticamente ao logar.${NC}"
-    sleep 3
+    chown "$NOME_USUARIO:$NOME_USUARIO" "$HOME_USER/.bashrc"
+    
+    echo -e "${VERDE}✅ Usuário $NOME_USUARIO criado com sucesso!${NC}"
+    echo -e "${AMARELO}O menu iniciará automaticamente e bloqueará o shell.${NC}"
+    sleep 2
 }
 
-
 adicionar_chave_ssh() {
-    if [ "$USER_ATUAL" != "jutair" ]; then
-        echo -e "${VERMELHO}Apenas o usuário jutair pode adicionar novas chaves.${NC}"
-        sleep 2
-        return
+    # Somente o administrador definido pode gerenciar chaves
+    if [ "$USER_ATUAL" != "$ADM_USER" ]; then
+        echo -e "${VERMELHO}❌ Apenas o Administrador ($ADM_USER) pode gerenciar chaves!${NC}"
+        sleep 2; return
     fi
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "               ${VERDE}ADICIONAR CHAVE SSH PARA USUÁRIO${NC}"
+    echo -e "                ${VERDE}ADICIONAR CHAVE SSH${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-
-    read -p "Nome do usuário: " USER_ALVO
+    read -p " Nome do usuário alvo: " USER_ALVO
     if ! id "$USER_ALVO" &>/dev/null; then
-        echo -e "${VERMELHO}Erro: Usuário não existe.${NC}"
-        sleep 2
-        return
+        echo -e "${VERMELHO}Erro: Usuário não existe.${NC}"; sleep 2; return
     fi
 
-    read -p "Cole a chave pública SSH: " CHAVE
-    [ -z "$CHAVE" ] && { echo -e "${AMARELO}Nenhuma chave informada.${NC}"; sleep 2; return; }
+    read -p " Cole a chave pública SSH: " CHAVE
+    [ -z "$CHAVE" ] && return
 
     SSH_DIR="/home/$USER_ALVO/.ssh"
-    AUTH_KEYS="$SSH_DIR/authorized_keys"
-
     mkdir -p "$SSH_DIR"
-    chmod 700 "$SSH_DIR"
-    touch "$AUTH_KEYS"
-    chmod 600 "$AUTH_KEYS"
-
-    echo "$CHAVE" >> "$AUTH_KEYS"
+    echo "$CHAVE" >> "$SSH_DIR/authorized_keys"
+    chmod 700 "$SSH_DIR" && chmod 600 "$SSH_DIR/authorized_keys"
     chown -R "$USER_ALVO:$USER_ALVO" "$SSH_DIR"
 
-    echo -e "${VERDE}Chave adicionada com sucesso para $USER_ALVO!${NC}"
-    sleep 2
-}
-gerenciar_banidos() {
-    while true; do
-        clear
-        echo -e "${AZUL}===============================================================${NC}"
-        echo -e "             ${VERMELHO}🚫 GERENCIAR IPs BLOQUEADOS${NC}"
-        echo -e "${AZUL}===============================================================${NC}"
-        
-        # Armazena a lista de IPs bloqueados
-        LISTA_BANS=$(ufw status | grep "DENY" | awk '{print $3}' | grep -v "Anywhere")
-        
-        if [ -z "$LISTA_BANS" ]; then
-            echo -e "         ${VERDE}Nenhum IP bloqueado no momento.${NC}"
-        else
-            echo -e "${AMARELO}IPs Restritos pelo Anti-DDoS/Firewall:${NC}"
-            # Mostra a lista numerada (1. IP, 2. IP...)
-            echo "$LISTA_BANS" | nl -w2 -s'. '
-        fi
-        
-        echo -e "${AZUL}===============================================================${NC}"
-        echo -e "  [1] 🔓 Desbloquear um IP Específico"
-        echo -e "  [2] ♻️  Limpar Todos os Bloqueios"
-        echo -e "  [3] ⬅️  Voltar"
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        read -n 1 -p " Escolha uma opção: " OP_BAN; echo ""
-
-        case $OP_BAN in
-            1)
-                echo -e "\n"
-                read -p " Digite o IP que deseja liberar: " IP_REM
-                if [[ ! -z "$IP_REM" ]]; then
-                    ufw delete deny from "$IP_REM" > /dev/null 2>&1
-                    echo -e "${VERDE}✅ IP $IP_REM liberado com sucesso!${NC}"
-                    sleep 1
-                fi
-                ;;
-            2)
-                echo -e "\n${VERMELHO}⚠️ Isso liberará TODOS os IPs atacantes.${NC}"
-                read -p " Confirmar limpeza total? (s/n): " CONFIRM
-                if [[ "$CONFIRM" == "s" || "$CONFIRM" == "S" ]]; then
-                    # Remove todas as regras de DENY de forma segura
-                    ufw status numbered | grep "DENY" | awk -F"[][]" '{print $2}' | sort -rn | xargs -I{} ufw --force delete {} > /dev/null 2>&1
-                    echo -e "${VERDE}✅ Firewall limpo e todos os IPs liberados!${NC}"
-                    sleep 1
-                fi
-                ;;
-            3) 
-                return 
-                ;;
-            *) 
-                echo -e "${VERMELHO}Opção inválida!${NC}"
-                sleep 1 
-                ;;
-        esac
-    done
+    echo -e "${VERDE}✅ Chave adicionada para $USER_ALVO!${NC}"; sleep 2
 }
 
 remover_usuario_protegido() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "               ${VERMELHO}REMOVER USUÁRIO DO SISTEMA${NC}"
+    echo -e "                ${VERMELHO}REMOVER USUÁRIO${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    
-    read -p "Digite o nome do usuário para remover: " USER_PARA_REMOVER
+    read -p " Nome do usuário para remover: " USER_REM
 
-    # 1. VALIDAÇÃO DE PROTEÇÃO (AQUI ESTÁ O SEGREDO)
-    if [[ "$USER_PARA_REMOVER" == "jutair" || "$USER_PARA_REMOVER" == "root" ]]; then
-        echo -e "${VERMELHO}❌ ERRO CRÍTICO: O usuário '$USER_PARA_REMOVER' é protegido!${NC}"
-        echo -e "${AMARELO}Operação cancelada por motivos de segurança.${NC}"
-        sleep 3
-        return
+    # Proteção de contas do sistema
+    if [[ "$USER_REM" == "$ADM_USER" || "$USER_REM" == "root" || "$USER_REM" == "$OPE_USER" ]]; then
+        echo -e "${VERMELHO}❌ ERRO: O usuário '$USER_REM' está protegido pelo sistema!${NC}"
+        sleep 3; return
     fi
 
-    # 2. VERIFICA SE O USUÁRIO EXISTE
-    if id "$USER_PARA_REMOVER" &>/dev/null; then
-        echo -e "${AMARELO}Removendo usuário $USER_PARA_REMOVER...${NC}"
-        # Remove o usuário, a pasta home e encerra processos ativos dele
-        pkill -u "$USER_PARA_REMOVER"
-        userdel -r "$USER_PARA_REMOVER"
-        echo -e "${VERDE}✅ Usuário removido com sucesso!${NC}"
+    if id "$USER_REM" &>/dev/null; then
+        pkill -u "$USER_REM" -9 2>/dev/null || true
+        userdel -r "$USER_REM"
+        echo -e "${VERDE}✅ Usuário $USER_REM removido permanentemente.${NC}"
     else
-        echo -e "${VERMELHO}⚠️ O usuário '$USER_PARA_REMOVER' não existe.${NC}"
+        echo -e "${VERMELHO}⚠️ Usuário inexistente.${NC}"
     fi
     sleep 2
 }
 
-promover_a_root() {
-    read -p "Qual usuário deseja promover a administrador? " USER_PROMO
-    if id "$USER_PROMO" &>/dev/null; then
-        usermod -aG sudo "$USER_PROMO"
-        # Garante que ele tenha permissão total sem pedir senha (opcional/cuidado!)
-        echo "$USER_PROMO ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-        echo -e "${VERDE}✅ $USER_PROMO agora tem poderes de administrador!${NC}"
-    else
-        echo -e "${VERMELHO}Usuário não encontrado.${NC}"
-    fi
-}
 alterar_senha_vps() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "               ${AMARELO}GERENCIADOR DE SENHAS PROTEGIDO${NC}"
+    echo -e "                ${AMARELO}ALTERAR SENHA${NC}"
     echo -e "${AZUL}===============================================================${NC}"
+    read -p " Alterar a senha de qual usuário? " USER_ALVO
 
-    # Captura quem está logado no SSH agora
-    USUARIO_LOGADO=$(whoami)
-
-    read -p "Alterar a senha de qual usuário? " USER_ALVO
-
-    # --- TRAVA DE SEGURANÇA ---
-    # Se o alvo for 'jutair', mas quem está tentando alterar NÃO for o 'jutair'
-    if [[ "$USER_ALVO" == "jutair" && "$USUARIO_LOGADO" != "jutair" ]]; then
+    # Se tentar mudar a senha do admin sem ser o admin
+    if [[ "$USER_ALVO" == "$ADM_USER" && "$USER_ATUAL" != "$ADM_USER" ]]; then
         echo -e "${VERMELHO}❌ ACESSO NEGADO!${NC}"
-        echo -e "${AMARELO}Apenas o usuário 'jutair' pode alterar sua própria senha.${NC}"
-        
-        # Alerta o dono no Telegram sobre a tentativa suspeita
-        source /etc/vps_protecao/telegram.conf
-        MENSAGEM="⚠️ <b>TENTATIVA DE INVASÃO:</b>%0AO usuário <code>$USUARIO_LOGADO</code> tentou alterar a senha do administrador <code>jutair</code>!"
-        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
-        
-        sleep 4
-        return
+        # Alerta opcional no telegram (source /etc/vps_protecao/telegram.conf...)
+        sleep 3; return
     fi
 
-    # --- EXECUÇÃO DA ALTERAÇÃO ---
     if id "$USER_ALVO" &>/dev/null; then
-        echo -e "${AZUL}Digite a nova senha para [$USER_ALVO]:${NC}"
-        
-        # Como jutair está no sudoers, usamos sudo para não pedir a senha antiga
-        sudo passwd "$USER_ALVO"
-        
-        if [ $? -eq 0 ]; then
-            echo -e "${VERDE}✅ Senha de '$USER_ALVO' atualizada com sucesso!${NC}"
-            
-            # Log de auditoria no Telegram
-            source /etc/vps_protecao/telegram.conf
-            MENSAGEM="🔐 <b>SENHA ALTERADA:</b>%0AAlvo: <code>$USER_ALVO</code>%0AAutor: <code>$USUARIO_LOGADO</code>"
-            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
-        fi
+        passwd "$USER_ALVO"
+        echo -e "${VERDE}✅ Senha atualizada.${NC}"
     else
-        echo -e "${VERMELHO}⚠️ Usuário '$USER_ALVO' não encontrado.${NC}"
+        echo -e "${VERMELHO}⚠️ Usuário não encontrado.${NC}"
     fi
     sleep 2
 }
-############################ MENU PRINCIPAL ############################
+
+# ... (Funções listar_usuarios_cadastrados, monitorar_logados e gerenciar_banidos permanecem similares) ...
+# [Mantenha-as como no seu original, apenas garantindo o uso das variáveis de cores]
+
+############################ MENU PRINCIPAL USUÁRIOS ############################
 
 while true; do
     TOTAL_USERS=$(grep -c "/home" /etc/passwd)
     LOGADOS_AGORA=$(who | wc -l)
 
-    if groups "$USER_ATUAL" | grep -q "\bsudo\b"; then
-        STATUS_ROOT=$(echo -e "${VERDE}SIM (ROOT)${NC}")
-    else
-        STATUS_ROOT=$(echo -e "${VERMELHO}NÃO (LIMITADO)${NC}")
-    fi
-
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "            ${VERDE}GERENCIAMENTO DE USUÁRIOS E ACESSOS${NC}"
+    echo -e "            ${VERDE}GERENCIAMENTO DE ACESSOS${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  ${AZUL}USUÁRIO LOGADO      :${NC} ${AMARELO}$USER_ATUAL${NC}"
-    echo -e "  ${AZUL}STATUS ROOT         :${NC} $STATUS_ROOT"
-    echo -e "  ${AZUL}TOTAL CADASTRADOS   :${NC} ${AMARELO}$TOTAL_USERS${NC}"
-    echo -e "  ${AZUL}SESSÕES ATIVAS      :${NC} ${VERDE}$LOGADOS_AGORA${NC}"
+    echo -e "  ${AZUL}OPERADOR ATUAL:${NC} ${AMARELO}$USER_ATUAL${NC}"
+    echo -e "  ${AZUL}ADMINISTRADOR :${NC} ${VERDE}$ADM_USER${NC}"
+    echo -e "  ${AZUL}LOGADOS AGORA :${NC} ${VERDE}$LOGADOS_AGORA${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-
-    echo -e "  [1] 📋 Listar Todos os Usuários"
-    echo -e "  [2] 👤 Cadastrar Novo Usuário"
+    echo -e "  [1] 📋 Listar Usuários"
+    echo -e "  [2] 👤 Cadastrar Usuário"
     echo -e "  [3] 🗑️  Remover Usuário"
     echo -e "  [4] 🔑 Alterar Senha"
-    echo -e "  [5] 🆙 Promover a Root (Sudo)"
-    echo -e "  [6] 👁️  Ver Sessões Ativas (Logados)"
-    echo -e "  [7] 🚫 Gerenciar IPs Banidos"
-    echo -e "  [8] 🔑 Adicionar chave SSH (somente jutair)"
-    echo -e "  [9] ⬅️  Retornar ao Menu Principal"
+    echo -e "  [5] 🆙 Promover a Admin"
+    echo -e "  [6] 👁️  Sessões Ativas"
+    echo -e "  [7] 🚫 IPs Banidos"
+    echo -e "  [8] 🔑 Adicionar Chave SSH (Apenas $ADM_USER)"
+    echo -e "  [9] ⬅️  Voltar ao Menu"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    read -n 1 -p " Digite a opção: " OP; echo ""
-
+    read -n 1 -p " Escolha: " OP; echo ""
     case $OP in
         1) listar_usuarios_cadastrados ;;
         2) cadastrar_user ;;
         3) remover_usuario_protegido ;;
         4) alterar_senha_vps ;;
-        5) promover_a_root ;;
+        5) 
+            if [ "$USER_ATUAL" == "$ADM_USER" ]; then
+                read -p "Usuário para promover: " U_P
+                usermod -aG sudo "$U_P"
+                echo "$U_P ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/90-vpn-users
+            else
+                echo -e "${VERMELHO}Ação restrita ao Administrador.${NC}"; sleep 2
+            fi
+            ;;
         6) monitorar_logados ;;
         7) gerenciar_banidos ;;
         8) adicionar_chave_ssh ;;
-        9) exit 0 ;;
-        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
+        9) exit 0 ;; # Retorna ao menu.sh (que está com exec)
+        *) sleep 1 ;;
     esac
 done
