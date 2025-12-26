@@ -34,8 +34,32 @@ enviar_telegram() {
 }
 
 # --- FUNÇÃO 2: CONFIGURAR SERVIDOR ---
+# --- FUNÇÃO 2: CONFIGURAR SERVIDOR (PROTEGIDA) ---
 configurar_servidor_vpn() {
     clear
+    local USUARIO_ATUAL=$(logname 2>/dev/null || whoami)
+    local DATA_ATUAL=$(date +'%d/%m/%Y')
+    local HORA_ATUAL=$(date +'%H:%M:%S')
+
+    # 🛡️ VERIFICAÇÃO DE PERMISSÃO
+    if [[ "$USUARIO_ATUAL" != "$ADM_USER" ]]; then
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e "Tentativa de alteração do servidor por: ${AMARELO}$USUARIO_ATUAL${NC}"
+        
+        # Envia alerta crítico ao Telegram
+        if [ -f "$TELEGRAM_CONF" ]; then
+            source "$TELEGRAM_CONF"
+            MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>IP:</b> <code>$IP_CONEXAO</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
+            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+        fi
+        
+        sleep 3
+        return # Volta ao menu sem executar nada
+    fi
+
+    # ⚙️ SE FOR O ADMIN, PROSEGUE COM A CONFIGURAÇÃO
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "              ${VERDE}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
@@ -53,10 +77,11 @@ configurar_servidor_vpn() {
         echo -e "  [1] Menu de Gerenciamento do Instalador (Portas/Protocolos/Remover)"
         echo -e "  [2] Reinstalar Script de Instalação (Update)"
         echo -e "  [0] Voltar"
-        read -n 1 -p " Escolha: " OP_SVR
+        read -n 1 -p " Escolha: " OP_SVR; echo ""
         case $OP_SVR in
             1) bash /root/openvpn-install.sh ;;
             2) wget https://git.io/vpn -O /root/openvpn-install.sh && chmod +x /root/openvpn-install.sh && echo -e "\n${VERDE}Atualizado!${NC}" && sleep 2 ;;
+            *) return ;;
         esac
     fi
 }
@@ -90,22 +115,44 @@ criar_usuario() {
     read -p " Nome do usuário: " NOVO_USER
     [[ -z "$NOVO_USER" ]] && return
 
+    # 1. Garante que as credenciais do Telegram estão carregadas antes de começar
+    if [ -f "$TELEGRAM_CONF" ]; then
+        source "$TELEGRAM_CONF"
+    fi
+
     if [ -f "/root/openvpn-install.sh" ]; then
-        export MENU_OPTION=1; export CLIENT="$NOVO_USER"; export PASS=1
+        # 2. Executa a criação
+        export MENU_OPTION=1
+        export CLIENT="$NOVO_USER"
+        export PASS=1
         bash /root/openvpn-install.sh
         
+        # 3. Tenta localizar o arquivo em múltiplos caminhos possíveis
         ARQUIVO_ORIGEM="/root/$NOVO_USER.ovpn"
         [ ! -f "$ARQUIVO_ORIGEM" ] && ARQUIVO_ORIGEM="$HOME/$NOVO_USER.ovpn"
+        [ ! -f "$ARQUIVO_ORIGEM" ] && ARQUIVO_ORIGEM="$(pwd)/$NOVO_USER.ovpn"
 
         if [ -f "$ARQUIVO_ORIGEM" ]; then
+            # Move para a pasta central de clientes
             mv "$ARQUIVO_ORIGEM" "$DIR_CLIENTES/"
-            echo -e "${VERDE}Usuário criado com sucesso!${NC}"
+            echo -e "${VERDE}✅ Usuário criado com sucesso!${NC}"
+            
+            # 4. Tenta enviar e verifica se houve erro
+            echo -e "${AMARELO}Enviando para o Telegram...${NC}"
             enviar_telegram "$DIR_CLIENTES/$NOVO_USER.ovpn" "$NOVO_USER"
+            
+            if [ $? -eq 0 ]; then
+                echo -e "${VERDE}🚀 Arquivo enviado com sucesso!${NC}"
+            else
+                echo -e "${VERMELHO}❌ Falha ao enviar. Verifique seu Token e ID no arquivo telegram.conf${NC}"
+            fi
+        else
+            echo -e "${VERMELHO}❌ Erro: O arquivo .ovpn não foi encontrado após a criação.${NC}"
         fi
     else
-        echo -e "${VERMELHO}Instalador não encontrado.${NC}"
+        echo -e "${VERMELHO}❌ Erro: Instalador /root/openvpn-install.sh não encontrado.${NC}"
     fi
-    sleep 2
+    sleep 3
 }
 
 # --- FUNÇÃO 5: REMOVER USUÁRIO ---
@@ -155,29 +202,67 @@ listar_arquivos_ovpn() {
     fi
 }
 
-# --- FUNÇÃO 7: ENVIAR TELEGRAM MANUAL ---
 enviar_ovpn_telegram_manual() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                ${VERDE}📤 REENVIAR VIA TELEGRAM${NC}"
     echo -e "${AZUL}===============================================================${NC}"
+
+    # 1. Carrega e verifica se existem arquivos
     mapfile -t ARQUIVOS < <(ls "$DIR_CLIENTES"/*.ovpn 2>/dev/null)
     
+    if [ ${#ARQUIVOS[@]} -eq 0 ]; then
+        echo -e "${VERMELHO}Nenhum arquivo .ovpn encontrado em: $DIR_CLIENTES${NC}"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -p "Pressione ENTER para voltar..."
+        return
+    fi
+
+    # 2. Exibe a lista de arquivos disponíveis na tela
+    echo -e "${AMARELO}Arquivos disponíveis na pasta:${NC}"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    
     for ((i=0; i<${#ARQUIVOS[@]}; i+=2)); do
-        printf "  %-28s  %-28s\n" "$(basename "${ARQUIVOS[i]}")" "$(basename "${ARQUIVOS[i+1]}")"
+        arq1=$(basename "${ARQUIVOS[i]}")
+        # Verifica se existe um segundo arquivo para a coluna ao lado
+        if [ -n "${ARQUIVOS[i+1]}" ]; then
+            arq2=$(basename "${ARQUIVOS[i+1]}")
+            printf "  %-28s  %-28s\n" "$arq1" "$arq2"
+        else
+            printf "  %-28s\n" "$arq1"
+        fi
     done
 
-    echo -ne "\n${AMARELO}Digite o nome do cliente para enviar: ${NC}"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    
+    # 3. Solicita o nome com a lista ainda visível acima
+    echo -ne "${AMARELO}Digite o nome do cliente para enviar: ${NC}"
     read BUSCA
+
+    # Sai se a busca estiver vazia
+    [[ -z "$BUSCA" ]] && return
+
+    # 4. Localiza o arquivo correspondente
     ARQ=$(ls "$DIR_CLIENTES"/*"$BUSCA"*.ovpn 2>/dev/null | head -n 1)
 
     if [ -f "$ARQ" ]; then
-        echo -e "${VERDE}Enviando...${NC}"
-        enviar_telegram "$ARQ" "$(basename "$ARQ")"
-        echo -e "${VERDE}Concluído!${NC}"; sleep 2
+        NOME_ARQ=$(basename "$ARQ")
+        echo -e "${VERDE}Enviando $NOME_ARQ...${NC}"
+        
+        # Chama a função de envio do Telegram
+        enviar_telegram "$ARQ" "$NOME_ARQ"
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${VERDE}✅ Arquivo enviado com sucesso!${NC}"
+        else
+            echo -e "${VERMELHO}❌ Falha ao enviar para o Telegram.${NC}"
+        fi
+    else
+        echo -e "${VERMELHO}Arquivo não encontrado para o termo: $BUSCA${NC}"
     fi
-}
 
+    sleep 2
+}
 # --- MENU LOCAL ---
 while true; do
     clear
