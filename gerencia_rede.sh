@@ -78,24 +78,133 @@ diagnostico_ataques() {
     read -p "ENTER..." d
 }
 
-banir_ip() {
-    read -p " IP para BANIR: " IP_ALVO
-    if [[ $IP_ALVO =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        iptables -I INPUT -s "$IP_ALVO" -j DROP
-        iptables -I OUTPUT -d "$IP_ALVO" -j DROP
-        iptables -I FORWARD -d "$IP_ALVO" -j DROP
-        echo -e "${VERDE}IP $IP_ALVO Isolado!${NC}"
+monitora_banidos() {
+    # Verifica se o fail2ban-client existe para evitar erros
+    if ! command -v fail2ban-client &> /dev/null; then
+        echo -e "${VERMELHO}Erro: Fail2Ban não está instalado no servidor.${NC}"
+        sleep 2; return
     fi
-    sleep 2
+
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "          ${VERMELHO}RELATÓRIO DE ATAQUES E BANIMENTOS${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        
+        # Lista Jails do Fail2Ban
+        JAILS=$(fail2ban-client status | grep "Jail list" | sed 's/.*list://' | tr -d ',')
+        for jail in $JAILS; do
+            TOTAL=$(fail2ban-client status "$jail" | grep "Total banned" | awk '{print $4}')
+            IPS=$(fail2ban-client status "$jail" | grep "Banned IP list" | sed 's/.*list://')
+            echo -e "${AMARELO}[$jail]${NC} Total histórico: ${VERMELHO}$TOTAL${NC}"
+            echo -e "Banidos agora: ${VERMELHO}${IPS:-Nenhum}${NC}\n"
+        done
+
+        echo -e "${AZUL}Últimos ataques (Failed Passwords):${NC}"
+        grep "Failed password" /var/log/auth.log 2>/dev/null | tail -n 3
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo -e " [1] 🔓 Desbanir um IP (Fail2Ban/UFW)"
+        echo -e " [2] ⬅️  Voltar ao Menu Firewall"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Escolha uma opção: " OP_BAN; echo ""
+
+        case $OP_BAN in
+            1) desbanir_ip ;; # Chama a função de desbanir já existente
+            2) break ;;
+            *) echo -e "${AMARELO}Opção inválida.${NC}"; sleep 1 ;;
+        esac
+    done
 }
 
-desbanir_ip() {
-    read -p " IP para LIBERAR: " IP_D
-    iptables -D INPUT -s "$IP_D" -j DROP 2>/dev/null
-    iptables -D OUTPUT -d "$IP_D" -j DROP 2>/dev/null
-    iptables -D FORWARD -d "$IP_D" -j DROP 2>/dev/null
-    echo -e "${VERDE}IP liberado!${NC}"; sleep 2
+gerenciar_whitelist() {
+    # Validação baseada no administrador cadastrado no sistema
+    if [ "$USER_REAL" != "$ADM_USER" ]; then
+        echo -e "${VERMELHO}Acesso negado! Apenas o administrador $ADM_USER gerencia a Whitelist.${NC}"
+        sleep 2; return
+    fi
+
+    local ARQUIVO_WHITE="/etc/vps_protecao/whitelist.conf"
+    [ ! -d "/etc/vps_protecao" ] && mkdir -p /etc/vps_protecao
+    touch "$ARQUIVO_WHITE"
+
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "                ${VERDE}GERENCIAR LISTA BRANCA (IP)${NC}"
+        echo -e "  ADMINISTRADOR: ${AMARELO}$ADM_USER${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e " [1] Adicionar IP à Lista Branca"
+        echo -e " [2] Ver IPs Protegidos"
+        echo -e " [3] Remover IP da Lista Branca"
+        echo -e " [4] Voltar ao Firewall"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Escolha: " OP_W; echo ""
+
+        case $OP_W in
+            1)
+                read -p " IP para proteger: " IP_W
+                if [[ $IP_W =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    if grep -q "^$IP_W$" "$ARQUIVO_WHITE"; then
+                        echo -e "${AMARELO}O IP $IP_W já está na lista!${NC}"
+                    else
+                        echo "$IP_W" >> "$ARQUIVO_WHITE"
+                        sudo ufw allow from "$IP_W" to any > /dev/null 2>&1
+                        echo -e "${VERDE}IP $IP_W protegido com sucesso!${NC}"
+                    fi
+                else
+                    echo -e "${VERMELHO}Formato de IP inválido!${NC}"
+                fi ;;
+            2)
+                echo -e "${AMARELO}Lista de IPs Protegidos:${NC}"
+                [ -s "$ARQUIVO_WHITE" ] && cat -n "$ARQUIVO_WHITE" || echo "Lista vazia."
+                read -p "Pressione enter..." ;;
+            3)
+                read -p " IP para remover a proteção: " IP_R
+                if grep -q "^$IP_R$" "$ARQUIVO_WHITE"; then
+                    sed -i "/^$IP_R$/d" "$ARQUIVO_WHITE"
+                    sudo ufw delete allow from "$IP_R" to any > /dev/null 2>&1
+                    echo -e "${AMARELO}Proteção removida para o IP $IP_R.${NC}"
+                else
+                    echo -e "${VERMELHO}IP não encontrado na lista.${NC}"
+                fi ;;
+            4) break ;;
+        esac
+        sleep 1
+    done
 }
+firewall() {
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "                ${VERMELHO}🛡️  GESTÃO DE FIREWALL (IP)${NC}"
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "  [1] 🚫 Banir IP (Manual/Total)"
+        echo -e "  [2] ✅ Desbanir IP (Manual)"
+        echo -e "  [3] 📋 Listar IPs Bloqueados (IPTables)"
+        echo -e "  [4] 🚨 Monitorar Fail2Ban (Automático)"
+        echo -e "  [5] ⚪ Gerenciar Whitelist (Lista Branca)" # <--- Integrado aqui
+        echo -e "  [6] 🕵️  Diagnóstico de Ataques"
+        echo -e "  [7] ⬅️  Voltar ao Menu Principal"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -n 1 -p " Escolha uma opção: " OP_FIRE; echo ""
+
+        case $OP_FIRE in
+            1) banir_ip ;;
+            2) desbanir_ip ;;
+            3) 
+                clear
+                echo -e "${VERMELHO}--- IPs BLOQUEADOS NO IPTABLES ---${NC}"
+                sudo iptables -L INPUT -n | grep "DROP"
+                read -p "ENTER para voltar..." d ;;
+            4) monitora_banidos ;;
+            5) gerenciar_whitelist ;; # Chama a função acima
+            6) diagnostico_ataques ;;
+            7) return ;;
+            *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
 
 configurar_telegram() {
     verificar_permissao || return
@@ -104,33 +213,44 @@ configurar_telegram() {
     echo "Salvo!"; sleep 2
 }
 
-# --- 5. MENU PRINCIPAL ---
+# --- ESTRUTURA DO MENU PRINCIPAL ---
 while true; do
+    # Atualiza dados em cada ciclo do menu para refletir mudanças em tempo real
+    IP_EXT=$(curl -s --max-time 2 ifconfig.me || echo "OFFLINE")
+    PORTA_SSH=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}'); [ -z "$PORTA_SSH" ] && PORTA_SSH="22"
+
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "            ${VERDE}SISTEMA DE GESTÃO VPS - ADMIN${NC}"
+    echo -e "            ${VERDE}GERENCIAMENTO DE REDE E SEGURANÇA${NC}"
     echo -e "  OPERADOR: ${AMARELO}$USER_REAL${NC} | ADMIN: ${VERDE}$ADM_USER${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] 📊 Logs do Sistema         [6] 🚫 Banir IP Malicioso"
-    echo -e "  [2] ⚡ Testar Velocidade       [7] ✅ Desbanir IP"
-    echo -e "  [3] 🕵️  Diagnóstico de Ataques  [8] 🔑 Config SSH (Admin)"
-    echo -e "  [4] 📢 Alertas Telegram        [9] 🔄 Reiniciar Menu"
-    echo -e "  [5] 📉 VnStat (Consumo)"
+    printf "  %-15s : ${AMARELO}%-20s${NC}\n" "IP SERVIDOR" "$IP_EXT"
+    printf "  %-15s : ${AMARELO}%-20s${NC}\n" "PORTA SSH" "$PORTA_SSH"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "  [1] 📜 Logs do Sistema         [5] 🛡️  Firewall e Segurança"
+    echo -e "  [2] ⚡ Testar Velocidade       [6] 🔑 SSH Config (Admin)"
+    echo -e "  [3] 📉 VnStat (Consumo)        [7] 📢 Alerta Telegram (Admin)"
+    echo -e "  [4] 🔄 Reiniciar Menu          [0] 🚪 Sair"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    
     read -n 1 -p " Digite a opção: " OP; echo ""
 
     case $OP in
-        1) # Função de Logs (Squid/SSH/Kill)
-           visualizar_logs ;; 
+        1) visualizar_logs ;;
         2) testa_velocidade ;;
-        3) diagnostico_ataques ;;
-        4) configurar_telegram ;;
-        5) vnstat -d; read -p "ENTER..." d ;;
-        6) banir_ip ;;
-        7) desbanir_ip ;;
-        8) # Chamar função SSH
-           verificar_permissao && echo "Acessando SSH Config..." ;;
-        9) continue ;;
-        *) sleep 1 ;;
+        3) clear; vnstat -d; echo -e "\n${AMARELO}Pressione ENTER para voltar...${NC}"; read -r ;;
+        4) 
+            echo -e "${AMARELO}A reiniciar o menu principal...${NC}"
+            sleep 1
+            continue 
+            ;;
+        5) firewall ;; # Centraliza Banir, Desbanir, Monitorar e Whitelist
+        6) ssh_config ;;
+        7) configurar_telegram ;;
+        0) break ;; # Sai do loop caso o terminal não esteja travado por trap
+        *) 
+            echo -e "${VERMELHO}Opção inválida!${NC}"
+            sleep 1
+            ;;
     esac
 done
