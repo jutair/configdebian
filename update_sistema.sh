@@ -67,11 +67,20 @@ if ! grep -q "menu.sh" /etc/profile; then
     echo '[ -f /opt/configdebian/menu.sh ] && exec bash /opt/configdebian/menu.sh' >> /etc/profile
 fi
 
-# 5. REINICIAR GUARDIÃO
-pkill -f guardiao.sh || true
-nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
+# 5. REINICIAR GUARDIÃO (Via Systemd para garantir a atualização)
+echo -e "${AMARELO}🔄 Reiniciando o serviço do Guardião...${NC}"
+
+# Verifica se o serviço existe, se não, cria (garantia extra)
+if [ ! -f "/etc/systemd/system/guardiao.service" ]; then
+    printf "[Unit]\nDescription=Guardiao VPS ConfigDebian\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/bin/bash %s/guardiao.sh\nRestart=always\nRestartSec=5\nUser=root\n\n[Install]\nWantedBy=multi-user.target\n" "$DIR_CONFIG" > /etc/systemd/system/guardiao.service
+    systemctl daemon-reload
+    systemctl enable guardiao.service
+fi
+
+# Comando mestre: Reinicia o serviço para ler o novo script baixado
+systemctl restart guardiao.service
 
 echo -e "${AZUL}---------------------------------------------------------------${NC}"
-echo -e "${VERDE}✅ PAINEL ATUALIZADO COM SUCESSO!${NC}"
+echo -e "${VERDE}✅ PAINEL E GUARDIÃO ATUALIZADOS COM SUCESSO!${NC}"
 echo -e "${AZUL}===============================================================${NC}"
 sleep 2
