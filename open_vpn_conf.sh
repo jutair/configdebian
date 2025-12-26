@@ -534,56 +534,52 @@ gerenciar_banda() {
     esac
 }
 bloq_servicos() {
-    CONF_DIR="/etc/dnsmasq.d"
-    BLOQ_FILE="$CONF_DIR/bloqueios.conf"
+    BLOQ_FILE="/etc/vps_protecao/bloqueio_servicos.list"
+    HOSTS_FILE="/etc/hosts"
 
-    # Cria diretório se não existir
-    mkdir -p "$CONF_DIR"
-
-    # Domínios padrão para bloqueio (adultos)
-    DOMINIOS_PADRAO=(
-        "adultsite1.com"
-        "adultsite2.com"
-        "pornsite.com"
-        "xxx.com"
-        "sexsite.net"
-    )
-
-    # Garante que o arquivo exista
+    mkdir -p "$(dirname "$BLOQ_FILE")"
     touch "$BLOQ_FILE"
 
-    # Adiciona domínios padrão ao arquivo se não estiverem presentes
-    for DOM in "${DOMINIOS_PADRAO[@]}"; do
-        grep -qx "address=/$DOM/0.0.0.0" "$BLOQ_FILE" || echo "address=/$DOM/0.0.0.0" >> "$BLOQ_FILE"
+    while true; do
+        clear
+        echo "=============================="
+        echo "     BLOQUEIO DE SERVIÇOS"
+        echo "=============================="
+        echo "1) Listar domínios bloqueados"
+        echo "2) Adicionar domínio ao bloqueio"
+        echo "3) Remover domínio do bloqueio"
+        echo "4) Sair"
+        read -p "Escolha uma opção: " OP
+
+        case $OP in
+            1)
+                echo "Domínios bloqueados:"
+                cat "$BLOQ_FILE"
+                read -p "Pressione ENTER para voltar..."
+                ;;
+            2)
+                read -p "Digite o domínio para bloquear: " DOM
+                if ! grep -qx "$DOM" "$BLOQ_FILE"; then
+                    echo "$DOM" >> "$BLOQ_FILE"
+                    echo "127.0.0.1 $DOM" >> "$HOSTS_FILE"
+                    echo "Domínio $DOM bloqueado."
+                else
+                    echo "Domínio já bloqueado."
+                fi
+                read -p "ENTER..."
+                ;;
+            3)
+                read -p "Digite o domínio para desbloquear: " DOM
+                sed -i "/$DOM/d" "$BLOQ_FILE"
+                sed -i "/$DOM/d" "$HOSTS_FILE"
+                echo "Domínio $DOM removido do bloqueio."
+                read -p "ENTER..."
+                ;;
+            4) break ;;
+            *) echo "Opção inválida"; sleep 1 ;;
+        esac
     done
-
-    echo "Domínios bloqueados atualmente:"
-    grep "^address=" "$BLOQ_FILE"
-
-    echo ""
-    read -p "Deseja adicionar mais domínios manualmente? (s/n): " RESP
-    if [[ "$RESP" =~ ^[Ss]$ ]]; then
-        while true; do
-            read -p "Digite o domínio (ou ENTER para sair): " DOM_MANUAL
-            [ -z "$DOM_MANUAL" ] && break
-            grep -qx "address=/$DOM_MANUAL/0.0.0.0" "$BLOQ_FILE" || echo "address=/$DOM_MANUAL/0.0.0.0" >> "$BLOQ_FILE"
-            echo "Adicionado: $DOM_MANUAL"
-        done
-    fi
-
-    # Recarrega dnsmasq sem derrubar clientes
-    if systemctl is-active --quiet dnsmasq; then
-        systemctl reload dnsmasq
-        echo "dnsmasq recarregado com sucesso!"
-    else
-        systemctl enable --now dnsmasq
-        echo "dnsmasq iniciado e habilitado!"
-    fi
-
-    echo "Bloqueios aplicados."
-    read -p "Pressione ENTER para continuar..."
 }
-
 
 while true; do
     clear
