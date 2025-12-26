@@ -1,6 +1,7 @@
 #!/bin/bash
 # configura_sistema.sh - Configura sistema, usuários e scripts configdebian
 # Atualizado: 24-12-2025
+# Atualização 26-12-2025
 
 set -e
 
