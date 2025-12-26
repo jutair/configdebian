@@ -1,18 +1,24 @@
 #!/bin/bash
-# gerencia_rede.sh - Gerenciador de Segurança e Rede Profissional (Versão Restaurada)
+# gerencia_rede.sh - Gerenciador de Segurança e Rede Profissional
 
-# --- 1. DETECÇÃO ROBUSTA DO USUÁRIO ---
-# Busca o admin definido centralmente ou assume 'jutair' como padrão
+# --- 1. CONFIGURAÇÕES DE DIRETÓRIO E ADMIN ---
 DIR_PROT="/etc/vps_protecao"
-[ -f "$DIR_PROT/admin.conf" ] && source "$DIR_PROT/admin.conf"
-[[ -z "$ADM_USER" ]] && ADM_USER="jutair"
-
-# Detecta quem está operando o script agora
-USER_REAL=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
+ADMIN_CONF="$DIR_PROT/admin.conf"
 SSH_CONF="/etc/ssh/sshd_config"
 
 # Cores
 AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
+
+# Carrega o Admin cadastrado (Ex: ADM_USER="linux")
+if [ -f "$ADMIN_CONF" ]; then
+    source "$ADMIN_CONF"
+else
+    # Caso o arquivo não exista, define um valor nulo para proteção total
+    ADM_USER="NAO_CONFIGURADO"
+fi
+
+# Detecta o usuário que invocou o script (mesmo via sudo)
+USER_OPERADOR=$(logname 2>/dev/null || echo ${SUDO_USER:-$(whoami)})
 
 # Verifica ROOT
 if [ "$EUID" -ne 0 ]; then
@@ -23,25 +29,29 @@ fi
 # Bloqueia CTRL+C
 trap '' SIGINT
 
-# --- FUNÇÃO DE VALIDAÇÃO DE ADMIN ---
+# --- 2. FUNÇÃO DE VALIDAÇÃO DE PERMISSÃO ---
 verificar_permissao() {
-    if [[ "$USER_REAL" != "$ADM_USER" ]]; then
+    if [[ "$USER_OPERADOR" != "$ADM_USER" ]]; then
         clear
         echo -e "${VERMELHO}===============================================================${NC}"
         echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
         echo -e "${VERMELHO}===============================================================${NC}"
-        echo -e "O usuário '${AMARELO}$USER_REAL${NC}' não tem permissão para esta ação."
+        echo -e "Operador: ${AMARELO}$USER_OPERADOR${NC}"
+        echo -e "Permissão: ${VERMELHO}NEGADA${NC}"
+        echo -e "${VERMELHO}===============================================================${NC}"
+        echo -e "Apenas o admin '${VERDE}$ADM_USER${NC}' cadastrado em:"
+        echo -e "${AMARELO}$ADMIN_CONF${NC} pode acessar esta função."
         
         # Alerta Telegram
         [ -f "$DIR_PROT/telegram.conf" ] && source "$DIR_PROT/telegram.conf"
         if [[ -n "$TOKEN" ]]; then
-            MENSAGEM="🚫 <b>TENTATIVA DE ACESSO NEGADO:</b>%0AOperador: <code>$USER_REAL</code> tentou acessar função restrita de Rede/SSH."
+            MENSAGEM="🚫 <b>ALERTA DE SEGURANÇA:</b>%0AOperador: <code>$USER_OPERADOR</code> tentou acessar funções restritas de Rede/SSH!"
             curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
         fi
         sleep 3
-        return 1 # Falha
+        return 1
     fi
-    return 0 # Sucesso
+    return 0
 }
 
 ############################ FUNÇÕES DE REDE ############################
@@ -52,7 +62,7 @@ testa_velocidade() {
     echo -e "          ${VERDE}TESTE DE VELOCIDADE (SPEEDTEST)${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "${AMARELO}Aguarde, testando a conexão da VPS...${NC}"
-    speedtest-cli --simple || echo -e "${VERMELHO}Instale speedtest-cli para usar esta função.${NC}"
+    speedtest-cli --simple || echo -e "${VERMELHO}Instale 'speedtest-cli' para usar esta função.${NC}"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -p " Pressione ENTER para retornar..." dummy
 }
@@ -107,34 +117,35 @@ ssh_config() {
 restaura_seguranca() {
     verificar_permissao || return
     clear
-    echo -e "${AMARELO}Restaurando Firewall, BBR e Serviços...${NC}"
+    echo -e "${AMARELO}Restaurando Firewall, BBR e Serviços de Proteção...${NC}"
     ufw --force reset >/dev/null
     ufw default deny incoming >/dev/null
     ufw allow 22/tcp; ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 8080/tcp; ufw allow 1194/udp
     
-    # BBR
+    # Otimização BBR
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
     sysctl -p >/dev/null 2>&1
     
     ufw --force enable
     systemctl restart ssh fail2ban
-    echo -e "${VERDE}✅ Configurações padrão aplicadas!${NC}"
+    echo -e "${VERDE}✅ Firewall e BBR restaurados com sucesso!${NC}"
     sleep 3
 }
 
 banir_ip() {
-    read -p " IP para BANIR: " IP_ALVO
-    if [[ $IP_ALVO =~ ^[0-9]+\.[0-9] ]]; then
-        # Verifica Whitelist
+    read -p " Digite o IP que deseja BANIR: " IP_ALVO
+    if [[ $IP_ALVO =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         if grep -q "^$IP_ALVO$" "$DIR_PROT/whitelist.conf" 2>/dev/null; then
-            echo -e "${VERMELHO}IP protegido na Whitelist!${NC}"; sleep 2
+            echo -e "${VERMELHO}ERRO: Este IP está na Whitelist e não pode ser banido!${NC}"; sleep 2
         else
             iptables -I INPUT -s "$IP_ALVO" -j DROP
             iptables -I FORWARD -d "$IP_ALVO" -j DROP
             ufw insert 1 deny from "$IP_ALVO" to any >/dev/null
-            echo -e "${VERDE}IP $IP_ALVO isolado!${NC}"; sleep 2
+            echo -e "${VERDE}IP $IP_ALVO bloqueado com sucesso!${NC}"; sleep 2
         fi
+    else
+        echo -e "${VERMELHO}IP Inválido!${NC}"; sleep 1
     fi
 }
 
@@ -144,52 +155,55 @@ while true; do
     IP_EXTERNO=$(curl -s --max-time 2 ifconfig.me || echo "OFFLINE")
     PORTA_SSH=$(grep "^Port" $SSH_CONF | awk '{print $2}' | head -1)
     [[ -z "$PORTA_SSH" ]] && PORTA_SSH="22"
+    TOTAL_BAN=$(fail2ban-client status sshd 2>/dev/null | grep "Currently banned" | awk '{print $4}')
+    [[ -z "$TOTAL_BAN" ]] && TOTAL_BAN="0"
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "            ${VERDE}GERENCIAMENTO DE REDE E SEGURANÇA${NC}"
-    echo -e "  Operador: ${AMARELO}$USER_REAL${NC} | Admin: ${VERDE}$ADM_USER${NC}"
+    echo -e "  OPERADOR: ${AMARELO}$USER_OPERADOR${NC} | ADMIN: ${VERDE}$ADM_USER${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     printf "  %-15s : ${AMARELO}%-20s${NC}\n" "IP SERVIDOR" "$IP_EXTERNO"
     printf "  %-15s : ${AMARELO}%-20s${NC}\n" "PORTA SSH" "$PORTA_SSH"
+    printf "  %-15s : ${VERMELHO}%-20s${NC}\n" "BANIDOS AGORA" "$TOTAL_BAN IPs"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "  [1] 📜 Logs de Segurança        [5] 🛡️  Firewall/Fail2Ban"
     echo -e "  [2] ⚡ Testar Velocidade        [6] 🔑 Configurações SSH"
     echo -e "  [3] 📊 Tráfego Live (VNSTAT)    [7] 📢 Configurar Telegram"
     echo -e "  [4] 📉 Relatórios de Consumo    [8] ⬅️  Sair"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    read -n 1 -p " Opção: " OP; echo ""
+    read -n 1 -p " Digite a opção: " OP; echo ""
 
     case $OP in
         1) visualizar_logs ;;
         2) testa_velocidade ;;
         3) monitora_placa ;;
-        4) vnstat -d; read -p "ENTER..." d ;;
+        4) vnstat -d; read -p "ENTER para voltar..." d ;;
         5) # Submenu de Firewall
            while true; do
                clear
-               echo -e "${VERMELHO}--- GESTÃO DE BANIMENTOS ---${NC}"
-               echo -e " [1] Ranking Agressores\n [2] Banir IP Manual\n [3] Whitelist\n [4] Restaurar Tudo\n [5] Voltar"
+               echo -e "${VERMELHO}--- GESTÃO DE SEGURANÇA E BANIMENTOS ---${NC}"
+               echo -e " [1] Ranking Agressores (Top 10)\n [2] Banir IP Manual\n [3] Gerenciar Whitelist\n [4] Restaurar Firewall/BBR\n [5] Voltar"
                read -n 1 -p " Escolha: " FO; echo ""
                case $FO in
                    1) grep "Failed password" /var/log/auth.log | awk '{print $(NF-3)}' | sort | uniq -c | sort -nr | head -n 10; read -p "ENTER..." d ;;
                    2) banir_ip ;;
-                   3) if [[ "$USER_REAL" == "$ADM_USER" ]]; then 
+                   3) if verificar_permissao; then 
                         read -p "IP para Whitelist: " IW; echo "$IW" >> "$DIR_PROT/whitelist.conf"; echo "Adicionado."; sleep 1
-                      else echo "Negado."; sleep 1; fi ;;
+                      fi ;;
                    4) restaura_seguranca ;;
                    5) break ;;
                esac
            done ;;
         6) ssh_config ;;
-        7) # Configurar Telegram
-            if verificar_permissao; then
-                read -p "Bot Token: " TK; read -p "Chat ID: " CID
+        7) if verificar_permissao; then
+                read -p "Bot Token Telegram: " TK; read -p "Seu ID Chat: " CID
                 mkdir -p "$DIR_PROT"
                 echo "TOKEN=\"$TK\"" > "$DIR_PROT/telegram.conf"
                 echo "ID_CHAT=\"$CID\"" >> "$DIR_PROT/telegram.conf"
-                echo "Configurado!"; sleep 2
+                echo -e "${VERDE}Configuração do Telegram Salva!${NC}"; sleep 2
             fi ;;
         8) exit 0 ;;
+        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
 done
