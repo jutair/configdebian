@@ -534,122 +534,56 @@ gerenciar_banda() {
     esac
 }
 bloq_servicos() {
-    BLOQ_DIR="/etc/vps_protecao/dns_bloqueios"
-    BLOQ_FILE="$BLOQ_DIR/bancos.conf"
-    DNSMASQ_CONF="/etc/dnsmasq.d/vps_bloqueios.conf"
-    SERVER_CONF="/etc/openvpn/server/server.conf"
+    CONF_DIR="/etc/dnsmasq.d"
+    BLOQ_FILE="$CONF_DIR/bloqueios.conf"
 
-    mkdir -p "$BLOQ_DIR"
+    # Cria diretório se não existir
+    mkdir -p "$CONF_DIR"
 
-    instalar_dnsmasq() {
-        if ! command -v dnsmasq &>/dev/null; then
-            apt update -y && apt install dnsmasq -y
-        fi
-    }
+    # Domínios padrão para bloqueio (adultos)
+    DOMINIOS_PADRAO=(
+        "adultsite1.com"
+        "adultsite2.com"
+        "pornsite.com"
+        "xxx.com"
+        "sexsite.net"
+    )
 
-    configurar_dnsmasq() {
-        echo "conf-dir=$BLOQ_DIR" > "$DNSMASQ_CONF"
+    # Garante que o arquivo exista
+    touch "$BLOQ_FILE"
 
-        if ! grep -q "10.8.0.1" /etc/dnsmasq.conf 2>/dev/null; then
-            cat >> /etc/dnsmasq.conf << 'EOF'
-
-# VPS Proteção - DNS VPN
-listen-address=127.0.0.1,10.8.0.1
-bind-interfaces
-EOF
-        fi
-
-        systemctl restart dnsmasq
-        systemctl enable dnsmasq
-    }
-
-    forcar_dns_vpn() {
-        if [ -f "$SERVER_CONF" ]; then
-            sed -i '/dhcp-option DNS/d' "$SERVER_CONF"
-            echo 'push "dhcp-option DNS 10.8.0.1"' >> "$SERVER_CONF"
-            echo 'push "block-outside-dns"' >> "$SERVER_CONF"
-            systemctl restart openvpn-server@server
-        fi
-    }
-
-    bloquear_bancos_padrao() {
-        cat > "$BLOQ_FILE" << 'EOF'
-# === BLOQUEIO GLOBAL - BANCOS ===
-
-address=/itau.com.br/0.0.0.0
-address=/bradesco.com.br/0.0.0.0
-address=/nubank.com.br/0.0.0.0
-address=/bb.com.br/0.0.0.0
-address=/caixa.gov.br/0.0.0.0
-address=/santander.com.br/0.0.0.0
-
-address=/nubank.com/0.0.0.0
-address=/itau.com/0.0.0.0
-address=/bradesco.com/0.0.0.0
-address=/santander.com/0.0.0.0
-EOF
-        echo "✔ Bancos bloqueados com sucesso."
-    }
-
-    adicionar_manual() {
-        read -p "Digite o domínio (ex: netflix.com): " DOM
-        [ -z "$DOM" ] && return
-
-        if grep -q "/$DOM/" "$BLOQ_DIR"/*.conf 2>/dev/null; then
-            echo "⚠️ Domínio já está bloqueado."
-            sleep 2
-            return
-        fi
-
-        echo "address=/$DOM/0.0.0.0" >> "$BLOQ_FILE"
-        echo "✔ $DOM bloqueado com sucesso."
-    }
-
-    listar_bloqueios() {
-        clear
-        echo "================ DOMÍNIOS BLOQUEADOS ================"
-        grep "address=/" "$BLOQ_DIR"/*.conf | awk -F'/' '{print $2}' | sort -u
-        echo "====================================================="
-        read -p "ENTER para voltar..." _
-    }
-
-    remover_bloqueio() {
-        read -p "Digite o domínio para remover: " DOM
-        [ -z "$DOM" ] && return
-        sed -i "/\/$DOM\//d" "$BLOQ_DIR"/*.conf
-        echo "✔ Bloqueio removido (se existia)."
-    }
-
-    instalar_dnsmasq
-    configurar_dnsmasq
-    forcar_dns_vpn
-
-    while true; do
-        clear
-        echo "==============================================================="
-        echo "        🔒 BLOQUEIO GLOBAL DE SERVIÇOS (DNS VPN)"
-        echo "==============================================================="
-        echo " [1] 🏦 Bloquear bancos (padrão)"
-        echo " [2] ➕ Adicionar bloqueio manual"
-        echo " [3] 📄 Listar domínios bloqueados"
-        echo " [4] ❌ Remover bloqueio"
-        echo " [0] ⬅️  Voltar"
-        echo "---------------------------------------------------------------"
-        read -n 1 -p "Escolha: " OP
-        echo ""
-
-        case $OP in
-            1) bloquear_bancos_padrao; sleep 2 ;;
-            2) adicionar_manual; sleep 2 ;;
-            3) listar_bloqueios ;;
-            4) remover_bloqueio; sleep 2 ;;
-            0) return ;;
-            *) echo "Opção inválida"; sleep 1 ;;
-        esac
-
-        systemctl restart dnsmasq
+    # Adiciona domínios padrão ao arquivo se não estiverem presentes
+    for DOM in "${DOMINIOS_PADRAO[@]}"; do
+        grep -qx "address=/$DOM/0.0.0.0" "$BLOQ_FILE" || echo "address=/$DOM/0.0.0.0" >> "$BLOQ_FILE"
     done
+
+    echo "Domínios bloqueados atualmente:"
+    grep "^address=" "$BLOQ_FILE"
+
+    echo ""
+    read -p "Deseja adicionar mais domínios manualmente? (s/n): " RESP
+    if [[ "$RESP" =~ ^[Ss]$ ]]; then
+        while true; do
+            read -p "Digite o domínio (ou ENTER para sair): " DOM_MANUAL
+            [ -z "$DOM_MANUAL" ] && break
+            grep -qx "address=/$DOM_MANUAL/0.0.0.0" "$BLOQ_FILE" || echo "address=/$DOM_MANUAL/0.0.0.0" >> "$BLOQ_FILE"
+            echo "Adicionado: $DOM_MANUAL"
+        done
+    fi
+
+    # Recarrega dnsmasq sem derrubar clientes
+    if systemctl is-active --quiet dnsmasq; then
+        systemctl reload dnsmasq
+        echo "dnsmasq recarregado com sucesso!"
+    else
+        systemctl enable --now dnsmasq
+        echo "dnsmasq iniciado e habilitado!"
+    fi
+
+    echo "Bloqueios aplicados."
+    read -p "Pressione ENTER para continuar..."
 }
+
 
 while true; do
     clear
