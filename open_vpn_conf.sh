@@ -69,6 +69,8 @@ configurar_servidor_vpn() {
     # Prepara o ambiente de diretórios e permissões públicas
     echo -e "${AMARELO}Verificando diretórios de segurança...${NC}"
     sudo mkdir -p "$DIR_CLIENTES"
+    sudo mkdir -p /etc/vps_protecao/consumo_clientes
+    sudo chmod 755 /etc/vps_protecao/consumo_clientes
     sudo chmod 755 /etc/vps_protecao
     sudo chmod 755 "$DIR_CLIENTES"
 
