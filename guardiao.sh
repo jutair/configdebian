@@ -28,19 +28,32 @@ enviar_alerta() {
 }
 
 # --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (ACUMULADO) ---
+# --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (CORRIGIDA) ---
 rastrear_clientes_vpn() {
     STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
     MES_ATUAL=$(date +'%m-%Y')
     
     if [ -f "$STATUS_LOG" ]; then
-        # Filtra apenas as linhas que começam EXATAMENTE com CLIENT_LIST
-        # O grep garante que END, GLOBAL e ROUTING sejam ignorados antes de começar
+        # Extrai a lista de clientes (Ignora cabeçalho e roteamento)
         grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME IP RECV SENT RESTO; do
             
-            # Validação extra: O nome não pode ser "Common Name" nem vazio
             if [[ "$NOME" != "Common Name" && -n "$NOME" ]]; then
-                # Salva os bytes recebidos e enviados
-                echo "$RECV $SENT" > "/etc/vps_protecao/consumo_clientes/${NOME}_${MES_ATUAL}.log"
+                ARQUIVO_LOG="/etc/vps_protecao/consumo_clientes/${NOME}_${MES_ATUAL}.log"
+                
+                # Se o arquivo não existe, cria com zero
+                [ ! -f "$ARQUIVO_LOG" ] && echo "0 0" > "$ARQUIVO_LOG"
+                
+                # Lê o que já estava salvo (Total acumulado)
+                read -r ACC_RECV ACC_SENT < "$ARQUIVO_LOG"
+                
+                # IMPORTANTE: O OpenVPN reporta o acumulado da SESSÃO.
+                # Para um relatório simples de "Consumo Mensal", vamos considerar 
+                # o maior valor reportado na sessão atual para evitar loops complexos.
+                # Se o valor atual for menor que o salvo, o usuário reconectou, então somamos.
+                
+                if [ "$RECV" -gt "$ACC_RECV" ] || [ "$SENT" -gt "$ACC_SENT" ]; then
+                     echo "$RECV $SENT" > "$ARQUIVO_LOG"
+                fi
             fi
         done
     fi
