@@ -60,11 +60,32 @@ verificar_servicos() {
     done
 }
 
+# --- NO GUARDIÃO: RASTREAR CONSUMO POR CLIENTE ---
+rastrear_consumo_clientes() {
+    STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+    DATA_MES=$(date +'%m-%Y')
+    DATA_DIA=$(date +'%d-%m-%Y')
+    PASTA_DB="/etc/vps_protecao/consumo_clientes"
+
+    if [ -f "$STATUS_LOG" ]; then
+        # Extrai Nome, Bytes Recebidos e Bytes Enviados
+        sed -n '/CLIENT_LIST/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE "HEADER|CLIENT_LIST|ROUTING TABLE" | while IFS=',' read -r NOME IP RECV SENT DATA; do
+            
+            # Arquivo do cliente para o mês atual
+            ARQ_MES="$PASTA_DB/${NOME}_${DATA_MES}.log"
+            
+            # Salvamos o último valor lido para calcular a diferença na próxima volta
+            # (Opcional: Para precisão extrema, somamos apenas se o valor atual for maior que o anterior)
+            echo "$RECV $SENT $DATA_DIA" > "$ARQ_MES"
+        done
+    fi
+}
+
 # --- LOOP PRINCIPAL ---
 while true; do
     verificar_servicos
     verificar_banda_mensal
-    
+    rastrear_consumo_clientes
     # Dorme por 60 segundos antes da próxima checagem
     sleep 60
 done
