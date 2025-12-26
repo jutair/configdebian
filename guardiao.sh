@@ -1,19 +1,20 @@
 #!/bin/bash
-# guardiao.sh - O cérebro do sistema (Monitoramento 24/7)
+# guardiao.sh - Monitoramento 24/7 de Serviços e Consumo de Banda
 
-# --- CONFIGURAÇÕES ---
+# --- CONFIGURAÇÕES DE CAMINHOS ---
 DIR_PROT="/etc/vps_protecao"
 TELEGRAM_CONF="$DIR_PROT/telegram.conf"
 CONFIG_CONF="$DIR_PROT/config.conf"
+PASTA_CONSUMO="$DIR_PROT/consumo_clientes"  # Pasta criada no setup_vps.sh
 ARQUIVO_ALERTA_BANDA="/tmp/alerta_banda_enviado"
 LIMITE_GB=900
 
-# Carrega variáveis
+# Carrega configurações e credenciais
 [ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
 [ -f "$CONFIG_CONF" ] && source "$CONFIG_CONF"
 
-# Detecta interface principal de rede
-INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
+# Detecta a interface principal automaticamente
+INTERFACE_PRIN=$(ip route | grep default | awk '{print $5}')
 
 # --- FUNÇÃO: ALERTA TELEGRAM ---
 enviar_alerta() {
@@ -26,66 +27,108 @@ enviar_alerta() {
     fi
 }
 
-# --- FUNÇÃO: MONITORAR BANDA (900GB) ---
-verificar_banda_mensal() {
-    # Garante que o vnstat está rodando
-    if ! command -v vnstat &>/dev/null; then return; fi
-    
-    # Extrai consumo total do mês (rx + tx) em GB usando vnstat e jq
-    # Nota: vnstat reporta em KiB no JSON, convertemos para GB
-    CONSUMO_ATUAL=$(vnstat --json m | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0] | (.rx + .tx) / 1024 / 1024 / 1024" 2>/dev/null || echo "0")
-    
-    # Se o consumo for maior ou igual ao limite
-    if (( $(echo "$CONSUMO_ATUAL >= $LIMITE_GB" | bc -l) )); then
-        # Verifica se já enviou alerta hoje para não repetir a cada minuto
-        if [ ! -f "$ARQUIVO_ALERTA_BANDA" ]; then
-            MENSAGEM="🚨 <b>GUARDIÃO: LIMITE DE TRÁFEGO ATINGIDO</b>%0A🌐 Interface: <code>$INTERFACE_PRINCIPAL</code>%0A📊 Consumo: <code>$(printf "%.2f" $CONSUMO_ATUAL) GB</code>%0A⚠️ Limite contratado de 900GB foi atingido!"
-            enviar_alerta "$MENSAGEM"
-            touch "$ARQUIVO_ALERTA_BANDA"
-        fi
-    else
-        # Se o consumo estiver abaixo do limite (novo mês), remove o bloqueio de alerta
-        [ -f "$ARQUIVO_ALERTA_BANDA" ] && rm -f "$ARQUIVO_ALERTA_BANDA"
-    fi
-}
-
-# --- FUNÇÃO: MONITORAR PROCESSOS CRÍTICOS ---
-verificar_servicos() {
-    local SERVICOS=("openvpn" "sshd" "fail2ban")
-    for SERV in "${SERVICOS[@]}"; do
-        if ! systemctl is-active --quiet "$SERV"; then
-            systemctl restart "$SERV"
-            enviar_alerta "🛠️ <b>GUARDIÃO:</b> O serviço <code>$SERV</code> estava parado e foi reiniciado automaticamente."
-        fi
-    done
-}
-
-# --- NO GUARDIÃO: RASTREAR CONSUMO POR CLIENTE ---
-rastrear_consumo_clientes() {
+# --- FUNÇÃO: RASTREAR CONSUMO POR CLIENTE (ACUMULADO) ---
+rastrear_clientes_vpn() {
     STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
-    DATA_MES=$(date +'%m-%Y')
-    DATA_DIA=$(date +'%d-%m-%Y')
-    PASTA_DB="/etc/vps_protecao/consumo_clientes"
-
+    MES_ATUAL=$(date +'%m-%Y')
+    
     if [ -f "$STATUS_LOG" ]; then
-        # Extrai Nome, Bytes Recebidos e Bytes Enviados
+        # Extrai Nome, Bytes Recebidos e Bytes Enviados da lista de clientes
         sed -n '/CLIENT_LIST/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE "HEADER|CLIENT_LIST|ROUTING TABLE" | while IFS=',' read -r NOME IP RECV SENT DATA; do
-            
-            # Arquivo do cliente para o mês atual
-            ARQ_MES="$PASTA_DB/${NOME}_${DATA_MES}.log"
-            
-            # Salvamos o último valor lido para calcular a diferença na próxima volta
-            # (Opcional: Para precisão extrema, somamos apenas se o valor atual for maior que o anterior)
-            echo "$RECV $SENT $DATA_DIA" > "$ARQ_MES"
+            if [[ -n "$NOME" && "$NOME" != "Common Name" ]]; then
+                # Grava o consumo da sessão atual para consulta no menu
+                echo "$RECV $SENT" > "$PASTA_CONSUMO/${NOME}_${MES_ATUAL}.log"
+            fi
         done
     fi
 }
 
-# --- LOOP PRINCIPAL ---
+# --- FUNÇÃO: MONITORAR COTA GLOBAL (900GB) ---
+verificar_cota_vps() {
+    # Verifica se as dependências instaladas no setup_vps.sh estão presentes
+    if ! command -v jq &>/dev/null || ! command -v vnstat &>/dev/null; then return; fi
+
+    # Obtém o tráfego do mês atual via vnstat em JSON
+    DATA_JSON=$(vnstat --json m 2>/dev/null)
+    RX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRIN\") | .traffic.months[0].rx" 2>/dev/null || echo 0)
+    TX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRIN\") | .traffic.months[0].tx" 2>/dev/null || echo 0)
+
+    # Cálculo do total em GB (usando bc instalado no setup_vps.sh)
+    TOTAL_GB=$(echo "scale=2; ($RX + $TX) / 1024 / 1024 / 1024" | bc -l)
+
+    # Verifica se atingiu o limite de 900GB
+    if (( $(echo "$TOTAL_GB >= $LIMITE_GB" | bc -l) )); then
+        if [ ! -f "$ARQUIVO_ALERTA_BANDA" ]; then
+            MENSAGEM="🚨 <b>ALERTA DE CONSUMO VPS</b>%0A🌐 Interface: <code>$INTERFACE_PRIN</code>%0A📊 Consumo: <code>$TOTAL_GB GB</code>%0A⚠️ O limite de <b>900GB</b> foi atingido!"
+            enviar_alerta "$MENSAGEM"
+            touch "$ARQUIVO_ALERTA_BANDA"
+        fi
+    else
+        # Se baixar do limite (ex: virada de mês), permite novo alerta
+        [ -f "$ARQUIVO_ALERTA_BANDA" ] && rm -f "$ARQUIVO_ALERTA_BANDA"
+    fi
+}
+
+# --- FUNÇÃO: SAÚDE DOS SERVIÇOS ---
+verificar_servicos() {
+    local SERVICOS=("openvpn" "sshd" "vnstat")
+    for SERV in "${SERVICOS[@]}"; do
+        if ! systemctl is-active --quiet "$SERV"; then
+            systemctl restart "$SERV"
+        fi
+    done
+}
+
+# --- CONFIGURAÇÕES DE RECURSOS ---
+LIMITE_CPU=85
+LIMITE_RAM=85
+ARQUIVO_ALERTA_RECURSOS="/tmp/alerta_recursos_enviado"
+
+# --- FUNÇÃO: MONITORAR CPU E RAM ---
+verificar_recursos_sistema() {
+    # 1. Verifica Uso Global de CPU (média dos últimos segundos)
+    # Pega o uso de CPU ignorando o 'id' (idle/ocioso)
+    USO_CPU=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}' | cut -d. -f1)
+
+    # 2. Verifica Uso Global de RAM
+    USO_RAM=$(free | grep Mem | awk '{print $3/$2 * 100.0}' | cut -d. -f1)
+
+    # Lógica de Bloqueio e Alerta
+    if [ "$USO_CPU" -gt "$LIMITE_CPU" ] || [ "$USO_RAM" -gt "$LIMITE_RAM" ]; then
+        
+        # Identifica o processo "vilão" (o que está usando mais recursos)
+        VILAO_NOME=$(ps -eo comm,%cpu,%mem --sort=-%cpu | head -n 2 | tail -n 1 | awk '{print $1}')
+        VILAO_PID=$(ps -eo pid,%cpu,%mem --sort=-%cpu | head -n 2 | tail -n 1 | awk '{print $1}')
+        VILAO_CPU=$(ps -eo %cpu --sort=-%cpu | head -n 2 | tail -n 1)
+        VILAO_RAM=$(ps -eo %mem --sort=-%mem | head -n 2 | tail -n 1)
+
+        # AÇÃO: Encerrar o processo culpado para proteger a VPS
+        # Evita matar processos vitais como sshd ou o próprio guardião
+        if [[ "$VILAO_NOME" != "sshd" && "$VILAO_NOME" != "bash" && "$VILAO_NOME" != "guardiao.sh" ]]; then
+            kill -9 "$VILAO_PID"
+            STATUS_ACAO="O processo <b>$VILAO_NOME (PID: $VILAO_PID)</b> foi encerrado para proteger o sistema."
+        else
+            STATUS_ACAO="O processo vilão é vital ($VILAO_NOME) e não foi encerrado automaticamente."
+        fi
+
+        # Envia Alerta ao Telegram
+        if [ ! -f "$ARQUIVO_ALERTA_RECURSOS" ]; then
+            MENSAGEM="⚠️ <b>ALERTA: SOBREUSO DE RECURSOS</b>%0A📊 CPU: <code>$USO_CPU%</code> | RAM: <code>$USO_RAM%</code>%0A🔥 Culpado: <code>$VILAO_NOME</code>%0A📉 Uso do Culpado: CPU $VILAO_CPU% | RAM $VILAO_RAM%%0A%0A🛡️ <b>Ação:</b> $STATUS_ACAO"
+            enviar_alerta "$MENSAGEM"
+            touch "$ARQUIVO_ALERTA_RECURSOS"
+        fi
+    else
+        # Reseta o alerta se os recursos voltarem ao normal
+        [ -f "$ARQUIVO_ALERTA_RECURSOS" ] && rm -f "$ARQUIVO_ALERTA_RECURSOS"
+    fi
+}
+
+# --- LOOP INFINITO DO GUARDIÃO ---
 while true; do
+    verificar_recursos_sistema
     verificar_servicos
-    verificar_banda_mensal
-    rastrear_consumo_clientes
-    # Dorme por 60 segundos antes da próxima checagem
-    sleep 60
+    rastrear_clientes_vpn
+    verificar_cota_vps
+    sleep 30
 done
+
