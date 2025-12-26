@@ -263,40 +263,90 @@ desbanir_ip() {
     echo -e "${AMARELO}---------------------------------------------------------------${NC}"
     sleep 2
 }
+ssh_config() {
+    # Validação de permissão antes de qualquer ação
+    verificar_permissao || return
 
-firewall() {
+    # --- ENVIO DE ALERTA PARA O TELEGRAM ---
+    # Captura dados do acesso
+    IP_USER=$(who am i | awk '{print $NF}' | tr -d '()')
+    DATA_ATUAL=$(date +'%d/%m/%Y')
+    HORA_ATUAL=$(date +'%H:%M:%S')
+
+    # Tenta carregar as credenciais do Telegram
+    [ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
+
+    if [[ ! -z "$TOKEN" ]]; then
+        MENSAGEM="⚠️ <b>ACESSO AO SSH CONFIG</b>%0A<b>Usuário:</b> <code>$USER_REAL</code>%0A<b>IP:</b> <code>$IP_USER</code>%0A<b>Data:</b> $DATA_ATUAL%0A<b>Hora:</b> $HORA_ATUAL%0A%0A<i>Tentativa de alteração das configurações do SSH detectada!</i>"
+        
+        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+             -d chat_id="$ID_CHAT" \
+             -d text="$MENSAGEM" \
+             -d parse_mode="HTML" > /dev/null
+    fi
+
+    # --- INÍCIO DO MENU SSH ---
     while true; do
         clear
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "                ${VERMELHO}🛡️  GESTÃO DE FIREWALL (IP)${NC}"
+        echo -e "                ${VERDE}CONFIGURAÇÃO DE ACESSO SSH${NC}"
+        echo -e "  ADMINISTRADOR ATIVO: ${AMARELO}$ADM_USER${NC}"
         echo -e "${AZUL}===============================================================${NC}"
-        echo -e "  [1] 🚫 Banir IP (Manual/Total)"
-        echo -e "  [2] ✅ Desbanir IP (Manual)"
-        echo -e "  [3] 📋 Listar IPs Bloqueados (IPTables)"
-        echo -e "  [4] 🚨 Monitorar Fail2Ban (Automático)"
-        echo -e "  [5] ⚪ Gerenciar Whitelist (Lista Branca)" # <--- Integrado aqui
-        echo -e "  [6] 🕵️  Diagnóstico de Ataques"
-        echo -e "  [7] ⬅️  Voltar ao Menu Principal"
+        echo -e "  [1] 🚪 Mudar Porta SSH"
+        echo -e "  [2] 👤 Permitir/Bloquear Login Root"
+        echo -e "  [3] 🔑 Password Auth (Senha)"
+        echo -e "  [4] 👢 Desconectar Usuário Ativo"
+        echo -e "  [5] ⬅️  Voltar"
         echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        read -n 1 -p " Escolha uma opção: " OP_FIRE; echo ""
-
-        case $OP_FIRE in
-            1) banir_ip ;;
-            2) desbanir_ip ;;
+        read -n 1 -p " Digite a opção: " OP; echo ""
+        
+        case $OP in
+            1) 
+                read -p " Nova Porta: " NP
+                if [[ "$NP" =~ ^[0-9]+$ ]]; then
+                    ufw allow "$NP"/tcp > /dev/null 2>&1
+                    sed -i "/^Port /d" $SSH_CONF
+                    echo "Port $NP" >> $SSH_CONF
+                    systemctl restart ssh
+                    echo -e "${VERDE}Porta alterada para $NP!${NC}"
+                else
+                    echo -e "${VERMELHO}Porta inválida!${NC}"
+                fi
+                sleep 2 ;;
+            2) 
+                echo -e "[1] Permitir [2] Bloquear"
+                read -n 1 R; echo ""
+                [ "$R" == "1" ] && VAL="yes" || VAL="no"
+                sed -i "/^PermitRootLogin/d" $SSH_CONF
+                echo "PermitRootLogin $VAL" >> $SSH_CONF
+                systemctl restart ssh
+                echo -e "${VERDE}PermitRootLogin definido como: $VAL${NC}"
+                sleep 2 ;;
             3) 
+                echo -e "[1] Ativar [2] Desativar"
+                read -n 1 S; echo ""
+                [ "$S" == "1" ] && VAL="yes" || VAL="no"
+                sed -i "/^PasswordAuthentication/d" $SSH_CONF
+                echo "PasswordAuthentication $VAL" >> $SSH_CONF
+                systemctl restart ssh
+                echo -e "${VERDE}Autenticação por senha: $VAL${NC}"
+                sleep 2 ;;
+            4) 
                 clear
-                echo -e "${VERMELHO}--- IPs BLOQUEADOS NO IPTABLES ---${NC}"
-                sudo iptables -L INPUT -n | grep "DROP"
-                read -p "ENTER para voltar..." d ;;
-            4) monitora_banidos ;;
-            5) gerenciar_whitelist ;; # Chama a função acima
-            6) diagnostico_ataques ;;
-            7) return ;;
-            *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
+                echo -e "${AMARELO}--- USUÁRIOS CONECTADOS ---${NC}"
+                who
+                read -p " Usuário para expulsar: " U
+                if [[ "$U" == "$USER_REAL" ]]; then
+                    echo -e "${VERMELHO}Erro: Você não pode se auto-expulsar!${NC}"
+                else
+                    pkill -u "$U" -9
+                    echo -e "${VERDE}Usuário $U desconectado.${NC}"
+                fi
+                sleep 2 ;;
+            5) break ;;
         esac
     done
 }
-
 
 configurar_telegram() {
     verificar_permissao || return
