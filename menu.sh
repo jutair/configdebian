@@ -84,45 +84,71 @@ dashboard() {
     # Localiza o arquivo de log do OpenVPN dinamicamente
     STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
     STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
+    
+    # Caminhos para logs de atuação
+    LOG_BANS="/etc/vps_protecao/bans.log"
+    LOG_GUARDIAO="/etc/vps_protecao/guardiao_atua.log"
 
     while true; do
+        # --- Configuração de Data e Hora (Manaus) ---
+        # TZ=America/Manaus força o comando date a usar o fuso -4
+        DATA_MANAUS=$(TZ="America/Manaus" date +"%d/%m/%Y %H:%M:%S")
+
+        # --- Coleta de Hardware ---
         CPU=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{printf "%.1f%%", 100 - $1}')
         MEM_TOTAL=$(free -h | awk '/^Mem:/{print $2}')
         MEM_USADA=$(free -h | awk '/^Mem:/{print $3}')
         DISCO_INFO=$(df -h / | awk 'NR==2 {print $3 " / " $2 " (" $5 ")"}')
 
-        VPN_ONLINE=$(grep -E "CLIENT_LIST|Common Name" "$STATUS_LOG" 2>/dev/null | grep -v "HEADER" | grep -cv "Common Name" || echo "0")
+        # --- Coleta de Usuários ---
+        VPN_ONLINE=$(grep -E "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | grep -v "HEADER" | wc -l || echo "0")
         SSH_ONLINE=$(who | wc -l || echo "0")
 
-        # Lógica de Tráfego Mensal (ETH0/VNSTAT)
+        # --- Coleta de Segurança (Firewall e Guardião) ---
+        TOTAL_BANS=$( [ -f "$LOG_BANS" ] && wc -l < "$LOG_BANS" || echo "0" )
+        ATUA_GUARDIAO=$( [ -f "$LOG_GUARDIAO" ] && wc -l < "$LOG_GUARDIAO" || echo "0" )
+
+        # --- Lógica de Tráfego Mensal ---
         IFACE_WEB=$(ip route | grep default | awk '{print $5}' | head -n1)
-        if command -v vnstat &>/dev/null; then
-            TRAFEGO_MES=$(vnstat -i "$IFACE_WEB" --oneline 2>/dev/null | cut -d';' -f11)
-        else
-            TRAFEGO_MES="VnStat não instalado"
-        fi
-        [ -z "$TRAFEGO_MES" ] && TRAFEGO_MES="Coletando..."
+        
+        get_traff() {
+            local iface=$1
+            if command -v vnstat &>/dev/null; then
+                # Pega tráfego do mês atual (TX+RX formatado)
+                vnstat -i "$iface" --oneline | cut -d';' -f11 2>/dev/null || echo "0 MB"
+            else
+                echo "N/A"
+            fi
+        }
+
+        TRAF_MES_ETH=$(get_traff "$IFACE_WEB")
+        TRAF_MES_TUN=$(get_traff "tun0")
 
         clear
         echo -e "${AZUL}===============================================================${NC}"
         echo -e "                    ${VERDE}DASHBOARD VPS PRO${NC}"
+        echo -e "             ${AMARELO}Manaus (AMT): $DATA_MANAUS${NC}"
         echo -e "${AZUL}===============================================================${NC}"
         printf "  %-25s : ${AMARELO}%s${NC}\n" "IP do Servidor" "$IP_SERVIDOR"
         printf "  %-25s : ${AMARELO}%s${NC}\n" "Logado como" "$USER_LOGADO ($IP_CONEXAO)"
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        printf "  %-25s : ${AMARELO}%s${NC}\n" "Consumo de CPU" "$CPU"
+        echo -e "${AZUL}----------------------- RECURSOS ------------------------------${NC}"
+        printf "  %-25s : ${AMARELO}%-10s${NC} | DISCO: ${AMARELO}%s${NC}\n" "CPU" "$CPU" "$DISCO_INFO"
         printf "  %-25s : ${AMARELO}%s / %s${NC}\n" "Memória RAM" "$MEM_USADA" "$MEM_TOTAL"
-        printf "  %-25s : ${AMARELO}%s${NC}\n" "Espaço em Disco" "$DISCO_INFO"
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo -e "${AZUL}----------------------- TRÁFEGO MENSAL ------------------------${NC}"
+        printf "  %-25s : ${VERDE}%-10s${NC} | TUN0: ${VERDE}%s${NC}\n" "Interface ($IFACE_WEB)" "$TRAF_MES_ETH" "$TRAF_MES_TUN"
+        echo -e "${AZUL}----------------------- SEGURANÇA -----------------------------${NC}"
+        printf "  %-25s : ${VERMELHO}%s bans${NC}\n" "Firewall (Bloqueios)" "$TOTAL_BANS"
+        printf "  %-25s : ${AMARELO}%s atuações${NC}\n" "Guardião (Defesas)" "$ATUA_GUARDIAO"
+        echo -e "${AZUL}----------------------- CONEXÕES ------------------------------${NC}"
         printf "  %-25s : ${VERDE}%s online${NC}\n" "Usuários VPN" "$VPN_ONLINE"
         printf "  %-25s : ${VERDE}%s online${NC}\n" "Usuários SSH" "$SSH_ONLINE"
+        
+        echo -e "\n${VERDE}Conexões SSH Ativas:${NC}"
+        who -u | awk '{print " 👤 " $1 "  " $NF}' | sed 's/(//g; s/)//g' | head -n 3
+        
         echo -e "${AZUL}===============================================================${NC}"
+        echo -e "${AMARELO}Pressione 'M' para voltar ao Menu... (Atualizando 5s)${NC}"
         
-        echo -e "${VERDE}Conexões SSH Ativas:${NC}"
-        who -u | awk '{print "👤 " $1 "  " $NF}' | sed 's/(//g; s/)//g'
-        
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        echo -e "${AMARELO}Pressione 'M' para voltar ao Menu...${NC}"
         read -t 5 -n 1 INPUT
         if [[ $INPUT == "m" || $INPUT == "M" ]]; then return; fi
     done
