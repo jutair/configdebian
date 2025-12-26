@@ -1,201 +1,160 @@
 #!/bin/bash
-# ===============================================================
-# open_vpn_conf.sh - Versão "AUID - Absolute User ID"
-# ===============================================================
+# open_vpn_conf.sh - Gestão OpenVPN Blindada (Versão 26/12/2025)
 
+# --- CONFIGURAÇÕES DE IDENTIDADE ---
+DIR_PROT="/etc/vps_protecao"
 DIR_SCRIPTS="/opt/configdebian"
+AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
 
-# --- 1. DETECÇÃO PELO UID DE LOGIN (A prova de falhas) ---
-# O arquivo /proc/self/loginuid guarda o ID de quem iniciou a sessão.
-# Se for 4294967295, significa que não houve login (sessão de sistema).
+# Carrega Administrador Oficial
+[ -f "$DIR_PROT/config.conf" ] && source "$DIR_PROT/config.conf" || ADM_USER="root"
+
+# Detecção AUID (Absolute User ID) para evitar fuga de shell
 AUID=$(cat /proc/self/loginuid 2>/dev/null)
-
 if [ -n "$AUID" ] && [ "$AUID" != "4294967295" ] && [ "$AUID" != "0" ]; then
-    # Converte o ID numérico no nome do usuário
     USER_ATUAL=$(getent passwd "$AUID" | cut -d: -f1)
 else
-    # Se o ID for 0 ou inválido, tentamos o dono da sessão física
-    USER_ATUAL=$(logname 2>/dev/null || echo $SUDO_USER)
+    USER_ATUAL=$(whoami)
 fi
 
-# Fallback final para root
-[ -z "$USER_ATUAL" ] && USER_ATUAL="root"
-
-# Define a pasta de destino
+# Define destinos de arquivos
 if [ "$USER_ATUAL" == "root" ]; then
     DESTINO_USUARIO="/root/clientes_ovp"
 else
     DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
 fi
 
-# --- 2. LOCALIZADOR DE LOG ---
-STATUS_LOG=$(grep -r "status " /etc/openvpn/*.conf /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
-[ -z "$STATUS_LOG" ] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+# --- 🛡️ SEGURANÇA MÁXIMA (ANTI-SHELL) ---
+fechar_sessao_vpn() {
+    if [ "$USER_ATUAL" != "$ADM_USER" ]; then
+        echo -e "\n${VERMELHO}⚠️ SAÍDA BLOQUEADA! Encerrando conexão...${NC}"
+        pkill -u "$USER_ATUAL" -9
+        exit 1
+    fi
+}
+trap fechar_sessao_vpn SIGINT SIGTSTP SIGQUIT
 
-INSTALLER_PATH="$DIR_SCRIPTS/openvpn-install.sh"
-AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
-
-trap '' SIGINT
-
-# --- 3. FUNÇÕES ---
+# --- FUNÇÕES ---
 
 organizar_arquivos() {
     mkdir -p "$DESTINO_USUARIO"
-    find /root /home -maxdepth 2 -name "*.ovpn" -exec mv {} "$DESTINO_USUARIO/" \; 2>/dev/null || true
-    if [ "$USER_ATUAL" != "root" ]; then
-        chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO_USUARIO"
-        chmod -R 755 "$DESTINO_USUARIO"
-    fi
+    # Busca arquivos .ovpn perdidos e move para a pasta do usuário atual
+    find /root /home -maxdepth 2 -name "*.ovpn" -exec mv {} "$DESTINO_USUARIO/" \; 2>/dev/null
+    [ "$USER_ATUAL" != "root" ] && chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO_USUARIO"
 }
 
 listar_online() {
     clear
     echo -e "${AZUL}==========================================================================${NC}"
-    echo -e "              ${VERDE}👥 USUÁRIOS VPN ONLINE${NC}"
+    echo -e "                ${VERDE}👥 USUÁRIOS VPN ONLINE${NC}"
     echo "----------------------------------------------------------------------------"
+    STATUS_LOG=$(grep -r "status " /etc/openvpn/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
+    [ -z "$STATUS_LOG" ] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+
     if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}❌ Log não encontrado.${NC}"; read -p "ENTER..." d; return
+        echo -e "${VERMELHO}❌ Log de status não encontrado.${NC}"; read -p "ENTER..." d; return
     fi
+
     printf "${AZUL}%-18s %-15s %-12s %-12s${NC}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD"
     grep "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | while IFS=',' read -r _ USER IP _ RX TX rest; do
         RX_MB=$(awk -v v="${RX:-0}" 'BEGIN {printf "%.2f", v/1048576}')
         TX_MB=$(awk -v v="${TX:-0}" 'BEGIN {printf "%.2f", v/1048576}')
         printf "👤 %-18s %-15s %-12s %-12s\n" "$USER" "${IP%%:*}" "${RX_MB}MB" "${TX_MB}MB"
     done
-    read -p "ENTER..." d
+    echo -e "${AZUL}----------------------------------------------------------------------------${NC}"
+    read -p " Pressione ENTER para voltar..." d
 }
 
-# ... (início do seu script open_vpn_conf.sh com a detecção de AUID que já funciona)
 listar_arquivos_ovpn() {
     clear
+    organizar_arquivos
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "               ${VERDE}📂 GERENCIADOR DE ARQUIVOS .OVPN${NC}"
+    echo -e "                ${VERDE}📂 DOWNLOAD DE ARQUIVOS .OVPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
 
-    # 1. Configurações de diretório e IP
-    HOME_HUMANA=$(getent passwd "$USER_ATUAL" | cut -d: -f6)
-    PASTA_BUSCA="$HOME_HUMANA/clientes_ovp" # Ajustado para o nome comum
-    IP_SERVIDOR=$(curl -s https://api.ipify.org)
-
-    # 2. Lista os arquivos em array
-    mapfile -t ARQUIVOS < <(ls "$PASTA_BUSCA"/*.ovpn 2>/dev/null)
-
-    if [ ${#ARQUIVOS[@]} -eq 0 ]; then
-        echo -e "${VERMELHO}Nenhum arquivo .ovpn encontrado em: $PASTA_BUSCA${NC}"
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        read -p "Pressione ENTER para voltar..." dummy
-        return
+    IP_SERVIDOR=$(curl -s --max-time 2 ifconfig.me)
+    
+    if [ ! -d "$DESTINO_USUARIO" ] || [ -z "$(ls -A "$DESTINO_USUARIO"/*.ovpn 2>/dev/null)" ]; then
+        echo -e "${VERMELHO}Nenhum arquivo encontrado em: $DESTINO_USUARIO${NC}"
+        read -p "ENTER..." d; return
     fi
 
-    # 3. Exibição em formato de Lista Limpa
-    echo -e "${AMARELO}Arquivos disponíveis na pasta clientes_ovpn:${NC}"
+    echo -e "${AMARELO}Arquivos disponíveis:${NC}"
+    ls "$DESTINO_USUARIO"/*.ovpn | xargs -n 1 basename | sed 's/^/  - /'
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     
-    # Exibe em colunas para economizar espaço
-    printf "${VERDE}%-30s %-30s${NC}\n" "Nome do Arquivo" "Nome do Arquivo"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -p " Digite o nome do arquivo para obter o comando: " BUSCA
+    [ -z "$BUSCA" ] && return
     
-    # Lógica para imprimir dois arquivos por linha
-    for ((i=0; i<${#ARQUIVOS[@]}; i+=2)); do
-        arq1=$(basename "${ARQUIVOS[i]}")
-        arq2=$(basename "${ARQUIVOS[i+1]}")
-        printf "%-30s %-30s\n" "$arq1" "$arq2"
-    done
-
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    ARQ_FINAL=$(ls "$DESTINO_USUARIO"/*"$BUSCA"*.ovpn 2>/dev/null | head -n1)
     
-    # 4. Solicitação de download
-    echo -ne "${AMARELO}Digite o nome do cliente (ou parte dele) para baixar: ${NC}"
-    read CLIENTE_BUSCA
-
-    if [ -z "$CLIENTE_BUSCA" ]; then
-        return
-    fi
-
-    # Busca o arquivo exato correspondente
-    ARQUIVO_FINAL=$(ls "$PASTA_BUSCA"/*"$CLIENTE_BUSCA"*.ovpn 2>/dev/null | head -n 1)
-
-    if [ -z "$ARQUIVO_FINAL" ]; then
-        echo -e "${VERMELHO}Arquivo não encontrado para: $CLIENTE_BUSCA${NC}"
+    if [ -n "$ARQ_FINAL" ]; then
+        echo -e "\n${VERDE}Comando para download (Execute no seu Computador):${NC}"
+        echo -e "${AMARELO}scp $USER_ATUAL@$IP_SERVIDOR:$ARQ_FINAL ./ ${NC}\n"
     else
-        NOME_LIMPO=$(basename "$ARQUIVO_FINAL")
-        echo -e "\n${VERDE}✅ Arquivo selecionado:${NC} $NOME_LIMPO"
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        echo -e "${AMARELO}Copie o comando conforme o seu sistema (execute no seu PC):${NC}"
-        
-        # Comando para Linux/Mac
-        echo -e "\n${VERDE}🐧 Linux / 🍎 Mac:${NC}"
-        echo -e "\033[1;37mscp $USER_REAL@$IP_SERVIDOR:$ARQUIVO_FINAL ~/Downloads/\033[0m"
-        
-        # Comando para Windows
-        echo -e "\n${VERDE}🪟 Windows (PowerShell/CMD):${NC}"
-        echo -e "\033[1;37mscp $USER_REAL@$IP_SERVIDOR:$ARQUIVO_FINAL \$env:USERPROFILE\Downloads\\033[0m"
-        
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo -e "${VERMELHO}Arquivo não encontrado.${NC}"
     fi
-
-    read -p "Pressione ENTER para voltar..." dummy
+    read -p "Pressione ENTER..." d
 }
 
-menu_ovp() {
-    while true; do
-        VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null || echo "0")
-        # Lê o limite atual do script de proteção para mostrar no menu
-        LIMITE_ATUAL=$(grep "LIMITE_GB=" /opt/configdebian/auto_limite.sh | cut -d'=' -f2 || echo "Não definido")
-        
-        clear
-        echo -e "${AZUL}===============================================================${NC}"
-        echo -e "            ${VERDE}GERENCIADOR OPENVPN - LOGADO: $USER_ATUAL${NC}"
-        echo -e "${AZUL}===============================================================${NC}"
-        printf "  ${AZUL}%-15s :${NC} ${VERDE}%s Cliente(s) Online${NC}\n" "STATUS" "$VPN_ONLINE"
-        printf "  ${AZUL}%-15s :${NC} ${VERMELHO}%s GB${NC}\n" "LIMITE ATUAL" "$LIMITE_ATUAL"
-        echo -e "${AZUL}===============================================================${NC}"
-        echo -e "  [1] 👤 Criar / Remover Usuários"
-        echo -e "  [2] 📂 Baixar arquivo do cliente .ovpn"
-        echo -e "  [3] 📊 Ver Detalhes dos Online"
-        echo -e "  [4] ⚡ Testar Velocidade"
-        echo -e "  [5] 📈 Consumo de Banda"
-        echo -e "  [6] 🛡️  Definir Limite de Tráfego (Auto-Kill)"
-        echo -e "  [7] ⬅️  Retornar ao Menu Principal"
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        read -n 1 -p "Opção: " OPCAO; echo ""
-        
-        case $OPCAO in
-            1) if [ -f "$INSTALLER_PATH" ]; then bash "$INSTALLER_PATH" interactive; organizar_arquivos; else echo "Erro!"; sleep 2; fi ;;
-            2) listar_arquivos_ovpn ;;
-            3) listar_online ;;
-            4) clear; speedtest-cli --share; read -p "ENTER..." d ;;
-            5) clear; vnstat -d; read -p "ENTER..." d ;;
-            6) 
-                clear
-                echo -e "${AMARELO}Configuração de Proteção de Tráfego${NC}"
-                read -p "Digite o limite máximo mensal desejado (em GB): " NOVO_LIMITE
-                # Verifica se é um número
-                if [[ $NOVO_LIMITE =~ ^[0-9]+$ ]]; then
-                    # Sobrescreve ou cria o script de monitoramento
+# --- MENU PRINCIPAL ---
+
+while true; do
+    # Verifica online
+    STATUS_LOG_OVP="/etc/openvpn/server/openvpn-status.log"
+    VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG_OVP" 2>/dev/null || echo "0")
+    
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "            ${VERDE}GERENCIADOR OPENVPN - $USER_ATUAL${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "  ${AZUL}STATUS ONLINE :${NC} ${VERDE}$VPN_ONLINE Clientes${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "  [1] 👤 Criar / Remover Usuários (Script Externo)"
+    echo -e "  [2] 📂 Baixar arquivo .ovpn (Comando SCP)"
+    echo -e "  [3] 📊 Ver Detalhes dos Online"
+    echo -e "  [4] ⚡ Testar Velocidade"
+    echo -e "  [5] 📉 Consumo de Banda (VnStat)"
+    echo -e "  [6] 🛡️  Definir Auto-Kill por Tráfego"
+    echo -e "  [7] ⬅️  Retornar ao Menu Principal"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    read -n 1 -p " Escolha: " OP; echo ""
+    case $OP in
+        1) 
+            if [ -f "$DIR_SCRIPTS/openvpn-install.sh" ]; then
+                bash "$DIR_SCRIPTS/openvpn-install.sh"
+                organizar_arquivos
+            else
+                echo -e "${VERMELHO}Instalador não encontrado!${NC}"; sleep 2
+            fi ;;
+        2) listar_arquivos_ovpn ;;
+        3) listar_online ;;
+        4) clear; speedtest-cli; read -p "ENTER..." d ;;
+        5) clear; vnstat -d; read -p "ENTER..." d ;;
+        6) 
+            # Somente Admin pode configurar o limite de tráfego
+            if [ "$USER_ATUAL" == "$ADM_USER" ]; then
+                read -p "Limite Mensal em GB: " LIM
+                if [[ $LIM =~ ^[0-9]+$ ]]; then
+                    # Grava o script de limite dinâmico
                     cat <<EOF > /opt/configdebian/auto_limite.sh
 #!/bin/bash
-LIMITE_GB=$NOVO_LIMITE
-IFACE_WEB=\$(ip route | grep default | awk '{print \$5}' | head -n1)
-CONSUMO_ATUAL=\$(vnstat -i \$IFACE_WEB --oneline | cut -d';' -f11 | sed 's/ GB//' | cut -d'.' -f1)
-
-if [ -n "\$CONSUMO_ATUAL" ] && [ "\$CONSUMO_ATUAL" -ge "\$LIMITE_GB" ]; then
-    systemctl stop openvpn
+# Monitor de tráfego OpenVPN
+CONSUMO=\$(vnstat --oneline | cut -d';' -f11 | sed 's/ GB//' | cut -d'.' -f1)
+if [ "\$CONSUMO" -ge "$LIM" ]; then
     systemctl stop openvpn-server@server
     ufw deny 1194/udp
 fi
 EOF
                     chmod +x /opt/configdebian/auto_limite.sh
-                    echo -e "${VERDE}Sucesso! Limite de $NOVO_LIMITE GB aplicado.${NC}"
-                else
-                    echo -e "${VERMELHO}Erro: Digite apenas números.${NC}"
+                    echo -e "${VERDE}Limite de $LIM GB configurado!${NC}"
                 fi
-                sleep 2
-                ;;
-            7) return 0 ;;
-            *) echo -e "${VERMELHO}Inválido!${NC}"; sleep 1 ;;
-        esac
-    done
-}
-
-menu_ovp
+            else
+                echo -e "${VERMELHO}Ação permitida apenas para $ADM_USER${NC}"
+            fi
+            sleep 2 ;;
+        7) exit 0 ;;
+        *) sleep 1 ;;
+    esac
+done
