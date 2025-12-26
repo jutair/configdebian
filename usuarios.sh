@@ -20,22 +20,34 @@ fi
 trap '' SIGINT SIGTSTP
 
 ############################ FUNÇÕES DE VALIDAÇÃO ############################
-
 verificar_admin() {
-    if [[ "$USER_ATUAL" != "$ADM_USER" ]]; then
+    # Captura dados de quem está tentando acessar
+    IP_USER=$(who am i | awk '{print $NF}' | tr -d '()')
+    DATA_ATUAL=$(date +'%d/%m/%Y')
+    HORA_ATUAL=$(date +'%H:%M:%S')
+
+    if [[ "$USER_REAL" != "$ADM_USER" ]]; then
+        clear
         echo -e "${VERMELHO}❌ AÇÃO NEGADA! Apenas o administrador '$ADM_USER' tem permissão.${NC}"
+        
+        # Tenta carregar as credenciais do Telegram se o arquivo existir
+        [ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
+
         if [[ -n "$TOKEN" && "$TOKEN" != "NAO_DEFINIDO" ]]; then
-            MENSAGEM="⚠️ <b>ALERTA DE SEGURANÇA:</b>%0AO usuário <code>$USER_ATUAL</code> tentou executar uma função restrita ao Admin!"
-            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+            MENSAGEM="⚠️ <b>Houve uma tentativa de alterar acesso de usuários do sistema!</b>%0A%0A<b>Usuário:</b> <code>$USER_REAL</code>%0A<b>Ip do usuário:</b> <code>$IP_USER</code>%0A<b>Data:</b> $DATA_ATUAL%0A<b>Hora:</b> $HORA_ATUAL"
+            
+            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+                 -d chat_id="$ID_CHAT" \
+                 -d text="$MENSAGEM" \
+                 -d parse_mode="HTML" > /dev/null
         fi
-        sleep 2
+        
+        sleep 3
         return 1
     fi
     return 0
 }
-
 ############################ FUNÇÕES DE GESTÃO ############################
-
 listar_usuarios_cadastrados() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
