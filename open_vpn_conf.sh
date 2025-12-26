@@ -425,7 +425,7 @@ while true; do
         5) configurar_servidor_vpn ;;
         6) listar_arquivos_ovpn ;;
         7) enviar_ovpn_telegram_manual ;;
-        8) enviar_ovpn_telegram_manual ;;
+        8) gerenciar_banda ;;
         0) exit 0 ;;
         *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
