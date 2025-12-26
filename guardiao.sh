@@ -36,35 +36,41 @@ rastrear_clientes_vpn() {
     [ ! -f "$STATUS_LOG" ] && return
 
     grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r \
-        TIPO NOME IP_REAL IP_VPN BYTES_RECV BYTES_SENT CONECTADO RESTO; do
+    TIPO \
+    NOME \
+    IP_REAL \
+    IP_VPN \
+    CAMPO_VAZIO \
+    BYTES_RECV \
+    BYTES_SENT \
+    DATA_CONEXAO \
+    TIMESTAMP \
+    RESTO
+    do
+        [[ -z "$NOME" || "$NOME" == "Common Name" ]] && continue
 
-        # Ignora cabeçalho
-        [[ "$NOME" == "Common Name" || -z "$NOME" ]] && continue
+        ARQ_HIST="$PASTA_LOGS/${NOME}_${MES_ATUAL}.log"
+        ARQ_SESS="/tmp/${NOME}_last_session.tmp"
 
-        ARQUIVO_HISTORICO="$PASTA_LOGS/${NOME}_${MES_ATUAL}.log"
-        ARQUIVO_SESSAO="/tmp/${NOME}_last_session.tmp"
+        RECV=${BYTES_RECV:-0}
+        SENT=${BYTES_SENT:-0}
 
-        # Garante arquivos
-        [ ! -f "$ARQUIVO_HISTORICO" ] && echo "0 0" > "$ARQUIVO_HISTORICO"
-        [ ! -f "$ARQUIVO_SESSAO" ] && echo "0 0" > "$ARQUIVO_SESSAO"
+        [ ! -f "$ARQ_HIST" ] && echo "0 0" > "$ARQ_HIST"
+        [ ! -f "$ARQ_SESS" ] && echo "0 0" > "$ARQ_SESS"
 
-        read -r ACC_RECV ACC_SENT < "$ARQUIVO_HISTORICO"
-        read -r LAST_RECV LAST_SENT < "$ARQUIVO_SESSAO"
+        read -r ACC_RECV ACC_SENT < "$ARQ_HIST"
+        read -r LAST_RECV LAST_SENT < "$ARQ_SESS"
 
-        # Trata reconexão
-        if (( BYTES_RECV < LAST_RECV )); then
-            DIFF_RECV=$BYTES_RECV
-            DIFF_SENT=$BYTES_SENT
+        if [ "$RECV" -lt "$LAST_RECV" ]; then
+            DIFF_RECV=$RECV
+            DIFF_SENT=$SENT
         else
-            DIFF_RECV=$((BYTES_RECV - LAST_RECV))
-            DIFF_SENT=$((BYTES_SENT - LAST_SENT))
+            DIFF_RECV=$((RECV - LAST_RECV))
+            DIFF_SENT=$((SENT - LAST_SENT))
         fi
 
-        NOVO_ACC_RECV=$((ACC_RECV + DIFF_RECV))
-        NOVO_ACC_SENT=$((ACC_SENT + DIFF_SENT))
-
-        echo "$NOVO_ACC_RECV $NOVO_ACC_SENT" > "$ARQUIVO_HISTORICO"
-        echo "$BYTES_RECV $BYTES_SENT" > "$ARQUIVO_SESSAO"
+        echo "$((ACC_RECV + DIFF_RECV)) $((ACC_SENT + DIFF_SENT))" > "$ARQ_HIST"
+        echo "$RECV $SENT" > "$ARQ_SESS"
     done
 }
 
