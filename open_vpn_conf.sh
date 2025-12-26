@@ -343,6 +343,16 @@ relatorio_consumo_acumulado() {
     clear
     PASTA_DB="/etc/vps_protecao/consumo_clientes"
     MES_ATUAL=$(date +'%m-%Y')
+    # Dentro da função relatorio_consumo_detalhado
+    read -r BRECV BSENT < "$arq"
+    
+    # Inverte SENT e RECV para a perspectiva do CLIENTE:
+    # SENT do servidor = DOWNLOAD do cliente
+    # RECV no servidor = UPLOAD do cliente
+    DOWNLOAD_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
+    UPLOAD_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
+    
+    printf "%-18s %-15s %-15s\n" "$NOME" "$DOWNLOAD_H" "$UPLOAD_H"
 
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "              ${VERDE}RELATÓRIO DE CONSUMO MENSAL ($MES_ATUAL)${NC}"
@@ -367,11 +377,20 @@ relatorio_consumo_acumulado() {
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
 }
+
 relatorio_consumo_detalhado() {
     clear
     PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
     MES_ATUAL=$(date +'%m-%Y')
     ARQUIVO_CSV="/tmp/consumo_${MES_ATUAL}.csv"
+    
+    # Cores para o layout
+    local CYAN='\033[0;36m'
+    local GOLD='\033[1;33m'
+    local VERDE='\033[0;32m'
+    local AMARELO='\033[1;33m'
+    local VERMELHO='\033[0;31m'
+    local NC='\033[0m'
     
     # Carrega configurações do Telegram
     [ -f "/etc/vps_protecao/telegram.conf" ] && source "/etc/vps_protecao/telegram.conf"
@@ -382,26 +401,33 @@ relatorio_consumo_detalhado() {
     printf "${GOLD}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
     echo -e "${CYAN}---------------------------------------------------------------${NC}"
 
+    # Cabeçalho do CSV
     echo "Cliente,Download (Bytes),Upload (Bytes),Download (Formatado),Upload (Formatado)" > "$ARQUIVO_CSV"
 
-    # Ativa nullglob para evitar erro se a pasta estiver vazia
+    # shopt evita erros se não houver arquivos .log na pasta
     shopt -s nullglob
     for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
+        # Extrai o nome do cliente do nome do arquivo
         NOME=$(basename "$arq" | cut -d'_' -f1)
         
-        # Lê os valores ACUMULADOS pelo novo Guardião
+        # Lê os valores ACUMULADOS (Gerados pelo script Guardião)
+        # Formato esperado no arquivo: "RECEBIDOS ENVIADOS"
         read -r BRECV BSENT < "$arq"
         
-        # Garante que são números
+        # Validação para garantir que são números e evitar erros no awk
         [[ ! "$BRECV" =~ ^[0-9]+$ ]] && BRECV=0
         [[ ! "$BSENT" =~ ^[0-9]+$ ]] && BSENT=0
 
-        # Formatação (Calculando sobre o acumulado total)
-        # Invertemos RECV/SENT para bater com a visão do cliente (Download/Upload)
+        # --- LÓGICA DE PERSPECTIVA DO CLIENTE ---
+        # SENT (Enviado pelo servidor) = DOWNLOAD do cliente
+        # RECV (Recebido pelo servidor) = UPLOAD do cliente
         DOWNLOAD_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
         UPLOAD_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
         
+        # Exibição formatada no terminal
         printf "%-18s %-15s %-15s\n" "$NOME" "$DOWNLOAD_H" "$UPLOAD_H"
+        
+        # Alimenta o arquivo CSV (usando a mesma lógica de Download/Upload)
         echo "$NOME,$BSENT,$BRECV,$DOWNLOAD_H,$UPLOAD_H" >> "$ARQUIVO_CSV"
     done
     shopt -u nullglob
@@ -409,26 +435,33 @@ relatorio_consumo_detalhado() {
     echo -e "${CYAN}---------------------------------------------------------------${NC}"
     echo -e "  [1] 📥 Baixar CSV | [2] 📤 Telegram | [0] ⬅️ Voltar"
     echo -e "${CYAN}---------------------------------------------------------------${NC}"
-    read -n 1 -p " Escolha: " OP_REL; echo ""
+    read -n 1 -p " Escolha uma ação: " OP_REL; echo ""
 
     case $OP_REL in
         1)
             DESTINO="$HOME/consumo_${MES_ATUAL}.csv"
             cp "$ARQUIVO_CSV" "$DESTINO"
-            echo -e "${VERDE}✅ Salvo em: ${AMARELO}$DESTINO${NC}"; read -p "Enter..." ;;
+            echo -e "${VERDE}✅ Relatório salvo em: ${AMARELO}$DESTINO${NC}"
+            read -p "Pressione ENTER para continuar..."
+            ;;
         2)
             if [[ -n "$TOKEN" && -n "$ID_CHAT" ]]; then
+                echo -e "${AMARELO}Enviando relatório ao Telegram...${NC}"
                 curl -s -F chat_id="$ID_CHAT" -F document=@"$ARQUIVO_CSV" \
-                     -F caption="📊 Relatório VPN - $MES_ATUAL" \
+                     -F caption="📊 Relatório VPN - Mês: $MES_ATUAL" \
                      "https://api.telegram.org/bot$TOKEN/sendDocument" > /dev/null
-                echo -e "${VERDE}✅ Enviado!${NC}"
+                echo -e "${VERDE}✅ Relatório enviado com sucesso!${NC}"
             else
-                echo -e "${VERMELHO}❌ Configuração Telegram ausente.${NC}"
+                echo -e "${VERMELHO}❌ Erro: Token ou ID do Telegram não configurados.${NC}"
             fi
-            read -p "Enter..." ;;
+            read -p "Pressione ENTER para continuar..."
+            ;;
+        *)
+            return
+            ;;
     esac
 }
-# --- FUNÇÃO: GERENCIAMENTO DE BANDA ---
+
 gerenciar_banda() {
     clear
     # Detecta a interface de rede principal (ex: eth0 ou ens3)
