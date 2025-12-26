@@ -1,6 +1,20 @@
 #!/bin/bash
 # backup_geral.sh - Central de Backup e Restauração Blindada
+VERMELHO='\033[0;31m'; AMARELO='\033[1;33m'; NC='\033[0m'
 
+# --- 🛡️ VERIFICAÇÃO E AUTO-ELEVAÇÃO PARA SUDO ---
+if [[ $EUID -ne 0 ]]; then
+    if sudo -n true 2>/dev/null; then
+        exec sudo -E "$0" "$@"
+    else
+        echo -e "${AMARELO}🔐 Este script precisa de privilégios de ROOT.${NC}"
+        exec sudo -E "$0" "$@"
+    fi
+    exit
+fi
+
+# --- RESTO DO CÓDIGO ---
+echo "Agora eu tenho certeza que sou ROOT!"
 # --- CONFIGURAÇÕES DE IDENTIDADE E CORES ---
 DIR_PROT="/etc/vps_protecao"
 AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
