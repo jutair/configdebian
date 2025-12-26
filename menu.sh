@@ -142,7 +142,7 @@ while true; do
     echo -e "  [4] 👤 Gerenciar Usuários (SSH/Samba)"
     echo -e "  [5] 🆙 Atualizar Sistema / Painel"
     echo -e "  [6] 💾 Backup e Restauração"
-    echo -e "  [8] 🛠️  MODO MANUTENÇÃO (Admin)"
+    echo -e "  [8] 🛠️  Manutenção (Admin)"
     echo -e "  [0] ❌ Sair"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Escolha uma opção: " OPCAO
