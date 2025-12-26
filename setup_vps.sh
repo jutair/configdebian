@@ -147,7 +147,11 @@ echo "$ADM_USER       hard    nproc           unlimited" >> /etc/security/limits
 if ! grep -q "pam_limits.so" /etc/pam.d/common-session; then
     echo "session required pam_limits.so" >> /etc/pam.d/common-session
 fi
-
+# Adicionado a tun0 no monitoramente do vnstat
+if ip link show tun0 > /dev/null 2>&1; then
+    vnstat -i tun0 --add
+    systemctl restart vnstat
+fi
 # --- 8. INICIALIZAÇÃO DO GUARDIÃO ---
 echo -e "${AMARELO}🚀 Ativando Guardião...${NC}"
 pkill -f "guardiao.sh" > /dev/null 2>&1 || true
