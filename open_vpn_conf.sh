@@ -285,9 +285,16 @@ enviar_ovpn_telegram_manual() {
 # --- MENU LOCAL ---
 listar_usuarios_online() {
     clear
-    # Busca o caminho do log na configuração
-    STATUS_LOG=$(grep -E "^status " /etc/openvpn/server.conf | awk '{print $2}')
-    [ -z "$STATUS_LOG" ] && STATUS_LOG=$(grep -E "^status " /etc/openvpn/server/server.conf | awk '{print $2}')
+    # 1. Localiza o log de forma silenciosa
+    STATUS_LOG=""
+    # Tenta caminhos comuns, jogando erros para o limbo (2>/dev/null)
+    if [ -f "/etc/openvpn/server.conf" ]; then
+        STATUS_LOG=$(grep -E "^status " /etc/openvpn/server.conf 2>/dev/null | awk '{print $2}')
+    elif [ -f "/etc/openvpn/server/server.conf" ]; then
+        STATUS_LOG=$(grep -E "^status " /etc/openvpn/server/server.conf 2>/dev/null | awk '{print $2}')
+    fi
+
+    # Se não encontrou no config, define o padrão absoluto
     [[ -z "$STATUS_LOG" ]] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
 
     echo -e "${AZUL}===============================================================${NC}"
@@ -296,24 +303,29 @@ listar_usuarios_online() {
 
     if [ ! -f "$STATUS_LOG" ]; then
         echo -e "${VERMELHO}Erro: Arquivo de status não encontrado!${NC}"
+        echo -e "Caminho esperado: $STATUS_LOG"
         read -p "Pressione ENTER..." ; return
     fi
 
     printf "${AMARELO}%-15s %-18s %-12s %-10s${NC}\n" "USUÁRIO" "IP REAL" "RECEBIDO" "ENVIADO"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    # Contador de usuários reais
     local TOTAL_CON=0
 
-    # Filtramos apenas linhas que começam com CLIENT_LIST e ignoramos o HEADER
+    # 2. Processamento robusto do log
     while IFS=',' read -r TIPO NOME IP_PORTA REAL_IP RECV SENT DATA_RAW; do
+        # Filtra apenas linhas de clientes e garante que RECV/SENT sejam números
         if [[ "$TIPO" == "CLIENT_LIST" && "$NOME" != "Common Name" ]]; then
             
-            # Cálculo seguro de MB usando awk sem regex complexa
-            RECV_MB=$(awk "BEGIN {printf \"%.2f\", $RECV / 1048576}")
-            SENT_MB=$(awk "BEGIN {printf \"%.2f\", $SENT / 1048576}")
+            # Garante que se RECV ou SENT estiverem vazios, virem 0 para não quebrar o awk
+            [[ -z "$RECV" || "$RECV" == " " ]] && RECV=0
+            [[ -z "$SENT" || "$SENT" == " " ]] && SENT=0
+
+            # Cálculo de MB (usando printf do awk para evitar runaway regex)
+            RECV_MB=$(awk "BEGIN { printf \"%.2f\", $RECV / 1048576 }")
+            SENT_MB=$(awk "BEGIN { printf \"%.2f\", $SENT / 1048576 }")
             
-            # Limpa a porta do IP (ex: 1.2.3.4:5678 -> 1.2.3.4)
+            # Limpa a porta do IP
             IP_LMP=$(echo "$IP_PORTA" | cut -d: -f1)
 
             printf "%-15s %-18s %-12s %-10s\n" "$NOME" "$IP_LMP" "${RECV_MB}MB" "${SENT_MB}MB"
