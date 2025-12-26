@@ -332,10 +332,10 @@ gerenciar_banda() {
     INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
     # Garante que a variável não seja vazia (fallback para eth0)
     [[ -z "$INTERFACE_PRINCIPAL" ]] && INTERFACE_PRINCIPAL="eth0"
+    
     # Definições de caminhos
     PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
     MES_ATUAL=$(date +'%m-%Y')
-    INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
 
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                ${VERDE}📊 GERENCIAMENTO DE BANDA${NC}"
@@ -358,35 +358,22 @@ gerenciar_banda() {
             ;;
         2) vnstat -d; read -p "Pressione ENTER..." ;;
         3) vnstat -m; read -p "Pressione ENTER..." ;;
-        4) listar_usuarios_online ;; # Chama a função que já criamos
+        4) listar_usuarios_online ;; 
         5)
-            5)
             clear
-            # 1. Verifica se as dependências estão instaladas
             if ! command -v jq &>/dev/null || ! command -v bc &>/dev/null; then
-                echo -e "${VERMELHO}Erro: jq ou bc não instalados. Rode o setup_vps.sh novamente.${NC}"
+                echo -e "${VERMELHO}Erro: jq ou bc não instalados.${NC}"
                 read -p "Pressione ENTER..."; return
             fi
 
-            # 2. Garante que a interface principal está definida
-            INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
-            [[ -z "$INTERFACE_PRINCIPAL" ]] && INTERFACE_PRINCIPAL="eth0"
-
-            # 3. Captura o JSON com tratamento de erro
             DATA_JSON=$(vnstat --json m 2>/dev/null)
-            
-            # 4. Extrai RX e TX com tratamento para valores nulos
             RX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0].rx" 2>/dev/null)
             TX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0].tx" 2>/dev/null)
             
-            # Converte 'null' ou vazio para 0 para não quebrar o cálculo matemático
             [[ "$RX" == "null" || -z "$RX" ]] && RX=0
             [[ "$TX" == "null" || -z "$TX" ]] && TX=0
 
-            # 5. Cálculo do Total em GB (scale=2 garante as casas decimais)
             TOTAL_GB=$(echo "scale=2; ($RX + $TX) / 1024 / 1024 / 1024" | bc -l)
-            
-            # Se o resultado começar com ponto (.50), adiciona o zero (0.50)
             [[ "$TOTAL_GB" == .* ]] && TOTAL_GB="0$TOTAL_GB"
             TOTAL_GB_FORMAT=$(printf "%.2f" "$TOTAL_GB")
             
@@ -395,7 +382,6 @@ gerenciar_banda() {
             echo -e "${AZUL}===============================================================${NC}"
             echo -e " Interface: $INTERFACE_PRINCIPAL | Consumo: ${AMARELO}$TOTAL_GB_FORMAT GB${NC}"
             
-            # 6. Cálculo de porcentagem (usa a parte inteira para a barra)
             INT_GB=$(echo "$TOTAL_GB / 1" | bc 2>/dev/null || echo 0)
             PORC=$(( INT_GB * 100 / 900 ))
             
@@ -416,13 +402,11 @@ gerenciar_banda() {
             printf "${AMARELO}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
             echo -e "${AZUL}---------------------------------------------------------------${NC}"
             
-            # Busca arquivos criados pelo Guardião
             for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
                 if [ -f "$arq" ]; then
                     NOME=$(basename "$arq" | cut -d'_' -f1)
-                    read -r BRECV BSENT DATA_ULT < "$arq"
+                    read -r BRECV BSENT < "$arq"
                     
-                    # Conversão humana
                     RECV_H=$(awk "BEGIN {if ($BRECV>1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576}")
                     SENT_H=$(awk "BEGIN {if ($BSENT>1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576}")
                     
