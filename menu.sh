@@ -141,7 +141,19 @@ dashboard() {
         echo -e "${CYAN}├──────────────┴──────────────────────────────┴───────────────┤${NC}"
         
         # Sessões SSH
-        printf "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CY
+        printf "${CYAN}│${NC}  ${GOLD}🔌 SESSÕES SSH ATIVAS:${NC}                                     ${CYAN}│${NC}\n"
+        while read -r line; do
+            [ -z "$line" ] && continue
+            printf "${CYAN}│${NC}  • %-54s ${CYAN}│${NC}\n" "$line"
+        done < <(who -u | awk '{print $1 " " $NF}' | sed 's/(//g; s/)//g' | head -n 3)
+        
+        echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
+        echo -e " ${AMARELO}>> Pressione [M] p/ Menu | Atualizando em 5s...${NC}"
+        
+        read -t 5 -n 1 INPUT
+        [[ $INPUT == "m" || $INPUT == "M" ]] && break
+    done
+}
 # --- MENU PRINCIPAL ---
 while true; do
     clear
