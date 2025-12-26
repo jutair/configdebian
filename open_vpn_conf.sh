@@ -1,175 +1,166 @@
 #!/bin/bash
-# open_vpn_conf.sh - Gestão OpenVPN Blindada (Versão 26/12/2025)
 
-# --- CONFIGURAÇÕES DE IDENTIDADE ---
-DIR_PROT="/etc/vps_protecao"
-DIR_SCRIPTS="/opt/configdebian"
+# --- CONFIGURAÇÕES DE AMBIENTE ---
+DIR_OVPN="/etc/openvpn/server"
+DIR_CLIENTES="/root/usuarios_vpn"
+ADMIN_CONF="/etc/vps_protecao/admin.conf"
+TELEGRAM_CONF="/etc/vps_protecao/telegram.conf"
 AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31m'; NC='\033[0m'
 
-# --- 1. VERIFICAÇÃO DE ROOT AMIGÁVEL AO SUDO ---
-if [[ $EUID -ne 0 ]]; then
-    echo -e "${VERMELHO}❌ Erro: Este script exige privilégios administrativos.${NC}"
-    echo -e "${AMARELO}O menu deve chamá-lo com 'sudo -E'.${NC}"
-    sleep 2
-    exit 1
-fi
+# Cria o diretório de backup dos arquivos .ovpn se não existir
+mkdir -p "$DIR_CLIENTES"
 
-# 2. Carrega Administrador Oficial
-[ -f "$DIR_PROT/config.conf" ] && source "$DIR_PROT/config.conf" || ADM_USER="root"
-
-# 3. Detecção AUID
-AUID=$(cat /proc/self/loginuid 2>/dev/null)
-if [ -n "$AUID" ] && [ "$AUID" != "4294967295" ] && [ "$AUID" != "0" ]; then
-    USER_ATUAL=$(getent passwd "$AUID" | cut -d: -f1)
-else
-    USER_ATUAL=$(whoami)
-fi
-
-# Define destinos
-if [ "$USER_ATUAL" == "root" ]; then
-    DESTINO_USUARIO="/root/clientes_ovp"
-else
-    DESTINO_USUARIO="/home/$USER_ATUAL/clientes_ovp"
-fi
-
-# --- 🛡️ SEGURANÇA MÁXIMA ---
-fechar_sessao_vpn() {
-    if [[ "$USER_ATUAL" != "$ADM_USER" && "$USER_ATUAL" != "root" ]]; then
-        echo -e "\n${VERMELHO}⚠️ SAÍDA BLOQUEADA! Encerrando conexão...${NC}"
-        pkill -u "$USER_ATUAL" -9
-        exit 1
-    fi
-}
-trap fechar_sessao_vpn SIGINT SIGTSTP SIGQUIT
-
-# --- FUNÇÕES ---
-
-organizar_arquivos() {
-    mkdir -p "$DESTINO_USUARIO"
-    find /root /home -maxdepth 2 -name "*.ovpn" -exec mv {} "$DESTINO_USUARIO/" \; 2>/dev/null
-    if [ "$USER_ATUAL" != "root" ]; then
-        chown -R "$USER_ATUAL:$USER_ATUAL" "$DESTINO_USUARIO"
-        chmod -R 755 "$DESTINO_USUARIO"
-    fi
-}
-
-listar_online() {
-    clear
-    echo -e "${AZUL}==========================================================================${NC}"
-    echo -e "                ${VERDE}👥 USUÁRIOS VPN ONLINE${NC}"
-    echo "----------------------------------------------------------------------------"
-    STATUS_LOG=$(grep -r "status " /etc/openvpn/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
-    [ -z "$STATUS_LOG" ] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
-
-    if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}❌ Log de status não encontrado.${NC}"; read -p "ENTER..." d; return
-    fi
-
-    printf "${AZUL}%-18s %-15s %-12s %-12s${NC}\n" "USUÁRIO" "IP REAL" "DOWNLOAD" "UPLOAD"
-    grep "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | while IFS=',' read -r _ USER IP _ RX TX rest; do
-        RX_MB=$(awk -v v="${RX:-0}" 'BEGIN {printf "%.2f", v/1048576}')
-        TX_MB=$(awk -v v="${TX:-0}" 'BEGIN {printf "%.2f", v/1048576}')
-        printf "👤 %-18s %-15s %-12s %-12s\n" "$USER" "${IP%%:*}" "${RX_MB}MB" "${TX_MB}MB"
-    done
-    echo -e "${AZUL}----------------------------------------------------------------------------${NC}"
-    read -p " Pressione ENTER para voltar..." d
-}
-
-listar_arquivos_ovpn() {
-    clear
-    organizar_arquivos
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}📂 DOWNLOAD DE ARQUIVOS .OVPN${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    IP_SERVIDOR=$(curl -s --max-time 2 ifconfig.me)
-    if [ ! -d "$DESTINO_USUARIO" ] || [ -z "$(ls -A "$DESTINO_USUARIO"/*.ovpn 2>/dev/null)" ]; then
-        echo -e "${VERMELHO}Nenhum arquivo encontrado em: $DESTINO_USUARIO${NC}"
-        read -p "ENTER..." d; return
-    fi
-    echo -e "${AMARELO}Arquivos disponíveis para download:${NC}"
-    ls "$DESTINO_USUARIO"/*.ovpn | xargs -n 1 basename | sed 's/^/  - /'
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    read -p " Digite o nome do arquivo para obter o comando: " BUSCA
-    [ -z "$BUSCA" ] && return
-    ARQ_FINAL=$(ls "$DESTINO_USUARIO"/*"$BUSCA"*.ovpn 2>/dev/null | head -n1)
-    if [ -n "$ARQ_FINAL" ]; then
-        echo -e "\n${VERDE}Comando para download:${NC}"
-        echo -e "${AMARELO}scp $USER_ATUAL@$IP_SERVIDOR:$ARQ_FINAL ./ ${NC}\n"
-    else
-        echo -e "${VERMELHO}Arquivo não encontrado.${NC}"
-    fi
-    read -p "Pressione ENTER..." d
-}
-
-# --- MENU PRINCIPAL ---
-
-while true; do
-    # Contador de usuários conectados
-    STATUS_LOG_OVP="/etc/openvpn/server/openvpn-status.log"
-    VPN_ONLINE=$(grep -c "^CLIENT_LIST" "$STATUS_LOG_OVP" 2>/dev/null || echo "0")
+# --- FUNÇÃO: ENVIAR TELEGRAM ---
+enviar_telegram() {
+    local ARQUIVO=$1
+    local NOME_USER=$2
     
+    if [ -f "$TELEGRAM_CONF" ]; then
+        source "$TELEGRAM_CONF"
+        if [[ -n "$TOKEN" && -f "$ARQUIVO" ]]; then
+            # Mensagem de texto formatada
+            MENSAGEM="✅ <b>NOVO USUÁRIO VPN GERADO</b>%0A👤 Nome: <code>$NOME_USER</code>%0A📅 Data: $(date +'%d/%m/%Y')%0A⏰ Hora: $(date +'%H:%M:%S')"
+            
+            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+                -d chat_id="$ID_CHAT" \
+                -d text="$MENSAGEM" \
+                -d parse_mode="HTML" > /dev/null
+            
+            # Envio do arquivo .ovpn
+            curl -s -F chat_id="$ID_CHAT" \
+                -F document=@"$ARQUIVO" \
+                "https://api.telegram.org/bot$TOKEN/sendDocument" > /dev/null
+        fi
+    fi
+}
+
+# --- FUNÇÃO: CONFIGURAR SERVIDOR ---
+configurar_servidor_vpn() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "            ${VERDE}GERENCIADOR OPENVPN - $USER_ATUAL${NC}"
+    echo -e "              ${VERDE}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  ${AZUL}STATUS ONLINE :${NC} ${VERDE}$VPN_ONLINE Clientes${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] 👤 Criar / Remover Usuários"
-    echo -e "  [2] 📂 Baixar arquivo .ovpn (Comando SCP)"
-    echo -e "  [3] 📊 Ver Detalhes dos Online"
-    echo -e "  [4] ⚡ Testar Velocidade"
-    echo -e "  [5] 📉 Consumo de Banda (VnStat)"
-    echo -e "  [6] 🛡️  Definir Auto-Kill por Tráfego"
-    echo -e "  [7] ⬅️  Retornar ao Menu Principal"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
-    read -n 1 -p " Escolha: " OP; echo ""
+    if [ ! -f "/etc/openvpn/server.conf" ]; then
+        echo -e "${AMARELO}O OpenVPN não está instalado.${NC}"
+        read -p "Deseja instalar agora? (s/n): " INST
+        if [[ "$INST" == "s" || "$INST" == "S" ]]; then
+            wget https://git.io/vpn -O /root/openvpn-install.sh
+            chmod +x /root/openvpn-install.sh
+            bash /root/openvpn-install.sh
+        fi
+    else
+        echo -e "${VERDE}Servidor já instalado.${NC}"
+        echo -e "  [1] Adicionar/Remover/Modificar via Script Oficial"
+        echo -e "  [2] Reinstalar/Atualizar Script de Instalação"
+        echo -e "  [0] Voltar"
+        read -n 1 -p " Escolha: " OP_SVR
+        case $OP_SVR in
+            1) bash /root/openvpn-install.sh ;;
+            2) wget https://git.io/vpn -O /root/openvpn-install.sh && chmod +x /root/openvpn-install.sh && echo -e "\n${VERDE}Atualizado!${NC}" && sleep 2 ;;
+        esac
+    fi
+}
+
+# --- FUNÇÃO: LISTAR USUÁRIOS ---
+listar_usuarios() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}USUÁRIOS VPN ATIVOS (CERTIFICADOS)${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    
+    # Busca na pasta do Easy-RSA
+    ISSUED_DIR="/etc/openvpn/server/easy-rsa/pki/issued"
+    [ ! -d "$ISSUED_DIR" ] && ISSUED_DIR="/etc/openvpn/easy-rsa/pki/issued"
+
+    if [ -d "$ISSUED_DIR" ]; then
+        ls "$ISSUED_DIR" | grep ".crt" | sed 's/.crt//' | grep -v "server" | while read -r user; do
+            echo -e " 👤 Usuário: ${AMARELO}$user${NC}"
+        done
+    else
+        echo -e "${VERMELHO}Erro: Pasta de certificados não localizada.${NC}"
+    fi
+    
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p "Pressione ENTER para voltar..."
+}
+
+# --- FUNÇÃO: CRIAR USUÁRIO ---
+criar_usuario() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                  ${VERDE}CRIAR NOVO USUÁRIO VPN${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p " Nome do usuário: " NOVO_USER
+    
+    if [[ -z "$NOVO_USER" ]]; then
+        echo -e "${VERMELHO}Nome vazio!${NC}"; sleep 2; return
+    fi
+
+    if [ -f "/root/openvpn-install.sh" ]; then
+        # Automação das respostas para o script oficial
+        export MENU_OPTION=1
+        export CLIENT="$NOVO_USER"
+        export PASS=1
+        bash /root/openvpn-install.sh
+        
+        # Localiza o arquivo gerado
+        ARQUIVO_ORIGEM="/root/$NOVO_USER.ovpn"
+        [ ! -f "$ARQUIVO_ORIGEM" ] && ARQUIVO_ORIGEM="$HOME/$NOVO_USER.ovpn"
+
+        if [ -f "$ARQUIVO_ORIGEM" ]; then
+            mv "$ARQUIVO_ORIGEM" "$DIR_CLIENTES/"
+            echo -e "${VERDE}Usuário criado com sucesso!${NC}"
+            echo -e "Enviando para o Telegram..."
+            enviar_telegram "$DIR_CLIENTES/$NOVO_USER.ovpn" "$NOVO_USER"
+        fi
+    else
+        echo -e "${VERMELHO}Instalador /root/openvpn-install.sh não encontrado.${NC}"
+    fi
+    sleep 3
+}
+
+# --- FUNÇÃO: REMOVER USUÁRIO ---
+remover_usuario() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                  ${VERMELHO}REMOVER USUÁRIO VPN${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p " Nome do usuário para remover: " USER_DEL
+
+    if [ -f "/root/openvpn-install.sh" ]; then
+        export MENU_OPTION=2
+        export CLIENT="$USER_DEL"
+        bash /root/openvpn-install.sh
+        rm -f "$DIR_CLIENTES/$USER_DEL.ovpn"
+        echo -e "${AMARELO}Usuário $USER_DEL removido e arquivo deletado.${NC}"
+    else
+        echo -e "${VERMELHO}Instalador não encontrado.${NC}"
+    fi
+    sleep 3
+}
+
+# --- MENU PRINCIPAL UNIFICADO ---
+while true; do
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}GERENCIAMENTO OPENVPN PRO${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "  [1] 👤 Criar Usuário (Envia Telegram)"
+    echo -e "  [2] 🗑️  Remover Usuário"
+    echo -e "  [3] 📋 Listar Usuários Ativos"
+    echo -e "  [4] ⚙️  Configurar/Instalar Servidor"
+    echo -e "  [0] ⬅️  Voltar ao Painel Principal"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -n 1 -p " Escolha uma opção: " OP
+    echo ""
+
     case $OP in
-        1) 
-            if [ -f "$DIR_SCRIPTS/openvpn-install.sh" ]; then
-                bash "$DIR_SCRIPTS/openvpn-install.sh"
-                organizar_arquivos
-            else
-                echo -e "${VERMELHO}Erro: openvpn-install.sh não encontrado.${NC}"
-                sleep 2
-            fi 
-            ;;
-        2) 
-            listar_arquivos_ovpn 
-            ;;
-        3) 
-            listar_online 
-            ;;
-        4) 
-            clear; speedtest-cli --simple; read -p "ENTER..." d 
-            ;;
-        5) 
-            clear; vnstat -d; read -p "ENTER..." d 
-            ;;
-        6) 
-            if [[ "$USER_ATUAL" == "$ADM_USER" || "$USER_ATUAL" == "root" ]]; then
-                read -p "Limite Mensal em GB: " LIM
-                if [[ $LIM =~ ^[0-9]+$ ]]; then
-                    # Criando o arquivo linha por linha para evitar erro de Heredoc no editor
-                    echo '#!/bin/bash' > /opt/configdebian/auto_limite.sh
-                    echo "CONSUMO=\$(vnstat --oneline | cut -d';' -f11 | sed 's/ GB//' | cut -d'.' -f1)" >> /opt/configdebian/auto_limite.sh
-                    echo "if [ \"\$CONSUMO\" -ge \"$LIM\" ]; then" >> /opt/configdebian/auto_limite.sh
-                    echo "    systemctl stop openvpn-server@server" >> /opt/configdebian/auto_limite.sh
-                    echo "    ufw deny 1194/udp" >> /opt/configdebian/auto_limite.sh
-                    echo "fi" >> /opt/configdebian/auto_limite.sh
-                    chmod +x /opt/configdebian/auto_limite.sh
-                    echo -e "${VERDE}Limite de $LIM GB configurado!${NC}"
-                fi
-            else
-                echo -e "${VERMELHO}Ação permitida apenas para o Administrador.${NC}"
-            fi
-            sleep 2 
-            ;;
-        7) 
-            exit 0 
-            ;;
-        *) 
-            sleep 1 
-            ;;
+        1) criar_usuario ;;
+        2) remover_usuario ;;
+        3) listar_usuarios ;;
+        4) configurar_servidor_vpn ;;
+        0) exit 0 ;;
+        *) echo -e "${VERMELHO}Opção inválida!${NC}"; sleep 1 ;;
     esac
 done
