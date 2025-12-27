@@ -560,25 +560,54 @@ listar_arquivos_ovpn() {
 }
 listar_usuarios_online() {
     clear
-    # 1. Localiza o log de forma silenciosa
-    STATUS_LOG=""
-    # Tenta caminhos comuns, jogando erros para o limbo (2>/dev/null)
-    if [ -f "/etc/openvpn/server.conf" ]; then
-        STATUS_LOG=$(grep -E "^status " /etc/openvpn/server.conf 2>/dev/null | awk '{print $2}')
-    elif [ -f "/etc/openvpn/server/server.conf" ]; then
-        STATUS_LOG=$(grep -E "^status " /etc/openvpn/server/server.conf 2>/dev/null | awk '{print $2}')
+    local CONF_VPN=""
+    local STATUS_LOG=""
+
+    # 1. Tenta localizar o arquivo de configuração ativo
+    if [ -f "/etc/openvpn/server/server.conf" ]; then
+        CONF_VPN="/etc/openvpn/server/server.conf"
+    elif [ -f "/etc/openvpn/server.conf" ]; then
+        CONF_VPN="/etc/openvpn/server.conf"
     fi
 
-    # Se não encontrou no config, define o padrão absoluto
-    [[ -z "$STATUS_LOG" ]] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+    # 2. Se encontrou o config, verifica qual log está definido lá
+    if [ -n "$CONF_VPN" ]; then
+        STATUS_LOG=$(grep -E "^status " "$CONF_VPN" | awk '{print $2}')
+    fi
 
+    # 3. Se não houver log definido ou o arquivo não existir, criamos a configuração
+    if [[ -z "$STATUS_LOG" || ! -f "$STATUS_LOG" ]]; then
+        echo -e "${AMARELO}⚠️ Log de status não encontrado ou inativo.${NC}"
+        echo -e "${AZUL}🛠️ Tentando configurar e ativar o log automaticamente...${NC}"
+        
+        if [ -n "$CONF_VPN" ]; then
+            # Define um caminho padrão se estiver vazio
+            [[ -z "$STATUS_LOG" ]] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+            
+            # Remove entradas antigas para evitar duplicidade e adiciona a nova
+            sed -i '/^status /d' "$CONF_VPN"
+            sed -i '/^status-version/d' "$CONF_VPN"
+            echo "status $STATUS_LOG" >> "$CONF_VPN"
+            echo "status-version 2" >> "$CONF_VPN"
+            
+            # Reinicia o serviço para aplicar as mudanças
+            systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
+            echo -e "${VERDE}✅ Configuração aplicada! Aguardando 3s para geração do arquivo...${NC}"
+            sleep 3
+        else
+            echo -e "${VERMELHO}❌ Erro crítico: Arquivo server.conf não localizado!${NC}"
+            read -p "Pressione ENTER..." ; return
+        fi
+    fi
+
+    # --- INÍCIO DA EXIBIÇÃO ---
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                ${VERDE}USUÁRIOS OPENVPN ONLINE${NC}"
     echo -e "${AZUL}===============================================================${NC}"
 
     if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}Erro: Arquivo de status não encontrado!${NC}"
-        echo -e "Caminho esperado: $STATUS_LOG"
+        echo -e "${VERMELHO}O arquivo $STATUS_LOG ainda não foi criado pelo sistema.${NC}"
+        echo -e "Certifique-se de que há pelo menos um cliente tentando conectar."
         read -p "Pressione ENTER..." ; return
     fi
 
@@ -586,21 +615,14 @@ listar_usuarios_online() {
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
     local TOTAL_CON=0
-
-    # 2. Processamento robusto do log
-    while IFS=',' read -r TIPO NOME IP_PORTA REAL_IP RECV SENT DATA_RAW; do
-        # Filtra apenas linhas de clientes e garante que RECV/SENT sejam números
+    # Processa o log (formato status-version 2)
+    while IFS=',' read -r TIPO NOME IP_PORTA RECV SENT DATA_RAW; do
         if [[ "$TIPO" == "CLIENT_LIST" && "$NOME" != "Common Name" ]]; then
-            
-            # Garante que se RECV ou SENT estiverem vazios, virem 0 para não quebrar o awk
-            [[ -z "$RECV" || "$RECV" == " " ]] && RECV=0
-            [[ -z "$SENT" || "$SENT" == " " ]] && SENT=0
+            [[ -z "$RECV" ]] && RECV=0
+            [[ -z "$SENT" ]] && SENT=0
 
-            # Cálculo de MB (usando printf do awk para evitar runaway regex)
             RECV_MB=$(awk "BEGIN { printf \"%.2f\", $RECV / 1048576 }")
             SENT_MB=$(awk "BEGIN { printf \"%.2f\", $SENT / 1048576 }")
-            
-            # Limpa a porta do IP
             IP_LMP=$(echo "$IP_PORTA" | cut -d: -f1)
 
             printf "%-15s %-18s %-12s %-10s\n" "$NOME" "$IP_LMP" "${RECV_MB}MB" "${SENT_MB}MB"
