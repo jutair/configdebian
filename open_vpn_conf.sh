@@ -104,32 +104,16 @@ configurar_servidor_vpn() {
 # ==========================================
 # FUNÇÃO: Ativar DNS da VPN com segurança
 # ==========================================
-ativa_dns() {
-    local LOCK="/var/run/vpn_dns_ativado.lock"
-    local ALERTA_LOCK="/tmp/alerta_dns_enviado"
+configurar_dnsmasq_vpn() {
+    local ACTION=${1:-"ativar"}  # 'ativar' ou 'desativar'
     local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
+    local LOCK="/var/run/vpn_dns_ativado.lock"
 
-    # Se já executou, sai
-    [ -f "$LOCK" ] && return 0
-
-    # Detecta interface TUN
-    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
-    if [[ -z "$INT_VPN" ]]; then
-        # Envia alerta apenas uma vez
-        if [ ! -f "$ALERTA_LOCK" ]; then
-            enviar_alerta "❌ Nenhuma interface TUN detectada para a VPN!"
-            touch "$ALERTA_LOCK"
-        fi
-        return 1
-    fi
-
-    # IP da interface TUN
-    local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
-    IP_INT=${IP_INT:-"10.8.0.1"}
-
-    # Cria DNS_CONF se não existir
-    if [ ! -f "$DNS_CONF" ]; then
-        cat > "$DNS_CONF" <<EOF
+    case "$ACTION" in
+        ativar)
+            # Cria arquivo base se não existir
+            if [ ! -f "$DNS_CONF" ]; then
+                cat > "$DNS_CONF" <<'EOF'
 no-resolv
 server=1.1.1.1
 server=8.8.8.8
@@ -141,32 +125,52 @@ rebind-localhost-ok
 log-queries
 log-facility=/var/log/dnsmasq.log
 EOF
-        touch /var/log/dnsmasq.log
-        chmod 644 /var/log/dnsmasq.log
-    fi
+                touch /var/log/dnsmasq.log
+                chmod 644 /var/log/dnsmasq.log
+            fi
 
-    # Verifica se configuração já existe
-    if ! grep -q "^interface=$INT_VPN" "$DNS_CONF"; then
-        # Remove entradas antigas
-        sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
-        echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a "$DNS_CONF" >/dev/null
+            # Detecta interface VPN ativa
+            local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
+            if [[ -z "$INT_VPN" ]]; then
+                echo "⚠️ Nenhuma interface VPN ativa encontrada."
+                return 1
+            fi
 
-        # Reinicia dnsmasq apenas se houve mudança
-        systemctl restart dnsmasq
+            local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+            IP_INT=${IP_INT:-"10.8.0.1"}
 
-        logger "[GUARDIAO] DNS da VPN ativado para $INT_VPN ($IP_INT)"
-    fi
+            # Remove configurações antigas
+            sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
+            echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a "$DNS_CONF" >/dev/null
 
-    # Cria lock para não repetir execução
-    touch "$LOCK"
-    chmod 600 "$LOCK"
+            systemctl enable dnsmasq
+            systemctl restart dnsmasq
 
-    # Remove lock de alerta, se existia
-    [ -f "$ALERTA_LOCK" ] && rm -f "$ALERTA_LOCK"
-    echo "Feito"
-    sleep 5
+            # Cria lock
+            touch "$LOCK"
+            chmod 600 "$LOCK"
+
+            echo "✅ DNSMASQ ativado para interface $INT_VPN ($IP_INT)"
+        ;;
+        desativar)
+            if [ -f "$LOCK" ]; then
+                rm -f "$LOCK"
+            fi
+
+            # Remove configuração específica da VPN
+            if [ -f "$DNS_CONF" ]; then
+                sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
+            fi
+
+            systemctl restart dnsmasq
+            echo "✅ DNSMASQ desativado para a VPN"
+        ;;
+        *)
+            echo "Uso: configurar_dnsmasq_vpn [ativar|desativar]"
+            return 1
+        ;;
+    esac
 }
-
 
 testa_velocidade() {
     clear
@@ -827,7 +831,7 @@ chama_configuracao() {
                     configurar_servidor_vpn  # Chama a função que já revisamos
                     ;;
                 2)
-                    configurar_dnsmasq
+                    configurar_dnsmasq_vpn
                     ;;
                 0)
                     break
