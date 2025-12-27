@@ -168,9 +168,9 @@ nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
 echo -e "${AMARELO}🔧 Configurando DNS da VPN (dnsmasq)...${NC}"
 
 # Backup do dnsmasq.conf original
-cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%F-%H%M)
+[ -f /etc/dnsmasq.conf ] && cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%F-%H%M)
 
-# Mantém dnsmasq.conf LIMPO
+# Mantém dnsmasq.conf limpo
 cat > /etc/dnsmasq.conf <<'EOF'
 # dnsmasq.conf limpo
 conf-dir=/etc/dnsmasq.d
@@ -187,7 +187,7 @@ interface=tun0
 bind-interfaces
 listen-address=10.8.0.1
 
-# DNS upstream
+# DNS upstream confiáveis
 no-resolv
 server=1.1.1.1
 server=8.8.8.8
@@ -229,8 +229,31 @@ BASE_PROT="/etc/vps_protecao"
 mkdir -p "$DIR_CONFIG"
 mkdir -p "$BASE_PROT"/{categorias,perfis,clientes}
 
+# ---------- CATEGORIAS PADRÃO ----------
+[ ! -f "$BASE_PROT/categorias/adultos.list" ] && cat > "$BASE_PROT/categorias/adultos.list" <<EOF
+pornhub.com
+xvideos.com
+xnxx.com
+youporn.com
+redtube.com
+EOF
+
+[ ! -f "$BASE_PROT/categorias/bancos.list" ] && cat > "$BASE_PROT/categorias/bancos.list" <<EOF
+bb.com.br
+itau.com.br
+bradesco.com.br
+santander.com.br
+nubank.com.br
+caixa.gov.br
+inter.co
+EOF
+
+# ---------- PERFIS PADRÃO ----------
+[ ! -f "$BASE_PROT/perfis/criancas.conf" ] && echo "adultos" > "$BASE_PROT/perfis/criancas.conf"
+[ ! -f "$BASE_PROT/perfis/idosos.conf" ] && echo "bancos" > "$BASE_PROT/perfis/idosos.conf"
+[ ! -f "$BASE_PROT/perfis/livre.conf" ] && : > "$BASE_PROT/perfis/livre.conf"
+
 # --- DOWNLOAD DOS SCRIPTS ---
-# Ajuste as URLs conforme seu repositório GitHub
 wget -q -O "$DIR_CONFIG/client-connect.sh" \
     https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh
 
@@ -247,11 +270,10 @@ chmod 755 /etc/openvpn/client-disconnect.sh
 chown root:root /etc/openvpn/client-connect.sh
 chown root:root /etc/openvpn/client-disconnect.sh
 
-systemctl enable dnsmasq
+# Reinicia dnsmasq para aplicar tudo
 systemctl restart dnsmasq
 
 echo -e "${VERDE}✅ Scripts OpenVPN configurados com sucesso.${NC}"
-
 
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
