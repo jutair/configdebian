@@ -220,10 +220,6 @@ configurar_servidor_vpn() {
         return
     fi
 
-    # --- DETECÇÃO DA INTERFACE TUN ---
-    # Busca qualquer interface que comece com 'tun' no sistema de arquivos do kernel
-    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-
     echo -e "${AZUL}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
 
     # --- Diretórios ---
@@ -252,9 +248,14 @@ EOF
     # --- Função Interna: Ativar DNS na Interface Detectada ---
     ativar_dns_vpn() {
         # --- DETECÇÃO DA INTERFACE TUN ---
-        # Busca qualquer interface que comece com 'tun' no sistema de arquivos do kernel
+                # Busca a interface TUN ativa
         local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-    
+        if [[ -z "$INT_VPN" ]]; then
+            echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA NO MOMENTO!${NC}"
+            read -p "Pressione ENTER..."
+            return
+        fi
+        # Busca qualquer interface que comece com 'tun' no sistema de arquivos do kernel
         echo -e "${AZUL}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
     
         # --- Diretórios ---
