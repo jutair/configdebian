@@ -162,16 +162,25 @@ EOF
 
             echo "✅ DNSMASQ ativado para $INT_VPN ($IP_INT)"
         ;;
-        desativar)
+            desativar)
+            # Remove lock
             rm -f "$LOCK"
-
+        
+            # Se o arquivo existir, limpa apenas o vínculo VPN
             if [ -f "$DNS_CONF" ]; then
-                sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
+                sed -i '/^interface=/d;/^listen-address=/d;/^bind-interfaces/d' "$DNS_CONF"
             fi
-
-            systemctl restart dnsmasq
-            echo "🟡 DNSMASQ desvinculado da VPN"
+        
+            # Testa configuração antes de reiniciar
+            if dnsmasq --test &>/dev/null; then
+                systemctl restart dnsmasq
+                echo "🟡 DNSMASQ desvinculado da VPN (modo global seguro)"
+            else
+                echo "⚠️ Configuração inválida detectada — dnsmasq NÃO reiniciado"
+                echo "🔧 Corrija /etc/dnsmasq.d/*.conf antes de continuar"
+            fi
         ;;
+
         *)
             echo "Uso: configurar_dnsmasq_vpn [ativar|desativar]"
             return 1
