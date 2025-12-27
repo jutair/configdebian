@@ -305,7 +305,6 @@ EOF
     done
 }
 # --- FUNÇÃO 7: ENVIAR OVPN MANUAL PELO TELEGRAM ---
-# --- FUNÇÃO 7: ENVIAR OVPN MANUAL PELO TELEGRAM ---
 enviar_ovpn_telegram_manual() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
@@ -346,7 +345,283 @@ enviar_ovpn_telegram_manual() {
 
     sleep 2
 }
+listar_arquivos_ovpn() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}📂 GERENCIADOR DE DOWNLOADS (SCP)${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    IP_EXT=$(curl -s ifconfig.me)
+    mapfile -t ARQUIVOS < <(ls "$DIR_CLIENTES"/*.ovpn 2>/dev/null)
 
+    if [ ${#ARQUIVOS[@]} -eq 0 ]; then
+        echo -e "${VERMELHO}Nenhum arquivo encontrado.${NC}"; sleep 2; return
+    fi
+
+    for ((i=0; i<${#ARQUIVOS[@]}; i+=2)); do
+        printf "  %-28s  %-28s\n" "$(basename "${ARQUIVOS[i]}")" "$(basename "${ARQUIVOS[i+1]}")"
+    done
+
+    echo -ne "\n${AMARELO}Digite o nome para gerar comando de download: ${NC}"
+    read BUSCA
+    ARQ=$(ls "$DIR_CLIENTES"/*"$BUSCA"*.ovpn 2>/dev/null | head -n 1)
+
+    if [ -f "$ARQ" ]; then
+        echo -e "\n${VERDE}🐧 Linux/Mac:${NC}\nscp $USER_LOGADO@$IP_EXT:$ARQ ~/Downloads/"
+        echo -e "\n${VERDE}🪟 Windows:${NC}\nscp $USER_LOGADO@$IP_EXT:$ARQ \$env:USERPROFILE\Downloads\\"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        read -p "Pressione ENTER..."
+    fi
+}
+listar_usuarios_online() {
+    clear
+    # 1. Localiza o log de forma silenciosa
+    STATUS_LOG=""
+    # Tenta caminhos comuns, jogando erros para o limbo (2>/dev/null)
+    if [ -f "/etc/openvpn/server.conf" ]; then
+        STATUS_LOG=$(grep -E "^status " /etc/openvpn/server.conf 2>/dev/null | awk '{print $2}')
+    elif [ -f "/etc/openvpn/server/server.conf" ]; then
+        STATUS_LOG=$(grep -E "^status " /etc/openvpn/server/server.conf 2>/dev/null | awk '{print $2}')
+    fi
+
+    # Se não encontrou no config, define o padrão absoluto
+    [[ -z "$STATUS_LOG" ]] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}USUÁRIOS OPENVPN ONLINE${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    if [ ! -f "$STATUS_LOG" ]; then
+        echo -e "${VERMELHO}Erro: Arquivo de status não encontrado!${NC}"
+        echo -e "Caminho esperado: $STATUS_LOG"
+        read -p "Pressione ENTER..." ; return
+    fi
+
+    printf "${AMARELO}%-15s %-18s %-12s %-10s${NC}\n" "USUÁRIO" "IP REAL" "RECEBIDO" "ENVIADO"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    local TOTAL_CON=0
+
+    # 2. Processamento robusto do log
+    while IFS=',' read -r TIPO NOME IP_PORTA REAL_IP RECV SENT DATA_RAW; do
+        # Filtra apenas linhas de clientes e garante que RECV/SENT sejam números
+        if [[ "$TIPO" == "CLIENT_LIST" && "$NOME" != "Common Name" ]]; then
+            
+            # Garante que se RECV ou SENT estiverem vazios, virem 0 para não quebrar o awk
+            [[ -z "$RECV" || "$RECV" == " " ]] && RECV=0
+            [[ -z "$SENT" || "$SENT" == " " ]] && SENT=0
+
+            # Cálculo de MB (usando printf do awk para evitar runaway regex)
+            RECV_MB=$(awk "BEGIN { printf \"%.2f\", $RECV / 1048576 }")
+            SENT_MB=$(awk "BEGIN { printf \"%.2f\", $SENT / 1048576 }")
+            
+            # Limpa a porta do IP
+            IP_LMP=$(echo "$IP_PORTA" | cut -d: -f1)
+
+            printf "%-15s %-18s %-12s %-10s\n" "$NOME" "$IP_LMP" "${RECV_MB}MB" "${SENT_MB}MB"
+            ((TOTAL_CON++))
+        fi
+    done < "$STATUS_LOG"
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e " Total de conexões ativas: ${VERDE}$TOTAL_CON${NC}"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -p "Pressione ENTER para voltar..."
+}
+# --- FUNÇÃO: RELATÓRIO DE CONSUMO ACUMULADO ---
+relatorio_consumo_acumulado() {
+    clear
+    PASTA_DB="/etc/vps_protecao/consumo_clientes"
+    MES_ATUAL=$(date +'%m-%Y')
+    # Dentro da função relatorio_consumo_detalhado
+    read -r BRECV BSENT < "$arq"
+    
+    # Inverte SENT e RECV para a perspectiva do CLIENTE:
+    # SENT do servidor = DOWNLOAD do cliente
+    # RECV no servidor = UPLOAD do cliente
+    DOWNLOAD_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
+    UPLOAD_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
+    
+    printf "%-18s %-15s %-15s\n" "$NOME" "$DOWNLOAD_H" "$UPLOAD_H"
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "              ${VERDE}RELATÓRIO DE CONSUMO MENSAL ($MES_ATUAL)${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    printf "${AMARELO}%-15s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    for arq in "$PASTA_DB"/*_${MES_ATUAL}.log; do
+        [ ! -e "$arq" ] && break
+        
+        NOME=$(basename "$arq" | cut -d'_' -f1)
+        # Lê os bytes salvos
+        read -r RECV SENT DIA < "$arq"
+
+        # Converte para MB ou GB
+        RECV_H=$(awk "BEGIN {if ($RECV>1073741824) printf \"%.2f GB\", $RECV/1073741824; else printf \"%.2f MB\", $RECV/1048576}")
+        SENT_H=$(awk "BEGIN {if ($SENT>1073741824) printf \"%.2f GB\", $SENT/1073741824; else printf \"%.2f MB\", $SENT/1048576}")
+
+        printf "%-15s %-15s %-15s\n" "$NOME" "$RECV_H" "$SENT_H"
+    done
+
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p "Pressione ENTER para voltar..."
+}
+
+relatorio_consumo_detalhado() {
+    clear
+    PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
+    MES_ATUAL=$(date +'%m-%Y')
+    ARQUIVO_CSV="/tmp/consumo_${MES_ATUAL}.csv"
+    
+    # Cores para o layout
+    local CYAN='\033[0;36m'
+    local GOLD='\033[1;33m'
+    local VERDE='\033[0;32m'
+    local AMARELO='\033[1;33m'
+    local VERMELHO='\033[0;31m'
+    local NC='\033[0m'
+    
+    # Carrega configurações do Telegram
+    [ -f "/etc/vps_protecao/telegram.conf" ] && source "/etc/vps_protecao/telegram.conf"
+
+    echo -e "${CYAN}===============================================================${NC}"
+    echo -e "           ${GOLD}📊 RELATÓRIO DE CONSUMO (${MES_ATUAL})${NC}"
+    echo -e "${CYAN}===============================================================${NC}"
+    printf "${GOLD}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
+    echo -e "${CYAN}---------------------------------------------------------------${NC}"
+
+    # Cabeçalho do CSV
+    echo "Cliente,Download (Bytes),Upload (Bytes),Download (Formatado),Upload (Formatado)" > "$ARQUIVO_CSV"
+
+    # shopt evita erros se não houver arquivos .log na pasta
+    shopt -s nullglob
+    for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
+        # Extrai o nome do cliente do nome do arquivo
+        NOME=$(basename "$arq" | cut -d'_' -f1)
+        
+        # Lê os valores ACUMULADOS (Gerados pelo script Guardião)
+        # Formato esperado no arquivo: "RECEBIDOS ENVIADOS"
+        read -r BRECV BSENT < "$arq"
+        
+        # Validação para garantir que são números e evitar erros no awk
+        [[ ! "$BRECV" =~ ^[0-9]+$ ]] && BRECV=0
+        [[ ! "$BSENT" =~ ^[0-9]+$ ]] && BSENT=0
+
+        # --- LÓGICA DE PERSPECTIVA DO CLIENTE ---
+        # SENT (Enviado pelo servidor) = DOWNLOAD do cliente
+        # RECV (Recebido pelo servidor) = UPLOAD do cliente
+        DOWNLOAD_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
+        UPLOAD_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
+        
+        # Exibição formatada no terminal
+        printf "%-18s %-15s %-15s\n" "$NOME" "$DOWNLOAD_H" "$UPLOAD_H"
+        
+        # Alimenta o arquivo CSV (usando a mesma lógica de Download/Upload)
+        echo "$NOME,$BSENT,$BRECV,$DOWNLOAD_H,$UPLOAD_H" >> "$ARQUIVO_CSV"
+    done
+    shopt -u nullglob
+
+    echo -e "${CYAN}---------------------------------------------------------------${NC}"
+    echo -e "  [1] 📥 Baixar CSV | [2] 📤 Telegram | [0] ⬅️ Voltar"
+    echo -e "${CYAN}---------------------------------------------------------------${NC}"
+    read -n 1 -p " Escolha uma ação: " OP_REL; echo ""
+
+    case $OP_REL in
+        1)
+            DESTINO="$HOME/consumo_${MES_ATUAL}.csv"
+            cp "$ARQUIVO_CSV" "$DESTINO"
+            echo -e "${VERDE}✅ Relatório salvo em: ${AMARELO}$DESTINO${NC}"
+            read -p "Pressione ENTER para continuar..."
+            ;;
+        2)
+            if [[ -n "$TOKEN" && -n "$ID_CHAT" ]]; then
+                echo -e "${AMARELO}Enviando relatório ao Telegram...${NC}"
+                curl -s -F chat_id="$ID_CHAT" -F document=@"$ARQUIVO_CSV" \
+                     -F caption="📊 Relatório VPN - Mês: $MES_ATUAL" \
+                     "https://api.telegram.org/bot$TOKEN/sendDocument" > /dev/null
+                echo -e "${VERDE}✅ Relatório enviado com sucesso!${NC}"
+            else
+                echo -e "${VERMELHO}❌ Erro: Token ou ID do Telegram não configurados.${NC}"
+            fi
+            read -p "Pressione ENTER para continuar..."
+            ;;
+        *)
+            return
+            ;;
+    esac
+}
+
+gerenciar_banda() {
+    clear
+    # Detecta a interface de rede principal (ex: eth0 ou ens3)
+    INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
+    # Garante que a variável não seja vazia (fallback para eth0)
+    [[ -z "$INTERFACE_PRINCIPAL" ]] && INTERFACE_PRINCIPAL="eth0"
+    
+    # Definições de caminhos
+    PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
+    MES_ATUAL=$(date +'%m-%Y')
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}📊 GERENCIAMENTO DE BANDA${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "  [1] ⚡ Testar Velocidade (tun0)"
+    echo -e "  [2] 📅 Ver Consumo Diário (VPS)"
+    echo -e "  [3] 🗓️  Ver Consumo Mensal (VPS)"
+    echo -e "  [4] 🟢 Usuários Online Agora"
+    echo -e "  [5] 🛰️  Cota Global VPS (Limite 900GB)"
+    echo -e "  [6] 👤 Consumo Acumulado por Cliente (Mês)"
+    echo -e "  [0] ⬅️  Voltar"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+    read -n 1 -p " Escolha uma opção: " OP_BANDA; echo ""
+
+    case $OP_BANDA in
+        1)
+            echo -e "${AMARELO}Iniciando speedtest...${NC}"
+            speedtest-cli --source $(ip -4 addr show tun0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}') 2>/dev/null || speedtest-cli
+            read -p "Pressione ENTER..."
+            ;;
+        2) vnstat -d; read -p "Pressione ENTER..." ;;
+        3) vnstat -m; read -p "Pressione ENTER..." ;;
+        4) listar_usuarios_online ;; 
+        5)
+            clear
+            if ! command -v jq &>/dev/null || ! command -v bc &>/dev/null; then
+                echo -e "${VERMELHO}Erro: jq ou bc não instalados.${NC}"
+                read -p "Pressione ENTER..."; return
+            fi
+
+            DATA_JSON=$(vnstat --json m 2>/dev/null)
+            RX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0].rx" 2>/dev/null)
+            TX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0].tx" 2>/dev/null)
+            
+            [[ "$RX" == "null" || -z "$RX" ]] && RX=0
+            [[ "$TX" == "null" || -z "$TX" ]] && TX=0
+
+            TOTAL_GB=$(echo "scale=2; ($RX + $TX) / 1024 / 1024 / 1024" | bc -l)
+            [[ "$TOTAL_GB" == .* ]] && TOTAL_GB="0$TOTAL_GB"
+            TOTAL_GB_FORMAT=$(printf "%.2f" "$TOTAL_GB")
+            
+            echo -e "${AZUL}===============================================================${NC}"
+            echo -e "              ${VERDE}STATUS DA COTA GLOBAL (900GB)${NC}"
+            echo -e "${AZUL}===============================================================${NC}"
+            echo -e " Interface: $INTERFACE_PRINCIPAL | Consumo: ${AMARELO}$TOTAL_GB_FORMAT GB${NC}"
+            
+            INT_GB=$(echo "$TOTAL_GB / 1" | bc 2>/dev/null || echo 0)
+            PORC=$(( INT_GB * 100 / 900 ))
+            
+            echo -ne " [ "
+            for i in {1..20}; do
+                if [ $((i*5)) -le $PORC ]; then echo -ne "${VERDE}#${NC}"; else echo -ne "."; fi
+            done
+            echo -e " ] $PORC%"
+            echo -e "${AZUL}---------------------------------------------------------------${NC}"
+            read -p "Pressione ENTER..."
+            ;;
+        6) relatorio_consumo_detalhado ;;
+        0) return ;;
+    esac
+}
 # --- MENU PRINCIPAL ---
 while true; do
     clear
