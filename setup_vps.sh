@@ -123,63 +123,6 @@ echo "$ADM_USER       soft    nproc           unlimited" >> /etc/security/limits
 echo "$ADM_USER       hard    nproc           unlimited" >> /etc/security/limits.d/99-vpn-limits.conf
 grep -q "pam_limits.so" /etc/pam.d/common-session || echo "session required pam_limits.so" >> /etc/pam.d/common-session
 
-# --- 10. CONFIGURAÇÃO DO DNSMASQ (CORRIGIDO PARA VPN FUTURA) ---
-echo -e "${AMARELO}🔧 Configurando DNS da VPN (dnsmasq)...${NC}"
-[ -f /etc/dnsmasq.conf ] && cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%F-%H%M)
-cat > /etc/dnsmasq.conf <<'EOF'
-# dnsmasq.conf limpo
-conf-dir=/etc/dnsmasq.d
-EOF
-cat > /etc/dnsmasq.d/vpn.conf <<'EOF'
-# DNSMASQ - OPENVPN (interface ativada futuramente)
-no-resolv
-server=1.1.1.1
-server=8.8.8.8
-cache-size=5000
-domain-needed
-bogus-priv
-stop-dns-rebind
-rebind-localhost-ok
-log-queries
-log-facility=/var/log/dnsmasq.log
-EOF
-touch /var/log/dnsmasq.log
-chmod 644 /var/log/dnsmasq.log
-systemctl enable dnsmasq
-systemctl restart dnsmasq || echo -e "${AMARELO}⚠️ dnsmasq inicializado parcialmente. Interface tun0 ainda não existe.${NC}"
-echo -e "${VERDE}✅ DNS da VPN configurado (pronto para ativação futura da VPN).${NC}"
-
-# --- 11. CONFIGURAÇÃO DE SCRIPTS OPENVPN ---
-echo -e "${AMARELO}🔐 Configurando scripts de controle OpenVPN...${NC}"
-mkdir -p "$DIR_CONFIG" "$DIR_PROT"/{categorias,perfis,clientes}
-[ ! -f "$DIR_PROT/categorias/adultos.list" ] && cat > "$DIR_PROT/categorias/adultos.list" <<EOF
-pornhub.com
-xvideos.com
-xnxx.com
-youporn.com
-redtube.com
-EOF
-[ ! -f "$DIR_PROT/categorias/bancos.list" ] && cat > "$DIR_PROT/categorias/bancos.list" <<EOF
-bb.com.br
-itau.com.br
-bradesco.com.br
-santander.com.br
-nubank.com.br
-caixa.gov.br
-inter.co
-EOF
-[ ! -f "$DIR_PROT/perfis/criancas.conf" ] && echo "adultos" > "$DIR_PROT/perfis/criancas.conf"
-[ ! -f "$DIR_PROT/perfis/idosos.conf" ] && echo "bancos" > "$DIR_PROT/perfis/idosos.conf"
-[ ! -f "$DIR_PROT/perfis/livre.conf" ] && : > "$DIR_PROT/perfis/livre.conf"
-wget -q -O "$DIR_CONFIG/client-connect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh"
-wget -q -O "$DIR_CONFIG/client-disconnect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh"
-mv "$DIR_CONFIG/client-connect.sh" /etc/openvpn/client-connect.sh
-mv "$DIR_CONFIG/client-disconnect.sh" /etc/openvpn/client-disconnect.sh
-chmod 755 /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
-chown root:root /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
-echo -e "${VERDE}✅ Scripts OpenVPN configurados com sucesso.${NC}"
-sleep 1
-
 # --- 12. FINALIZAÇÃO ---
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
