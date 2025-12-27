@@ -161,6 +161,56 @@ echo -e "${AMARELO}🚀 Ativando Guardião...${NC}"
 pkill -f "guardiao.sh" > /dev/null 2>&1 || true
 nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
 
+# --- 8 CONFIGURAÇÃO DO DNS MASQ ----
+echo -e "${AMARELO}🔧 Configurando DNS da VPN (dnsmasq)...${NC}"
+
+# Backup de segurança
+cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%F-%H%M)
+
+# Limpa configuração padrão
+cat > /etc/dnsmasq.conf <<'EOF'
+# ================================
+# DNSMASQ - APENAS PARA OPENVPN
+# ================================
+
+# Não usar resolv.conf do sistema
+no-resolv
+
+# DNS upstream confiáveis
+server=1.1.1.1
+server=8.8.8.8
+
+# Escutar SOMENTE na VPN
+interface=tun0
+listen-address=10.8.0.1
+
+# Porta padrão DNS
+port=53
+
+# Cache
+cache-size=1000
+
+# Segurança
+domain-needed
+bogus-priv
+stop-dns-rebind
+rebind-localhost-ok
+
+# Log (opcional)
+log-queries
+log-facility=/var/log/dnsmasq.log
+EOF
+
+# Garante que o log existe
+touch /var/log/dnsmasq.log
+chmod 644 /var/log/dnsmasq.log
+
+# Habilita e inicia
+systemctl enable dnsmasq
+systemctl restart dnsmasq
+
+# -- FIM DA CONFIGURAÇÃO DO DNSMASQ --
+
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
 echo -e "    Administrador: ${AMARELO}$ADM_USER${NC}"
