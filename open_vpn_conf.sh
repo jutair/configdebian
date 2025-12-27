@@ -37,6 +37,7 @@ enviar_telegram() {
 configurar_servidor_vpn() {
     clear
     [ -f "$ADMIN_CONF" ] && source "$ADMIN_CONF"
+    [ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
 
     local USUARIO_ATUAL=$(logname 2>/dev/null || whoami)
     local DATA_ATUAL=$(date +'%d/%m/%Y')
@@ -45,8 +46,7 @@ configurar_servidor_vpn() {
     # 🛡️ Verifica se é admin
     if [[ "$USUARIO_ATUAL" != "$ADM_USER" ]]; then
         echo -e "${VERMELHO}⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️${NC}"
-        if [ -f "$TELEGRAM_CONF" ]; then
-            source "$TELEGRAM_CONF"
+        if [ -n "$TOKEN" ] && [ -n "$ID_CHAT" ]; then
             MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
             curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
                  -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
@@ -88,34 +88,33 @@ EOF
     systemctl enable dnsmasq
     systemctl restart dnsmasq
 
-    # --- OpenVPN ---
-    SERVER_CONF="/etc/openvpn/server.conf"
-    [ ! -f "$SERVER_CONF" ] && SERVER_CONF="/etc/openvpn/server/server.conf"
-
-    if [ ! -f "$SERVER_CONF" ]; then
+    # --- Verifica se OpenVPN está instalado ---
+    if ! command -v openvpn &>/dev/null; then
         echo -e "${AMARELO}OpenVPN não instalado.${NC}"
         read -p "Deseja instalar agora? (s/n): " INST
-        [[ "$INST" =~ ^[Ss]$ ]] && \
-            wget https://git.io/vpn -O /root/openvpn-install.sh && \
-            chmod +x /root/openvpn-install.sh && \
+        if [[ "$INST" =~ ^[Ss]$ ]]; then
+            wget https://git.io/vpn -O /root/openvpn-install.sh
+            chmod +x /root/openvpn-install.sh
             bash /root/openvpn-install.sh
-    else
-        echo -e "${VERDE}Servidor já instalado.${NC}"
-        read -p "Deseja forçar ativação dos logs de status? (s/n): " LOGS
-        [[ "$LOGS" =~ ^[Ss]$ ]] && ativar_logs_status
+        else
+            echo -e "${VERMELHO}❌ OpenVPN não instalado. Abortando configuração de servidor.${NC}"
+            return
+        fi
     fi
 
-    # --- Scripts client-connect / disconnect ---
-    DIR_CONFIG="/opt/configdebian"
-    mkdir -p "$DIR_CONFIG"
-    wget -q -O "$DIR_CONFIG/client-connect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh"
-    wget -q -O "$DIR_CONFIG/client-disconnect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh"
-    mv "$DIR_CONFIG/client-connect.sh" /etc/openvpn/client-connect.sh
-    mv "$DIR_CONFIG/client-disconnect.sh" /etc/openvpn/client-disconnect.sh
-    chmod 755 /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
-    chown root:root /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
+    # --- Localiza server.conf ---
+    POSSIVEIS_CONF=("/etc/openvpn/server.conf" "/etc/openvpn/server/server.conf")
+    SERVER_CONF=""
+    for conf in "${POSSIVEIS_CONF[@]}"; do
+        [ -f "$conf" ] && SERVER_CONF="$conf" && break
+    done
 
-    # --- Ativa logs de status ---
+    if [ -z "$SERVER_CONF" ]; then
+        echo -e "${VERMELHO}❌ Não foi possível localizar server.conf do OpenVPN.${NC}"
+        return
+    fi
+
+    # --- Função para ativar logs de status ---
     ativar_logs_status() {
         [ -f "$SERVER_CONF" ] || return
         sudo sed -i '/^status /d' "$SERVER_CONF"
@@ -124,6 +123,27 @@ EOF
         echo "status-version 2" >> "$SERVER_CONF"
         systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
     }
+
+    # --- Integra scripts client-connect / disconnect ---
+    DIR_CONFIG="/opt/configdebian"
+    mkdir -p "$DIR_CONFIG"
+
+    wget -q -O "$DIR_CONFIG/client-connect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh"
+    wget -q -O "$DIR_CONFIG/client-disconnect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh"
+
+    mv "$DIR_CONFIG/client-connect.sh" /etc/openvpn/client-connect.sh
+    mv "$DIR_CONFIG/client-disconnect.sh" /etc/openvpn/client-disconnect.sh
+    chmod 755 /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
+    chown root:root /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
+
+    # Integra os scripts no server.conf, se o serviço estiver ativo
+    if systemctl is-active --quiet openvpn-server@server || systemctl is-active --quiet openvpn; then
+        sudo sed -i '/^client-connect /d' "$SERVER_CONF"
+        sudo sed -i '/^client-disconnect /d' "$SERVER_CONF"
+        echo "client-connect /etc/openvpn/client-connect.sh" >> "$SERVER_CONF"
+        echo "client-disconnect /etc/openvpn/client-disconnect.sh" >> "$SERVER_CONF"
+        ativar_logs_status
+    fi
 
     # --- Categorias e perfis padrão ---
     DIR_CAT=/etc/vps_protecao/categorias
@@ -153,9 +173,8 @@ EOF
     [ ! -f "$DIR_PERF/idosos.conf" ] && echo "bancos" > "$DIR_PERF/idosos.conf"
     [ ! -f "$DIR_PERF/livre.conf" ] && : > "$DIR_PERF/livre.conf"
 
-    echo -e "${VERDE}✅ Configuração do servidor VPN e categorias finalizada.${NC}"
+    echo -e "${VERDE}✅ Configuração do servidor VPN, scripts e categorias finalizada.${NC}"
 }
-
 
 # --- FUNÇÃO 3: LISTAR CERTIFICADOS ATIVOS ---
 listar_usuarios() {
