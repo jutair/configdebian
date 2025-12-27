@@ -57,100 +57,70 @@ testa_velocidade() {
 }
 consumo_tun0d() {
     clear
-    # 1. Tenta detectar por 3 métodos diferentes
+    # Busca a interface TUN ativa
     local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-    
-    [ -z "$INT_VPN" ] && INT_VPN=$(grep -oP 'tun[0-9]+' /proc/net/dev | head -n 1)
-    [ -z "$INT_VPN" ] && INT_VPN=$(ip addr show | grep -oP 'tun[0-9]+' | head -n 1)
 
     if [[ -z "$INT_VPN" ]]; then
-        echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA!${NC}"
-        echo -e "${AMARELO}Tentando reiniciar o serviço OpenVPN para forçar a criação da tun0...${NC}"
-        systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
-        sleep 3
-        
-        # Tenta detectar novamente após o restart
-        INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-        
-        if [[ -z "$INT_VPN" ]]; then
-            echo -e "${VERMELHO}❌ Falha crítica: A interface tun0 não pôde ser criada pelo sistema.${NC}"
-            echo -e "Verifique os logs com: journalctl -u openvpn-server@server"
-            read -p "Pressione ENTER..."
-            return
-        fi
+        echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA NO MOMENTO!${NC}"
+        read -p "Pressione ENTER..."
+        return
     fi
 
-    echo -e "${VERDE}✅ Interface Detectada: $INT_VPN${NC}"
-
-    # 2. Garante que o vnStat conheça a interface
-    # Se 'vnstat -i tun0' retornar erro, nós adicionamos
+    # Garante que a interface esteja no vnStat sem usar o parâmetro -u
     if ! vnstat -i "$INT_VPN" >/dev/null 2>&1; then
-        echo -e "${AMARELO}Configurando monitoramento vnStat para $INT_VPN...${NC}"
+        echo -e "${AMARELO}Adicionando $INT_VPN ao monitoramento...${NC}"
         vnstat --add -i "$INT_VPN"
         systemctl restart vnstat
-        echo -e "Aguardando coleta inicial (10s)..."
-        sleep 10
+        sleep 2
     fi
 
-    # 3. Exibe o consumo
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "           📊 CONSUMO DIÁRIO - INTERFACE $INT_VPN"
     echo -e "${AZUL}===============================================================${NC}"
     
-    # Força atualização do banco antes de mostrar
-    vnstat -u -i "$INT_VPN"
-    vnstat -i "$INT_VPN" -d
+    # Tenta exibir. Se não houver dados, mostra mensagem amigável
+    if ! vnstat -i "$INT_VPN" -d | grep -q "bytes"; then
+        echo -e "${AMARELO}O banco de dados foi criado agora.${NC}"
+        echo -e "Aguarde alguns minutos de uso da VPN para ver os gráficos."
+    else
+        vnstat -i "$INT_VPN" -d
+    fi
     
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
 }
 consumo_tun0m() {
     clear
-    # 1. Tenta detectar por 3 métodos diferentes
+    # Busca a interface TUN ativa
     local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-    
-    [ -z "$INT_VPN" ] && INT_VPN=$(grep -oP 'tun[0-9]+' /proc/net/dev | head -n 1)
-    [ -z "$INT_VPN" ] && INT_VPN=$(ip addr show | grep -oP 'tun[0-9]+' | head -n 1)
 
     if [[ -z "$INT_VPN" ]]; then
-        echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA!${NC}"
-        echo -e "${AMARELO}Tentando reiniciar o serviço OpenVPN para forçar a criação da tun0...${NC}"
-        systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
-        sleep 3
-        
-        # Tenta detectar novamente após o restart
-        INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-        
-        if [[ -z "$INT_VPN" ]]; then
-            echo -e "${VERMELHO}❌ Falha crítica: A interface tun0 não pôde ser criada pelo sistema.${NC}"
-            echo -e "Verifique os logs com: journalctl -u openvpn-server@server"
-            read -p "Pressione ENTER..."
-            return
-        fi
+        echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA NO MOMENTO!${NC}"
+        read -p "Pressione ENTER..."
+        return
     fi
 
-    echo -e "${VERDE}✅ Interface Detectada: $INT_VPN${NC}"
-
-    # 2. Garante que o vnStat conheça a interface
-    # Se 'vnstat -i tun0' retornar erro, nós adicionamos
+    # Garante que a interface esteja no vnStat sem usar o parâmetro -u
     if ! vnstat -i "$INT_VPN" >/dev/null 2>&1; then
-        echo -e "${AMARELO}Configurando monitoramento vnStat para $INT_VPN...${NC}"
+        echo -e "${AMARELO}Adicionando $INT_VPN ao monitoramento...${NC}"
         vnstat --add -i "$INT_VPN"
         systemctl restart vnstat
-        echo -e "Aguardando coleta inicial (10s)..."
-        sleep 10
+        sleep 2
     fi
 
-    # 3. Exibe o consumo
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "           📊 CONSUMO DIÁRIO - INTERFACE $INT_VPN"
     echo -e "${AZUL}===============================================================${NC}"
     
-    # Força atualização do banco antes de mostrar
-    vnstat -u -i "$INT_VPN"
-    vnstat -i "$INT_VPN" -m
+    # Tenta exibir. Se não houver dados, mostra mensagem amigável
+    if ! vnstat -i "$INT_VPN" -d | grep -q "bytes"; then
+        echo -e "${AMARELO}O banco de dados foi criado agora.${NC}"
+        echo -e "Aguarde alguns minutos de uso da VPN para ver os gráficos."
+    else
+        vnstat -i "$INT_VPN" -m
+    fi
     
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
