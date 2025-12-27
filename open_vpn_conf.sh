@@ -37,16 +37,19 @@ enviar_telegram() {
 configurar_servidor_vpn() {
     clear
     [ -f "$ADMIN_CONF" ] && source "$ADMIN_CONF"
+
     local USUARIO_ATUAL=$(logname 2>/dev/null || whoami)
     local DATA_ATUAL=$(date +'%d/%m/%Y')
     local HORA_ATUAL=$(date +'%H:%M:%S')
 
+    # 🛡️ Verifica se é admin
     if [[ "$USUARIO_ATUAL" != "$ADM_USER" ]]; then
         echo -e "${VERMELHO}⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️${NC}"
         if [ -f "$TELEGRAM_CONF" ]; then
             source "$TELEGRAM_CONF"
             MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
-            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+                 -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
         fi
         sleep 3
         return
@@ -92,11 +95,10 @@ EOF
     if [ ! -f "$SERVER_CONF" ]; then
         echo -e "${AMARELO}OpenVPN não instalado.${NC}"
         read -p "Deseja instalar agora? (s/n): " INST
-        if [[ "$INST" =~ ^[Ss]$ ]]; then
-            wget https://git.io/vpn -O /root/openvpn-install.sh
-            chmod +x /root/openvpn-install.sh
+        [[ "$INST" =~ ^[Ss]$ ]] && \
+            wget https://git.io/vpn -O /root/openvpn-install.sh && \
+            chmod +x /root/openvpn-install.sh && \
             bash /root/openvpn-install.sh
-        fi
     else
         echo -e "${VERDE}Servidor já instalado.${NC}"
         read -p "Deseja forçar ativação dos logs de status? (s/n): " LOGS
@@ -113,6 +115,7 @@ EOF
     chmod 755 /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
     chown root:root /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
 
+    # --- Ativa logs de status ---
     ativar_logs_status() {
         [ -f "$SERVER_CONF" ] || return
         sudo sed -i '/^status /d' "$SERVER_CONF"
@@ -152,6 +155,7 @@ EOF
 
     echo -e "${VERDE}✅ Configuração do servidor VPN e categorias finalizada.${NC}"
 }
+
 
 # --- FUNÇÃO 3: LISTAR CERTIFICADOS ATIVOS ---
 listar_usuarios() {
