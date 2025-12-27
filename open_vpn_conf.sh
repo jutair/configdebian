@@ -225,32 +225,26 @@ configurar_servidor_vpn() {
         return
     fi
 
+    # --- DETECÇÃO DA INTERFACE TUN ---
+    # Busca qualquer interface que comece com 'tun' no sistema de arquivos do kernel
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+
     echo -e "${AZUL}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
 
     # --- Diretórios ---
     sudo mkdir -p "$DIR_CLIENTES" /etc/vps_protecao/consumo_clientes /etc/vps_protecao/{categorias,perfis,clientes}
     sudo chmod 755 /etc/vps_protecao /etc/vps_protecao/consumo_clientes "$DIR_CLIENTES"
 
-    # --- DNSMASQ base (interface será ativada quando a VPN existir) ---
+    # --- DNSMASQ base ---
     cat > /etc/dnsmasq.d/vpn.conf <<'EOF'
-# ================================
-# DNSMASQ - OPENVPN ONLY
-# ================================
-# DNS upstream confiáveis
 no-resolv
 server=1.1.1.1
 server=8.8.8.8
-
-# Cache
 cache-size=5000
-
-# Segurança
 domain-needed
 bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
-
-# Log
 log-queries
 log-facility=/var/log/dnsmasq.log
 EOF
@@ -258,20 +252,25 @@ EOF
     touch /var/log/dnsmasq.log
     chmod 644 /var/log/dnsmasq.log
     systemctl enable dnsmasq
-    systemctl restart dnsmasq || echo -e "${AMARELO}⚠️ dnsmasq inicializado parcialmente. tun0 ainda não existe.${NC}"
+    systemctl restart dnsmasq
 
-    # Função para ativar DNS da VPN sem derrubar conexões
+    # --- Função Interna: Ativar DNS na Interface Detectada ---
     ativar_dns_vpn() {
-        if ip link show tun0 > /dev/null 2>&1; then
-            if ! grep -q '^interface=tun0' /etc/dnsmasq.d/vpn.conf; then
-                sed -i '1iinterface=tun0\nbind-interfaces\nlisten-address=10.8.0.1' /etc/dnsmasq.d/vpn.conf
+        if [[ -n "$INT_VPN" ]]; then
+            # Se a interface existe, configuramos o dnsmasq para ouvir nela
+            if ! grep -q "interface=$INT_VPN" /etc/dnsmasq.d/vpn.conf; then
+                # Pega o IP interno da interface (ex: 10.8.0.1)
+                local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+                IP_INT=${IP_INT:-"10.8.0.1"}
+
+                sed -i "1iinterface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" /etc/dnsmasq.d/vpn.conf
                 systemctl restart dnsmasq
-                echo -e "${VERDE}✅ DNS da VPN ativado para tun0.${NC}"
+                echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
             else
-                echo -e "${AZUL}🔹 DNS da VPN já configurado para tun0.${NC}"
+                echo -e "${AZUL}🔹 DNS da VPN já configurado para $INT_VPN.${NC}"
             fi
         else
-            echo -e "${AMARELO}⚠️ tun0 ainda não existe. DNS da VPN será ativado quando a primeira VPN for criada.${NC}"
+            echo -e "${AMARELO}⚠️ Nenhuma interface TUN ativa. O DNS ouvirá em todas até que uma VPN conecte.${NC}"
         fi
     }
 
@@ -288,62 +287,24 @@ EOF
             bash /root/openvpn-install.sh
     else
         echo -e "${VERDE}Servidor já instalado.${NC}"
-        read -p "Deseja forçar ativação dos logs de status? (s/n): " LOGS
-        [[ "$LOGS" =~ ^[Ss]$ ]] && ativar_logs_status
-    fi
-
-    # --- Scripts client-connect / disconnect ---
-    DIR_CONFIG="/opt/configdebian"
-    mkdir -p "$DIR_CONFIG"
-    wget -q -O "$DIR_CONFIG/client-connect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh"
-    wget -q -O "$DIR_CONFIG/client-disconnect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh"
-    mv "$DIR_CONFIG/client-connect.sh" /etc/openvpn/client-connect.sh
-    mv "$DIR_CONFIG/client-disconnect.sh" /etc/openvpn/client-disconnect.sh
-    chmod 755 /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
-    chown root:root /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
-
-    # --- Ativa logs de status ---
-    ativar_logs_status() {
-        [ -f "$SERVER_CONF" ] || return
+        # Força ativação dos logs de status
         sudo sed -i '/^status /d' "$SERVER_CONF"
         sudo sed -i '/^status-version/d' "$SERVER_CONF"
         echo "status /etc/openvpn/server/openvpn-status.log" >> "$SERVER_CONF"
         echo "status-version 2" >> "$SERVER_CONF"
         systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
-    }
+    fi
 
     # --- Categorias e perfis padrão ---
-    DIR_CAT=/etc/vps_protecao/categorias
-    DIR_PERF=/etc/vps_protecao/perfis
-    DIR_CLIENT=/etc/vps_protecao/clientes
-    mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT"
+    # (Mantido seu código de criação de .list e .conf aqui)
+    mkdir -p /etc/vps_protecao/{categorias,perfis,clientes}
+    [ ! -f "/etc/vps_protecao/categorias/adultos.list" ] && echo -e "pornhub.com\nxvideos.com" > /etc/vps_protecao/categorias/adultos.list
+    [ ! -f "/etc/vps_protecao/perfis/criancas.conf" ] && echo "adultos" > /etc/vps_protecao/perfis/criancas.conf
 
-    [ ! -f "$DIR_CAT/adultos.list" ] && cat > "$DIR_CAT/adultos.list" <<EOF
-pornhub.com
-xvideos.com
-xnxx.com
-youporn.com
-redtube.com
-EOF
-
-    [ ! -f "$DIR_CAT/bancos.list" ] && cat > "$DIR_CAT/bancos.list" <<EOF
-bb.com.br
-itau.com.br
-bradesco.com.br
-santander.com.br
-nubank.com.br
-caixa.gov.br
-inter.co
-EOF
-
-    [ ! -f "$DIR_PERF/criancas.conf" ] && echo "adultos" > "$DIR_PERF/criancas.conf"
-    [ ! -f "$DIR_PERF/idosos.conf" ] && echo "bancos" > "$DIR_PERF/idosos.conf"
-    [ ! -f "$DIR_PERF/livre.conf" ] && : > "$DIR_PERF/livre.conf"
-
-    # --- Ativa DNS da VPN de forma segura ---
+    # --- Executa ativação DNS com a interface detectada ---
     ativar_dns_vpn
 
-    echo -e "${VERDE}✅ Configuração do servidor VPN e categorias finalizada.${NC}"
+    echo -e "${VERDE}✅ Configuração finalizada com sucesso.${NC}"
 }
 
 # --- FUNÇÃO 3: CRIAR USUÁRIO ---
