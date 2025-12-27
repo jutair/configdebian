@@ -178,6 +178,20 @@ EOF
         ;;
     esac
 }
+verificar_dns_vpn() {
+    local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
+    local LOCK="/var/run/vpn_dns_ativado.lock"
+
+    local INT_VPN
+    INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
+
+    [[ -z "$INT_VPN" ]] && return 1
+    [[ ! -f "$LOCK" ]] && return 1
+    [[ ! -f "$DNS_CONF" ]] && return 1
+
+    grep -q "^interface=$INT_VPN" "$DNS_CONF"
+}
+
 menu_dnsmasq_vpn() {
     while true; do
         clear
