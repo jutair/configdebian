@@ -189,6 +189,64 @@ ativa_dns() {
     exit 0
 
 }
+monitor_vpn() {
+#!/bin/bash
+
+# --- Configurações do Telegram ---
+[ -f /etc/vps_protecao/telegram.conf ] && source /etc/vps_protecao/telegram.conf
+
+# --- Funções de cores para saída ---
+VERMELHO='\033[0;31m'
+VERDE='\033[0;32m'
+AMARELO='\033[1;33m'
+AZUL='\033[0;34m'
+NC='\033[0m'
+
+# --- Data/Hora ---
+DATA_ATUAL=$(date +'%d/%m/%Y')
+HORA_ATUAL=$(date +'%H:%M:%S')
+
+# --- Checa status do OpenVPN ---
+if systemctl is-active --quiet openvpn-server@server; then
+    VPN_STATUS=1
+else
+    VPN_STATUS=0
+fi
+
+# --- Checa interface TUN ---
+INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
+if [[ -n "$INT_VPN" ]]; then
+    IP_TUN=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+else
+    IP_TUN=""
+fi
+
+# --- Verifica DNS ---
+DNS_CONFIGURADO=0
+if [[ -n "$INT_VPN" && -f /etc/dnsmasq.d/vpn.conf ]]; then
+    if grep -q "interface=$INT_VPN" /etc/dnsmasq.d/vpn.conf; then
+        DNS_CONFIGURADO=1
+    fi
+fi
+
+# --- Relatório ---
+MENSAGEM="⏱️ <b>Monitoramento VPN - $DATA_ATUAL $HORA_ATUAL</b>%0A"
+
+if [[ $VPN_STATUS -eq 1 && -n "$INT_VPN" && $DNS_CONFIGURADO -eq 1 ]]; then
+    echo -e "${VERDE}✅ VPN OK: $INT_VPN ($IP_TUN), DNS configurado.${NC}"
+else
+    echo -e "${VERMELHO}❌ Problema detectado na VPN!${NC}"
+    [[ $VPN_STATUS -eq 0 ]] && MENSAGEM+="❌ OpenVPN não está ativo.%0A"
+    [[ -z "$INT_VPN" ]] && MENSAGEM+="❌ Nenhuma interface TUN detectada.%0A"
+    [[ $DNS_CONFIGURADO -eq 0 ]] && MENSAGEM+="❌ DNS não configurado para a VPN.%0A"
+
+    # --- Envia alerta Telegram ---
+    if [[ -n "$TOKEN" && -n "$ID_CHAT" ]]; then
+        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+    fi
+fi
+}
 # --- LOOP INFINITO DO GUARDIÃO ---
 while true; do
     verificar_recursos_sistema
@@ -196,6 +254,7 @@ while true; do
     verificar_servicos
     rastrear_clientes_vpn
     verificar_cota_vps
-    sleep 30
+    monitor_vpn
+    sleep 50
 done
 
