@@ -189,33 +189,27 @@ verificar_servicos() {
 # FUNÇÃO: MONITORAMENTO VPN E DNS
 # ==========================================
 monitor_vpn() {
-    local VPN_STATUS=0
-    local INT_VPN
-    local IP_TUN
-    local DNS_CONFIGURADO=0
-
-    # Status do OpenVPN
-    systemctl is-active --quiet openvpn-server@server && VPN_STATUS=1
-
-    # Interface tun ativa
+    # --- Verifica se DNS está ativo ---
+    ativa_dns
+    # --- Verifica status geral da VPN ---
     INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
-    [[ -n "$INT_VPN" ]] && IP_TUN=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
-
-    # Verifica DNS configurado
-    [[ -n "$INT_VPN" && -f /etc/dnsmasq.d/vpn.conf ]] && grep -q "interface=$INT_VPN" /etc/dnsmasq.d/vpn.conf && DNS_CONFIGURADO=1
-
-    # Relatório
-    local MENSAGEM="⏱️ <b>Monitoramento VPN - $(date '+%d/%m/%Y %H:%M:%S')</b>%0A"
-
-    if [[ $VPN_STATUS -eq 1 && -n "$INT_VPN" && $DNS_CONFIGURADO -eq 1 ]]; then
-        log_msg "✅ VPN OK: $INT_VPN ($IP_TUN), DNS configurado."
-    else
-        [[ $VPN_STATUS -eq 0 ]] && MENSAGEM+="❌ OpenVPN não está ativo.%0A"
-        [[ -z "$INT_VPN" ]] && MENSAGEM+="❌ Nenhuma interface TUN detectada.%0A"
-        [[ $DNS_CONFIGURADO -eq 0 ]] && MENSAGEM+="❌ DNS não configurado para a VPN.%0A"
-        enviar_alerta "$MENSAGEM"
-        log_msg "❌ Problema detectado na VPN. Alerta enviado."
+    DNS_CONFIGURADO=0
+    if [[ -n "$INT_VPN" && -f /etc/dnsmasq.d/vpn.conf ]]; then
+        if grep -q "^interface=$INT_VPN" /etc/dnsmasq.d/vpn.conf; then
+            DNS_CONFIGURADO=1
+        fi
     fi
+    
+    if [[ $DNS_CONFIGURADO -eq 0 ]]; then
+        ALERTA_LOCK="/tmp/alerta_dns_enviado"
+        if [ ! -f "$ALERTA_LOCK" ]; then
+            enviar_alerta "❌ DNS da VPN não configurado para $INT_VPN!"
+            touch "$ALERTA_LOCK"
+        fi
+    else
+        [ -f "$ALERTA_LOCK" ] && rm -f "$ALERTA_LOCK"
+    fi
+
 }
 
 # ==========================================
@@ -242,7 +236,6 @@ touch "$LOCK_GUARDIAO"
 log_msg "[GUARDIAO] Iniciado..."
 while true; do
     verificar_recursos_sistema
-    ativa_dns
     verificar_servicos
     rastrear_clientes_vpn
     verificar_cota_vps
