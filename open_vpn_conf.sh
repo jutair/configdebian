@@ -256,6 +256,15 @@ EOF
 
     # --- Função Interna: Ativar DNS na Interface Detectada ---
     ativar_dns_vpn() {
+        # --- DETECÇÃO DA INTERFACE TUN ---
+        # Busca qualquer interface que comece com 'tun' no sistema de arquivos do kernel
+        local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+    
+        echo -e "${AZUL}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
+    
+        # --- Diretórios ---
+        sudo mkdir -p "$DIR_CLIENTES" /etc/vps_protecao/consumo_clientes /etc/vps_protecao/{categorias,perfis,clientes}
+        sudo chmod 755 /etc/vps_protecao /etc/vps_protecao/consumo_clientes "$DIR_CLIENTES"
         if [[ -n "$INT_VPN" ]]; then
             # Se a interface existe, configuramos o dnsmasq para ouvir nela
             if ! grep -q "interface=$INT_VPN" /etc/dnsmasq.d/vpn.conf; then
@@ -300,7 +309,7 @@ EOF
     mkdir -p /etc/vps_protecao/{categorias,perfis,clientes}
     [ ! -f "/etc/vps_protecao/categorias/adultos.list" ] && echo -e "pornhub.com\nxvideos.com" > /etc/vps_protecao/categorias/adultos.list
     [ ! -f "/etc/vps_protecao/perfis/criancas.conf" ] && echo "adultos" > /etc/vps_protecao/perfis/criancas.conf
-
+    
     # --- Executa ativação DNS com a interface detectada ---
     ativar_dns_vpn
 
