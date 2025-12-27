@@ -101,7 +101,6 @@ configurar_servidor_vpn() {
 
     echo -e "${VERDE}✅ Configuração do servidor OpenVPN finalizada.${NC}"
 }
-# --- FUNÇÃO: CONFIGURAR E GERENCIAR DNSMASQ ---
 # ==========================================
 # FUNÇÃO: Ativar DNS da VPN com segurança
 # ==========================================
@@ -164,7 +163,10 @@ EOF
 
     # Remove lock de alerta, se existia
     [ -f "$ALERTA_LOCK" ] && rm -f "$ALERTA_LOCK"
+    echo "Feito"
+    sleep 5
 }
+
 
 testa_velocidade() {
     clear
