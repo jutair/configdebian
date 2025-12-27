@@ -36,9 +36,9 @@ enviar_telegram() {
 # --- FUNÇÃO 2: CONFIGURAR SERVIDOR ---
 configurar_servidor_vpn() {
     clear
-    # 1. Carrega o Admin cadastrado para garantir a verificação
+    # --- 1. Carrega o Admin cadastrado ---
     [ -f "$ADMIN_CONF" ] && source "$ADMIN_CONF"
-    
+
     local USUARIO_ATUAL=$(logname 2>/dev/null || whoami)
     local DATA_ATUAL=$(date +'%d/%m/%Y')
     local HORA_ATUAL=$(date +'%H:%M:%S')
@@ -49,7 +49,7 @@ configurar_servidor_vpn() {
         echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
         echo -e "${VERMELHO}===============================================================${NC}"
         echo -e "Tentativa de alteração do servidor por: ${AMARELO}$USUARIO_ATUAL${NC}"
-        
+
         if [ -f "$TELEGRAM_CONF" ]; then
             source "$TELEGRAM_CONF"
             MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
@@ -59,22 +59,54 @@ configurar_servidor_vpn() {
         return
     fi
 
-    # ⚙️ INÍCIO DA CONFIGURAÇÃO
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "              ${VERDE}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
     echo -e "${AZUL}===============================================================${NC}"
 
-    # Prepara diretórios
-    echo -e "${AMARELO}Verificando diretórios de segurança...${NC}"
+    # --- 2. PREPARA DIRETÓRIOS ---
     sudo mkdir -p "$DIR_CLIENTES"
     sudo mkdir -p /etc/vps_protecao/consumo_clientes
-    sudo chmod 755 /etc/vps_protecao/consumo_clientes
+    sudo mkdir -p /etc/vps_protecao/{categorias,perfis,clientes}
     sudo chmod 755 /etc/vps_protecao
+    sudo chmod 755 /etc/vps_protecao/consumo_clientes
     sudo chmod 755 "$DIR_CLIENTES"
 
-    # Define o caminho do arquivo de configuração (comum em Debian/Ubuntu)
+    # --- 3. CONFIGURA DNSMASQ PARA VPN ---
+    echo -e "${AMARELO}🔧 Configurando DNS da VPN (dnsmasq)...${NC}"
+    [ -f /etc/dnsmasq.conf ] && cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%F-%H%M)
+
+    cat > /etc/dnsmasq.conf <<'EOF'
+# dnsmasq.conf limpo
+conf-dir=/etc/dnsmasq.d
+EOF
+
+    cat > /etc/dnsmasq.d/vpn.conf <<'EOF'
+# ================================
+# DNSMASQ - OPENVPN ONLY
+# ================================
+interface=tun0
+bind-interfaces
+listen-address=10.8.0.1
+no-resolv
+server=1.1.1.1
+server=8.8.8.8
+cache-size=5000
+domain-needed
+bogus-priv
+stop-dns-rebind
+rebind-localhost-ok
+log-queries
+log-facility=/var/log/dnsmasq.log
+EOF
+
+    touch /var/log/dnsmasq.log
+    chmod 644 /var/log/dnsmasq.log
+    systemctl enable dnsmasq
+    systemctl restart dnsmasq
+    echo -e "${VERDE}✅ DNS da VPN configurado corretamente.${NC}"
+
+    # --- 4. VERIFICAÇÃO DO OPENVPN ---
     SERVER_CONF="/etc/openvpn/server.conf"
-    # Se não existir na raiz, tenta o caminho alternativo do instalador
     [ ! -f "$SERVER_CONF" ] && SERVER_CONF="/etc/openvpn/server/server.conf"
 
     if [ ! -f "$SERVER_CONF" ]; then
@@ -89,38 +121,51 @@ configurar_servidor_vpn() {
         echo -e "${VERDE}Servidor já instalado.${NC}"
         echo -e "  [1] Menu de Gerenciamento do Instalador (Portas/Protocolos/Remover)"
         echo -e "  [2] Reinstalar Script de Instalação (Update)"
-        echo -e "  [3] Forçar Ativação de Logs (Para Monitoramento)"
+        echo -e "  [3] Forçar Ativação de Logs"
         echo -e "  [0] Voltar"
         read -n 1 -p " Escolha: " OP_SVR; echo ""
         case $OP_SVR in
             1) bash /root/openvpn-install.sh ;;
             2) wget https://git.io/vpn -O /root/openvpn-install.sh && chmod +x /root/openvpn-install.sh && echo -e "\n${VERDE}Atualizado!${NC}" && sleep 2 ;;
-            3) # Função de Forçar Logs adicionada aqui também para acesso manual
-               ativar_logs_status ;;
+            3) ativar_logs_status ;;
             *) return ;;
         esac
     fi
 
-    # --- BLOCO PARA FORÇAR LOGS DE STATUS (Sempre executa ao configurar) ---
+    # --- 5. CONFIGURAÇÃO DOS SCRIPTS OPENVPN ---
+    DIR_CONFIG="/opt/configdebian"
+    mkdir -p "$DIR_CONFIG"
+
+    echo -e "${AMARELO}🔐 Configurando scripts client-connect / disconnect...${NC}"
+
+    wget -q -O "$DIR_CONFIG/client-connect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh"
+    wget -q -O "$DIR_CONFIG/client-disconnect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh"
+
+    mv "$DIR_CONFIG/client-connect.sh" /etc/openvpn/client-connect.sh
+    mv "$DIR_CONFIG/client-disconnect.sh" /etc/openvpn/client-disconnect.sh
+
+    chmod 755 /etc/openvpn/client-connect.sh
+    chmod 755 /etc/openvpn/client-disconnect.sh
+    chown root:root /etc/openvpn/client-connect.sh
+    chown root:root /etc/openvpn/client-disconnect.sh
+
+    # --- 6. ATIVA LOGS DE STATUS ---
     ativar_logs_status() {
         echo -e "${AMARELO}Configurando logs de monitoramento...${NC}"
-        # Remove linhas de status antigas para evitar duplicidade
+        [ -f "$SERVER_CONF" ] || return
         sudo sed -i '/^status /d' "$SERVER_CONF"
         sudo sed -i '/^status-version/d' "$SERVER_CONF"
-        
-        # Insere a nova configuração de status compatível com o Guardião
         echo "status /etc/openvpn/server/openvpn-status.log" >> "$SERVER_CONF"
         echo "status-version 2" >> "$SERVER_CONF"
-        
-        # Reinicia para aplicar
         systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
         echo -e "${VERDE}Logs de status ativados com sucesso!${NC}"
         sleep 2
     }
-    
-    # Chama a ativação automaticamente se o arquivo de configuração existir
+
     [ -f "$SERVER_CONF" ] && ativar_logs_status
+    echo -e "${VERDE}✅ Configuração do servidor VPN finalizada.${NC}"
 }
+
 
 # --- FUNÇÃO 3: LISTAR CERTIFICADOS ATIVOS ---
 listar_usuarios() {
