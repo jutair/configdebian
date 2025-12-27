@@ -105,13 +105,14 @@ configurar_servidor_vpn() {
 # FUNÇÃO: Ativar DNS da VPN com segurança
 # ==========================================
 configurar_dnsmasq_vpn() {
-    local ACTION=${1:-"ativar"}  # 'ativar' ou 'desativar'
+    local ACTION=${1:-"ativar"}  # ativar | desativar
     local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
     local LOCK="/var/run/vpn_dns_ativado.lock"
+    local LOG="/var/log/dnsmasq.log"
 
     case "$ACTION" in
         ativar)
-            # Cria arquivo base se não existir
+            # Cria config base se não existir
             if [ ! -f "$DNS_CONF" ]; then
                 cat > "$DNS_CONF" <<'EOF'
 no-resolv
@@ -125,51 +126,97 @@ rebind-localhost-ok
 log-queries
 log-facility=/var/log/dnsmasq.log
 EOF
-                touch /var/log/dnsmasq.log
-                chmod 644 /var/log/dnsmasq.log
             fi
 
-            # Detecta interface VPN ativa
-            local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
+            touch "$LOG"
+            chmod 644 "$LOG"
+
+            # Detecta interface VPN
+            local INT_VPN
+            INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
+
             if [[ -z "$INT_VPN" ]]; then
-                echo "⚠️ Nenhuma interface VPN ativa encontrada."
+                echo "⚠️ VPN não ativa (tun não encontrado). DNSMASQ não aplicado."
                 return 1
             fi
 
-            local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+            local IP_INT
+            IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
             IP_INT=${IP_INT:-"10.8.0.1"}
 
-            # Remove configurações antigas
+            # Limpa entradas antigas
             sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
-            echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a "$DNS_CONF" >/dev/null
 
-            systemctl enable dnsmasq
+            # Aplica nova interface
+            {
+                echo "interface=$INT_VPN"
+                echo "bind-interfaces"
+                echo "listen-address=$IP_INT"
+            } >> "$DNS_CONF"
+
+            systemctl enable dnsmasq >/dev/null 2>&1
             systemctl restart dnsmasq
 
-            # Cria lock
             touch "$LOCK"
             chmod 600 "$LOCK"
 
-            echo "✅ DNSMASQ ativado para interface $INT_VPN ($IP_INT)"
+            echo "✅ DNSMASQ ativado para $INT_VPN ($IP_INT)"
         ;;
         desativar)
-            if [ -f "$LOCK" ]; then
-                rm -f "$LOCK"
-            fi
+            rm -f "$LOCK"
 
-            # Remove configuração específica da VPN
             if [ -f "$DNS_CONF" ]; then
                 sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
             fi
 
             systemctl restart dnsmasq
-            echo "✅ DNSMASQ desativado para a VPN"
+            echo "🟡 DNSMASQ desvinculado da VPN"
         ;;
         *)
             echo "Uso: configurar_dnsmasq_vpn [ativar|desativar]"
             return 1
         ;;
     esac
+}
+menu_dnsmasq_vpn() {
+    while true; do
+        clear
+        echo "======================================="
+        echo "     DNSMASQ VPN - CONTROLE MANUAL      "
+        echo "======================================="
+        echo "1) Ativar DNS da VPN"
+        echo "2) Desativar DNS da VPN"
+        echo "3) Status atual"
+        echo "0) Voltar"
+        echo "---------------------------------------"
+        read -p "Opção: " OP
+
+        case "$OP" in
+            1)
+                configurar_dnsmasq_vpn ativar
+                read -p "Enter para continuar..."
+            ;;
+            2)
+                configurar_dnsmasq_vpn desativar
+                read -p "Enter para continuar..."
+            ;;
+            3)
+                if verificar_dns_vpn; then
+                    echo "✅ DNS da VPN está ATIVO"
+                else
+                    echo "❌ DNS da VPN NÃO está ativo"
+                fi
+                read -p "Enter para continuar..."
+            ;;
+            0)
+                break
+            ;;
+            *)
+                echo "Opção inválida"
+                sleep 1
+            ;;
+        esac
+    done
 }
 
 testa_velocidade() {
