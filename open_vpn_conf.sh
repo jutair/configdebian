@@ -10,6 +10,45 @@ AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31
 # Cria o diretório de armazenamento dos arquivos se não existir
 mkdir -p "$DIR_CLIENTES"
 
+configurar_dnsmasq_individual() {
+    local TIMEOUT=30  # tempo máximo para esperar a interface TUN
+    local INTERVAL=1  # intervalo entre checagens
+    local CONT=0
+
+    echo -e "${AZUL}🔹 Aguardando interface TUN ficar ativa...${NC}"
+
+    # Espera a interface TUN ficar disponível
+    while [[ -z $(ls /sys/class/net | grep '^tun') ]] && [[ $CONT -lt $TIMEOUT ]]; do
+        sleep $INTERVAL
+        ((CONT++))
+    done
+
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+
+    if [[ -z "$INT_VPN" ]]; then
+        echo -e "${AMARELO}⚠️ Nenhuma interface TUN ativa após $TIMEOUT segundos.${NC}"
+        echo -e "${AMARELO}O dnsmasq continuará funcionando em todas as interfaces.${NC}"
+        return
+    fi
+
+    # Pega o IP da interface TUN
+    local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+    IP_INT=${IP_INT:-"10.8.0.1"}
+
+    echo -e "${AZUL}🔹 Configurando dnsmasq para interface $INT_VPN ($IP_INT)...${NC}"
+
+    # Remove entradas antigas caso existam
+    sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' /etc/dnsmasq.d/vpn.conf
+
+    # Adiciona a configuração correta
+    echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a /etc/dnsmasq.d/vpn.conf >/dev/null
+
+    # Reinicia dnsmasq com segurança
+    sudo systemctl restart dnsmasq
+
+    echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
+}
+
 testa_velocidade() {
     clear
     # --- DETECÇÃO ROBUSTA DA INTERFACE ---
@@ -818,6 +857,36 @@ gerenciar_banda() {
         0) return ;;
     esac
 }
+chama_configuracao() {
+    while true; do
+            clear
+            echo -e "${AZUL}===============================================================${NC}"
+            echo -e "             ${VERDE}⚙️  CONFIGURAÇÃO DE INFRAESTRUTURA${NC}"
+            echo -e "${AZUL}===============================================================${NC}"
+            echo -e "  [1] 🌐 Configurar/Instalar Servidor VPN (OpenVPN)"
+            echo -e "  [2] 🛡️  Configurar DNSMASQ (Filtros e DNS da VPN)"
+            echo -e "  [0] ⬅️  Retornar ao Menu Principal"
+            echo -e "${AZUL}---------------------------------------------------------------${NC}"
+            read -n 1 -p " Escolha uma opção: " OP_INFRA; echo ""
+    
+            case $OP_INFRA in
+                1)
+                    configurar_servidor_vpn  # Chama a função que já revisamos
+                    ;;
+                2)
+                    configurar_dnsmasq_individual
+                    ;;
+                0)
+                    break
+                    ;;
+                *)
+                    echo -e "${VERMELHO}Opção inválida!${NC}"
+                    sleep 1
+                    ;;
+            esac
+        done
+}
+
 # --- MENU PRINCIPAL ---
 while true; do
     clear
@@ -836,7 +905,7 @@ while true; do
         2) remover_usuario ;;
         3) listar_cadastros ;;
         4) listar_usuarios_online ;;
-        5) configurar_servidor_vpn ;;
+        5) chama_configuracao ;;
         6) listar_arquivos_ovpn ;;
         7) enviar_ovpn_telegram_manual ;;
         8) gerenciar_banda ;;
