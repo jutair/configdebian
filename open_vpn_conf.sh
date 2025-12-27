@@ -129,6 +129,57 @@ consumo_tun0m() {
     
     read -p "Pressione ENTER para voltar..."
 }
+
+listar_cadastros() {
+    clear
+    local INDEX_FILE="/etc/openvpn/server/easy-rsa/pki/index.txt"
+    
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "                ${VERDE}📋 LISTA GERAL DE CADASTROS${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    
+    if [ ! -f "$INDEX_FILE" ]; then
+        echo -e "${VERMELHO}Erro: Arquivo de índices não encontrado.${NC}"
+        echo -e "Certifique-se de que o Easy-RSA está configurado corretamente."
+        read -p "Pressione ENTER..."
+        return
+    fi
+
+    # Cabeçalho da Tabela
+    printf "${AMARELO}%-20s %-15s %-20s${NC}\n" "USUÁRIO" "STATUS" "DATA CADASTRO"
+    echo -e "${AZUL}---------------------------------------------------------------${NC}"
+
+    # Lógica de leitura do index.txt
+    # V = Válido (Ativo)
+    # R = Revogado (Bloqueado)
+    while read -r STATUS DATA_CAD DATA_REV SERIAL NOME_DN; do
+        # Extrai apenas o nome comum (CN) do campo Distinguished Name
+        local NOME=$(echo "$NOME_DN" | sed -n 's/.*CN=\([^/]*\).*/\1/p')
+        
+        # Ignora a linha do "server"
+        [[ "$NOME" == "server" ]] && continue
+        [[ -z "$NOME" ]] && continue
+
+        # Formata a data (YYMMDDHHMMSSZ -> DD/MM/YY)
+        local DATA_FORMAT=$(echo "$DATA_CAD" | cut -c 1-6 | sed -r 's/(..)(..)(..)/\3\/\2\/\1/')
+
+        if [[ "$STATUS" == "V" ]]; then
+            printf "%-20s ${VERDE}%-15s${NC} %-20s\n" "$NOME" "ATIVO" "$DATA_FORMAT"
+        elif [[ "$STATUS" == "R" ]]; then
+            printf "%-20s ${VERMELHO}%-15s${NC} %-20s\n" "$NOME" "REVOGADO" "$DATA_FORMAT"
+        fi
+    done < "$INDEX_FILE"
+
+    echo -e "${AZUL}===============================================================${NC}"
+    
+    # Resumo rápido
+    local TOTAL_A=$(grep -c "^V" "$INDEX_FILE" | awk '{print $1 - 1}') # -1 por causa do server
+    local TOTAL_R=$(grep -c "^R" "$INDEX_FILE")
+    echo -e " Ativos: ${VERDE}$TOTAL_A${NC} | Revogados: ${VERMELHO}$TOTAL_R${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
+    
+    read -p "Pressione ENTER para voltar..."
+}
 # --- FUNÇÃO 1: ENVIAR TELEGRAM (CORE) ---
 enviar_telegram() {
     local ARQUIVO=$1
@@ -763,7 +814,7 @@ while true; do
     case $OP in
         1) criar_usuario ;;
         2) remover_usuario ;;
-        3) listar_arquivos_ovpn ;;
+        3) listar_cadastros ;;
         4) listar_usuarios_online ;;
         5) configurar_servidor_vpn ;;
         6) listar_arquivos_ovpn ;;
