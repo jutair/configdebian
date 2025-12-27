@@ -11,69 +11,123 @@ AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31
 mkdir -p "$DIR_CLIENTES"
 
 testa_velocidade() {
-# --- DETECÇÃO AUTOMÁTICA DA INTERFACE TUN ---
-    # Busca qualquer interface que comece com 'tun' (tun0, tun1, etc)
-    local INT_VPN=$(ip addr | grep -o 'tun[0-9]*' | head -n 1)
+    clear
+    # --- DETECÇÃO ROBUSTA DA INTERFACE ---
+    # Busca no diretório de classes de rede do sistema (mais confiável que ip addr)
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+
+    # Se falhar, tenta pelo comando IP como backup
+    if [[ -z "$INT_VPN" ]]; then
+        INT_VPN=$(ip link show up | grep -o 'tun[0-9]*' | head -n 1)
+    fi
 
     if [[ -z "$INT_VPN" ]]; then
-        echo -e "${VERMELHO}⚠️ ERRO: Nenhuma interface TUN encontrada!${NC}"
-        echo -e "${AMARELO}A VPN precisa estar ativa para monitorar a tun0.${NC}"
+        echo -e "${VERMELHO}⚠️ ERRO: Nenhuma interface TUN ativa encontrada!${NC}"
+        echo -e "${AMARELO}Certifique-se que o serviço OpenVPN está rodando.${NC}"
+        echo -e "Comando para verificar: ${AZUL}systemctl status openvpn-server@server${NC}"
         read -p "Pressione ENTER para voltar..."
         return
     fi
 
-    # Garante que o vnStat esteja monitorando esta interface
+    # --- VERIFICAÇÃO VNSTAT ---
     if ! vnstat --iflist | grep -q "$INT_VPN"; then
-        echo -e "${AMARELO}Configurando vnStat para monitorar $INT_VPN...${NC}"
-        vnstat --add -i "$INT_VPN"
-        systemctl restart vnstat
+        echo -e "${AMARELO}Adicionando $INT_VPN ao banco de dados vnStat...${NC}"
+        sudo vnstat --add -i "$INT_VPN"
+        sudo systemctl restart vnstat
         sleep 2
     fi
-    echo -e "${AMARELO}Iniciando speedtest na interface $INT_VPN...${NC}"
-    # Tenta forçar o speedtest pela tun0
-    speedtest-cli --source $(ip -4 addr show $INT_VPN | grep -oP '(?<=inet\s)\d+(\.\d+){3}') 2>/dev/null || speedtest-cli
+
+    # --- EXECUÇÃO DO SPEEDTEST ---
+    echo -e "${VERDE}✅ Interface detectada: $INT_VPN${NC}"
+    
+    # Pega o IP interno da tun0 (ex: 10.8.0.1)
+    local IP_LOCAL=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+
+    echo -e "${AMARELO}Iniciando speedtest via $INT_VPN ($IP_LOCAL)...${NC}"
+    
+    if [[ -n "$IP_LOCAL" ]]; then
+        # Tenta forçar a origem pelo IP da VPN
+        speedtest-cli --source "$IP_LOCAL" || speedtest-cli
+    else
+        # Se não achar o IP interno, roda o padrão
+        speedtest-cli
+    fi
+    
     read -p "Pressione ENTER..."
 }
 consumo_tun0d() {
-# --- DETECÇÃO AUTOMÁTICA DA INTERFACE TUN ---
-    # Busca qualquer interface que comece com 'tun' (tun0, tun1, etc)
-    local INT_VPN=$(ip addr | grep -o 'tun[0-9]*' | head -n 1)
+    clear
+    # --- MÉTODO INFALÍVEL DE DETECÇÃO ---
+    # Busca direto no arquivo de dispositivos de rede do Kernel
+    local INT_VPN=$(grep -oE '^ *tun[0-9]+' /proc/net/dev | tr -d ' ' | head -n 1)
+
+    # Se ainda assim for vazio, tenta listar as interfaces "up" via link
+    if [[ -z "$INT_VPN" ]]; then
+        INT_VPN=$(ip link show up | awk -F': ' '/tun[0-9]+/{print $2}' | cut -d'@' -f1 | head -n 1)
+    fi
 
     if [[ -z "$INT_VPN" ]]; then
-        echo -e "${VERMELHO}⚠️ ERRO: Nenhuma interface TUN encontrada!${NC}"
-        echo -e "${AMARELO}A VPN precisa estar ativa para monitorar a tun0.${NC}"
+        echo -e "${VERMELHO}⚠️ ERRO: Interface TUN não detectada no sistema!${NC}"
+        echo -e "${AMARELO}1. Verifique se a VPN está ativa: systemctl status openvpn*${NC}"
+        echo -e "${AMARELO}2. Verifique se você é root (UID 0)${NC}"
         read -p "Pressione ENTER para voltar..."
         return
     fi
 
-    # Garante que o vnStat esteja monitorando esta interface
+    echo -e "${VERDE}✅ Interface encontrada: $INT_VPN${NC}"
+
+    # --- CONFIGURAÇÃO DO VNSTAT ---
+    # Verifica se a interface já está no banco do vnStat
     if ! vnstat --iflist | grep -q "$INT_VPN"; then
-        echo -e "${AMARELO}Configurando vnStat para monitorar $INT_VPN...${NC}"
-        vnstat --add -i "$INT_VPN" -d
+        echo -e "${AMARELO}Adicionando $INT_VPN ao banco de dados vnStat...${NC}"
+        # Comando correto para adicionar (sem o -d)
+        vnstat --add -i "$INT_VPN"
         systemctl restart vnstat
-        sleep 2
+        echo -e "${AMARELO}Aguarde 5 segundos para inicialização...${NC}"
+        sleep 5
     fi
+
+    # --- EXIBIÇÃO DO CONSUMO ---
+    echo -e "${AZUL}Exibindo consumo diário para: $INT_VPN${NC}"
+    vnstat -i "$INT_VPN" -d
+    
+    read -p "Pressione ENTER para continuar..."
 }
-
 consumo_tun0m() {
-# --- DETECÇÃO AUTOMÁTICA DA INTERFACE TUN ---
-    # Busca qualquer interface que comece com 'tun' (tun0, tun1, etc)
-    local INT_VPN=$(ip addr | grep -o 'tun[0-9]*' | head -n 1)
+    clear
+    # --- DETECÇÃO VIA KERNEL (SISTEMA DE ARQUIVOS) ---
+    # Isso lista as placas de rede direto da fonte, sem depender do comando 'ip'
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+
+    # Backup: se o ls falhar, tenta via /proc/net/dev
+    if [[ -z "$INT_VPN" ]]; then
+        INT_VPN=$(grep -oE '^ *tun[0-9]+' /proc/net/dev | tr -d ' ' | head -n 1)
+    fi
 
     if [[ -z "$INT_VPN" ]]; then
-        echo -e "${VERMELHO}⚠️ ERRO: Nenhuma interface TUN encontrada!${NC}"
-        echo -e "${AMARELO}A VPN precisa estar ativa para monitorar a tun0.${NC}"
+        echo -e "${VERMELHO}⚠️ ERRO: Interface TUN não encontrada!${NC}"
+        echo -e "${AMARELO}A VPN está ligada? Verifique com: systemctl status openvpn${NC}"
         read -p "Pressione ENTER para voltar..."
         return
     fi
 
-    # Garante que o vnStat esteja monitorando esta interface
+    echo -e "${VERDE}✅ Interface ativa detectada: $INT_VPN${NC}"
+
+    # --- CONFIGURAÇÃO DO VNSTAT ---
+    # Verifica se a interface já está no banco. Se não estiver, ADICIONA.
     if ! vnstat --iflist | grep -q "$INT_VPN"; then
-        echo -e "${AMARELO}Configurando vnStat para monitorar $INT_VPN...${NC}"
-        vnstat --add -i "$INT_VPN" -m
+        echo -e "${AMARELO}Adicionando $INT_VPN ao monitoramento...${NC}"
+        vnstat --add -i "$INT_VPN"
         systemctl restart vnstat
-        sleep 2
+        echo -e "${AMARELO}Aguardando inicialização dos dados (5s)...${NC}"
+        sleep 5
     fi
+
+    # --- EXIBIÇÃO DO CONSUMO MENSAL (-m) ---
+    echo -e "${AZUL}Exibindo consumo MENSAL para: $INT_VPN${NC}"
+    vnstat -i "$INT_VPN" -m
+    
+    read -p "Pressione ENTER para voltar..."
 }
 # --- FUNÇÃO 1: ENVIAR TELEGRAM (CORE) ---
 enviar_telegram() {
