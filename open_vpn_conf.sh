@@ -305,7 +305,43 @@ EOF
     mkdir -p /etc/vps_protecao/{categorias,perfis,clientes}
     [ ! -f "/etc/vps_protecao/categorias/adultos.list" ] && echo -e "pornhub.com\nxvideos.com" > /etc/vps_protecao/categorias/adultos.list
     [ ! -f "/etc/vps_protecao/perfis/criancas.conf" ] && echo "adultos" > /etc/vps_protecao/perfis/criancas.conf
-    
+    ####Scripts do OpenVPN#######
+    # --- GARANTIR EXECUÇÃO DOS SCRIPTS DO GUARDIÃO ---
+echo -e "${AZUL}🔐 Configurando scripts client-connect / disconnect...${NC}"
+
+SERVER_CONF="/etc/openvpn/server/server.conf"
+[ ! -f "$SERVER_CONF" ] && SERVER_CONF="/etc/openvpn/server.conf"
+
+ALTEROU=0
+
+# script-security
+if ! grep -q '^script-security 2' "$SERVER_CONF"; then
+    sed -i '/^script-security/d' "$SERVER_CONF"
+    echo "script-security 2" >> "$SERVER_CONF"
+    ALTEROU=1
+fi
+
+# client-connect
+if ! grep -q '^client-connect /etc/openvpn/client-connect.sh' "$SERVER_CONF"; then
+    sed -i '/^client-connect /d' "$SERVER_CONF"
+    echo "client-connect /etc/openvpn/client-connect.sh" >> "$SERVER_CONF"
+    ALTEROU=1
+fi
+
+# client-disconnect
+if ! grep -q '^client-disconnect /etc/openvpn/client-disconnect.sh' "$SERVER_CONF"; then
+    sed -i '/^client-disconnect /d' "$SERVER_CONF"
+    echo "client-disconnect /etc/openvpn/client-disconnect.sh" >> "$SERVER_CONF"
+    ALTEROU=1
+fi
+
+# Reinicia SOMENTE se algo foi alterado
+if [[ "$ALTEROU" -eq 1 ]]; then
+    echo -e "${AMARELO}♻️ Reiniciando OpenVPN para aplicar scripts...${NC}"
+    systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
+else
+    echo -e "${VERDE}✅ Scripts do guardião já estavam configurados.${NC}"
+fi
     # --- Executa ativação DNS com a interface detectada ---
     ativar_dns_vpn
 
