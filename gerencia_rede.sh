@@ -452,7 +452,7 @@ while true; do
     echo -e "  [1] 📜 Logs do Sistema               [2] 🛡️  Firewall e Segurança"
     echo -e "  [3] ⚡ Testar Velocidade             [4] 🔑 SSH Config (Admin)"
     echo -e "  [5] 📉 VnStat (Consumo)              [6] 📢 Alerta Telegram (Admin)"
-    echo -e "  [7] 🛡️ Restaurar Segurança Padrão    [0]🔄 Voltar ao Menu Inicial  "
+    echo -e "  [7] 🛡️ Restaurar Segurança Padrão     [0]🔄 Voltar ao Menu Inicial  "
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     
     read -n 1 -p " Digite a opção: " OP; echo ""
