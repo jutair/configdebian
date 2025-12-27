@@ -204,6 +204,12 @@ EOF
 # Garante que o log existe
 touch /var/log/dnsmasq.log
 chmod 644 /var/log/dnsmasq.log
+# Cria as pastas de categorias de clientes
+BASE="/etc/vps_protecao"
+DIR_CAT="$BASE/categorias"
+DIR_PERF="$BASE/perfis"
+DIR_CLIENT="$BASE/clientes"
+mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT"
 
 # Habilita e inicia
 systemctl enable dnsmasq
