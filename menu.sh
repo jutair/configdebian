@@ -84,27 +84,43 @@ dashboard() {
     local GOLD='\033[1;33m'
     local VERDE='\033[0;32m'
     local AMARELO='\033[1;33m'
+    local VERMELHO='\033[0;31m'
     local NC='\033[0m'
     
+    # Tenta localizar o arquivo de log do OpenVPN dinamicamente
     STATUS_LOG=$(grep -r "status " /etc/openvpn/server/*.conf 2>/dev/null | awk '{print $2}' | head -n1)
     STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
 
     while true; do
-        # --- Coleta de Dados ---
+        # --- Detecção Dinâmica da Interface TUN ---
+        # Busca direto no sistema de arquivos do Kernel
+        local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+        
+        # --- Coleta de Dados de Sistema ---
         DATA_MANAUS=$(date +"%d/%m/%Y %H:%M:%S")
         UPTIME=$(uptime -p | sed 's/up //')
         CPU_VAL=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
         CPU_INT=${CPU_VAL%.*}
         MEM_PORC=$(free | awk '/Mem:/{printf("%d", $3/$2*100)}')
         
-        # Tráfego
+        # --- Tráfego ---
         IFACE_WEB=$(ip route | grep default | awk '{print $5}' | head -n1)
+        
+        # Coleta Tráfego WEB (Mês)
         TRAF_ETH=$(vnstat -i "$IFACE_WEB" --oneline 2>/dev/null | cut -d';' -f11)
-        TRAF_TUN=$(vnstat -i "tun0" --oneline 2>/dev/null | cut -d';' -f11)
-        [ -z "$TRAF_ETH" ] && TRAF_ETH="0 MB"
-        [ -z "$TRAF_TUN" ] && TRAF_TUN="0 MB"
+        [ -z "$TRAF_ETH" ] && TRAF_ETH="Indisponível"
 
-        # Usuários e Segurança
+        # Coleta Tráfego VPN (Mês) detectando a interface encontrada
+        if [[ -n "$INT_VPN" ]]; then
+            TRAF_TUN=$(vnstat -i "$INT_VPN" --oneline 2>/dev/null | cut -d';' -f11)
+            [ -z "$TRAF_TUN" ] && TRAF_TUN="Calculando..."
+            DISPLAY_TUN="$INT_VPN"
+        else
+            TRAF_TUN="${VERMELHO}OFFLINE${NC}"
+            DISPLAY_TUN="tunX"
+        fi
+
+        # --- Usuários e Segurança ---
         VPN_ONLINE=$(grep -E "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | grep -v "Common Name" | wc -l)
         SSH_ONLINE=$(who | wc -l)
         BANS=$(wc -l < /etc/vps_protecao/bans.log 2>/dev/null || echo "0")
@@ -115,12 +131,11 @@ dashboard() {
         echo -e "      ${GOLD}💎 DASHBOARD VPS PREMIUM${NC} | ${DATA_MANAUS} (AMT)"
         echo -e "${CYAN}===============================================================${NC}"
         
-        echo -e " 🌐 IP Servidor : ${AMARELO}${IP_SERVIDOR}${NC}"
-        echo -e " 👤 Usuário     : ${AMARELO}${USER_LOGADO}${NC} (${IP_CONEXAO})"
+        echo -e " 🌐 IP Servidor : ${AMARELO}${IP_SERVIDOR:-$(curl -s ifconfig.me)}${NC}"
+        echo -e " 👤 Usuário     : ${AMARELO}${USER:-$(whoami)}${NC}"
         echo -e " ⏱️  Uptime      : ${AMARELO}${UPTIME}${NC}"
         
         echo -e "${CYAN}------------------------- HARDWARE ----------------------------${NC}"
-        # Usando echo -e para as cores e printf apenas para o alinhamento do texto
         echo -ne " 💻 CPU: ${AMARELO}${CPU_INT}%${NC}"
         printf " %-10s" "" 
         echo -ne " 🧠 RAM: ${AMARELO}${MEM_PORC}%${NC}"
@@ -128,8 +143,8 @@ dashboard() {
         echo -e " 💾 DISCO: ${AMARELO}$(df -h / | awk 'NR==2 {print $5}')${NC}"
         
         echo -e "${CYAN}------------------------- TRÁFEGO -----------------------------${NC}"
-        echo -e " 📡 WEB (Mês): ${VERDE}${TRAF_ETH}${NC}"
-        echo -e " 📡 VPN (Mês): ${VERDE}${TRAF_TUN}${NC}"
+        echo -e " 📡 WEB (Mês) [${IFACE_WEB}]: ${VERDE}${TRAF_ETH}${NC}"
+        echo -e " 📡 VPN (Mês) [${DISPLAY_TUN}]: ${VERDE}${TRAF_TUN}${NC}"
         
         echo -e "${CYAN}------------------------- SEGURANÇA ---------------------------${NC}"
         echo -e " 🛡️  Bans Ativos      : ${AMARELO}${BANS}${NC}"
