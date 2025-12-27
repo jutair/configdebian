@@ -154,10 +154,45 @@ verificar_recursos_sistema() {
         [ -f "$ARQUIVO_ALERTA_RECURSOS" ] && rm -f "$ARQUIVO_ALERTA_RECURSOS"
     fi
 }
+ativa_dns() {
+    #!/bin/bash
+    # ==========================================
+    # GUARDIÃO – ATIVA DNS DA VPN COM SEGURANÇA
+    # Executado automaticamente pelo OpenVPN
+    # ==========================================
+    
+    LOCK="/var/run/vpn_dns_ativado.lock"
+    DNS_CONF="/etc/dnsmasq.d/vpn.conf"
+    
+    # Só executa uma vez
+    [ -f "$LOCK" ] && exit 0
+    
+    # Confirma se tun0 existe
+    if ip link show tun0 > /dev/null 2>&1; then
+    
+        # Evita duplicação
+        if ! grep -q "^interface=tun0" "$DNS_CONF"; then
+            sed -i '1iinterface=tun0\nbind-interfaces\nlisten-address=10.8.0.1\n' "$DNS_CONF"
+        fi
+    
+        # Reinicia apenas o DNS (não derruba VPN)
+        systemctl restart dnsmasq
+    
+        # Cria lock para não repetir
+        touch "$LOCK"
+        chmod 600 "$LOCK"
+    
+        logger "[GUARDIAO] DNS da VPN ativado com sucesso na tun0"
+    
+    fi
+    
+    exit 0
 
+}
 # --- LOOP INFINITO DO GUARDIÃO ---
 while true; do
     verificar_recursos_sistema
+    ativa_dns
     verificar_servicos
     rastrear_clientes_vpn
     verificar_cota_vps
