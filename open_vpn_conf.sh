@@ -900,7 +900,7 @@ chama_configuracao() {
                     configurar_servidor_vpn  # Chama a função que já revisamos
                     ;;
                 2)
-                    configurar_dnsmasq_vpn
+                    menu_dnsmasq_vpn
                     ;;
                 0)
                     break
