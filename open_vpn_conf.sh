@@ -247,24 +247,44 @@ EOF
 
     # --- Função Interna: Ativar DNS na Interface Detectada ---
     ativar_dns_vpn() {
+        local TIMEOUT=30  # tempo máximo para esperar a interface TUN
+        local INTERVAL=1  # intervalo entre checagens
+        local CONT=0
+    
+        echo -e "${AZUL}🔹 Aguardando interface TUN ficar ativa...${NC}"
+    
+        # Espera a interface TUN ficar disponível
+        while [[ -z $(ls /sys/class/net | grep '^tun') ]] && [[ $CONT -lt $TIMEOUT ]]; do
+            sleep $INTERVAL
+            ((CONT++))
+        done
+    
         local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+    
         if [[ -z "$INT_VPN" ]]; then
-            echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA NO MOMENTO!${NC}"
-            read -p "Pressione ENTER..."
+            echo -e "${AMARELO}⚠️ Nenhuma interface TUN ativa após $TIMEOUT segundos.${NC}"
+            echo -e "${AMARELO}O dnsmasq continuará funcionando em todas as interfaces.${NC}"
             return
         fi
-
-        local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+    
+        # Pega o IP da interface TUN
+        local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
         IP_INT=${IP_INT:-"10.8.0.1"}
-
-        if ! grep -q "interface=$INT_VPN" /etc/dnsmasq.d/vpn.conf; then
-            sed -i "1iinterface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" /etc/dnsmasq.d/vpn.conf
-            systemctl restart dnsmasq
-            echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
-        else
-            echo -e "${AZUL}🔹 DNS da VPN já configurado para $INT_VPN.${NC}"
-        fi
+    
+        echo -e "${AZUL}🔹 Configurando dnsmasq para interface $INT_VPN ($IP_INT)...${NC}"
+    
+        # Remove entradas antigas caso existam
+        sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' /etc/dnsmasq.d/vpn.conf
+    
+        # Adiciona a configuração correta
+        echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a /etc/dnsmasq.d/vpn.conf >/dev/null
+    
+        # Reinicia dnsmasq com segurança
+        sudo systemctl restart dnsmasq
+    
+        echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
     }
+
 
     # --- OpenVPN ---
     SERVER_CONF="/etc/openvpn/server.conf"
