@@ -247,35 +247,22 @@ EOF
 
     # --- Função Interna: Ativar DNS na Interface Detectada ---
     ativar_dns_vpn() {
-        # --- DETECÇÃO DA INTERFACE TUN ---
-                # Busca a interface TUN ativa
         local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
         if [[ -z "$INT_VPN" ]]; then
             echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA NO MOMENTO!${NC}"
             read -p "Pressione ENTER..."
             return
         fi
-        # Busca qualquer interface que comece com 'tun' no sistema de arquivos do kernel
-        echo -e "${AZUL}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
-    
-        # --- Diretórios ---
-        sudo mkdir -p "$DIR_CLIENTES" /etc/vps_protecao/consumo_clientes /etc/vps_protecao/{categorias,perfis,clientes}
-        sudo chmod 755 /etc/vps_protecao /etc/vps_protecao/consumo_clientes "$DIR_CLIENTES"
-        if [[ -n "$INT_VPN" ]]; then
-            # Se a interface existe, configuramos o dnsmasq para ouvir nela
-            if ! grep -q "interface=$INT_VPN" /etc/dnsmasq.d/vpn.conf; then
-                # Pega o IP interno da interface (ex: 10.8.0.1)
-                local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
-                IP_INT=${IP_INT:-"10.8.0.1"}
 
-                sed -i "1iinterface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" /etc/dnsmasq.d/vpn.conf
-                systemctl restart dnsmasq
-                echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
-            else
-                echo -e "${AZUL}🔹 DNS da VPN já configurado para $INT_VPN.${NC}"
-            fi
+        local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+        IP_INT=${IP_INT:-"10.8.0.1"}
+
+        if ! grep -q "interface=$INT_VPN" /etc/dnsmasq.d/vpn.conf; then
+            sed -i "1iinterface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" /etc/dnsmasq.d/vpn.conf
+            systemctl restart dnsmasq
+            echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
         else
-            echo -e "${AMARELO}⚠️ Nenhuma interface TUN ativa. O DNS ouvirá em todas até que uma VPN conecte.${NC}"
+            echo -e "${AZUL}🔹 DNS da VPN já configurado para $INT_VPN.${NC}"
         fi
     }
 
@@ -292,7 +279,6 @@ EOF
             bash /root/openvpn-install.sh
     else
         echo -e "${VERDE}Servidor já instalado.${NC}"
-        # Força ativação dos logs de status
         sudo sed -i '/^status /d' "$SERVER_CONF"
         sudo sed -i '/^status-version/d' "$SERVER_CONF"
         echo "status /etc/openvpn/server/openvpn-status.log" >> "$SERVER_CONF"
@@ -301,49 +287,61 @@ EOF
     fi
 
     # --- Categorias e perfis padrão ---
-    # (Mantido seu código de criação de .list e .conf aqui)
-    mkdir -p /etc/vps_protecao/{categorias,perfis,clientes}
     [ ! -f "/etc/vps_protecao/categorias/adultos.list" ] && echo -e "pornhub.com\nxvideos.com" > /etc/vps_protecao/categorias/adultos.list
     [ ! -f "/etc/vps_protecao/perfis/criancas.conf" ] && echo "adultos" > /etc/vps_protecao/perfis/criancas.conf
-    ####Scripts do OpenVPN#######
-    # --- GARANTIR EXECUÇÃO DOS SCRIPTS DO GUARDIÃO ---
-echo -e "${AZUL}🔐 Configurando scripts client-connect / disconnect...${NC}"
 
-SERVER_CONF="/etc/openvpn/server/server.conf"
-[ ! -f "$SERVER_CONF" ] && SERVER_CONF="/etc/openvpn/server.conf"
+    # --- Garantir scripts client-connect / disconnect ---
+    echo -e "${AZUL}🔐 Configurando scripts client-connect / client-disconnect...${NC}"
+    SCRIPTS_ORIGEM="/opt/configdebian"
+    CLIENT_CONNECT="$SCRIPTS_ORIGEM/client-connect.sh"
+    CLIENT_DISCONNECT="$SCRIPTS_ORIGEM/client-disconnect.sh"
 
-ALTEROU=0
+    if [[ ! -f "$CLIENT_CONNECT" || ! -f "$CLIENT_DISCONNECT" ]]; then
+        echo -e "${VERMELHO}⚠️ Scripts não encontrados em $SCRIPTS_ORIGEM${NC}"
+    else
+        ALTEROU=0
+        sudo cp -f "$CLIENT_CONNECT" /etc/openvpn/
+        sudo cp -f "$CLIENT_DISCONNECT" /etc/openvpn/
+        sudo chmod +x /etc/openvpn/client-*.sh
 
-# script-security
-if ! grep -q '^script-security 2' "$SERVER_CONF"; then
-    sed -i '/^script-security/d' "$SERVER_CONF"
-    echo "script-security 2" >> "$SERVER_CONF"
-    ALTEROU=1
-fi
+        if ! grep -q '^script-security 2' "$SERVER_CONF"; then
+            sed -i '/^script-security/d' "$SERVER_CONF"
+            echo "script-security 2" >> "$SERVER_CONF"
+            ALTEROU=1
+        fi
+        if ! grep -q '^client-connect /etc/openvpn/client-connect.sh' "$SERVER_CONF"; then
+            sed -i '/^client-connect /d' "$SERVER_CONF"
+            echo "client-connect /etc/openvpn/client-connect.sh" >> "$SERVER_CONF"
+            ALTEROU=1
+        fi
+        if ! grep -q '^client-disconnect /etc/openvpn/client-disconnect.sh' "$SERVER_CONF"; then
+            sed -i '/^client-disconnect /d' "$SERVER_CONF"
+            echo "client-disconnect /etc/openvpn/client-disconnect.sh" >> "$SERVER_CONF"
+            ALTEROU=1
+        fi
 
-# client-connect
-if ! grep -q '^client-connect /etc/openvpn/client-connect.sh' "$SERVER_CONF"; then
-    sed -i '/^client-connect /d' "$SERVER_CONF"
-    echo "client-connect /etc/openvpn/client-connect.sh" >> "$SERVER_CONF"
-    ALTEROU=1
-fi
+        [[ "$ALTEROU" -eq 1 ]] && {
+            echo -e "${AMARELO}♻️ Reiniciando OpenVPN para aplicar scripts...${NC}"
+            systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
+        } || echo -e "${VERDE}✅ Scripts do guardião já estavam configurados.${NC}"
+    fi
 
-# client-disconnect
-if ! grep -q '^client-disconnect /etc/openvpn/client-disconnect.sh' "$SERVER_CONF"; then
-    sed -i '/^client-disconnect /d' "$SERVER_CONF"
-    echo "client-disconnect /etc/openvpn/client-disconnect.sh" >> "$SERVER_CONF"
-    ALTEROU=1
-fi
-
-# Reinicia SOMENTE se algo foi alterado
-if [[ "$ALTEROU" -eq 1 ]]; then
-    echo -e "${AMARELO}♻️ Reiniciando OpenVPN para aplicar scripts...${NC}"
-    systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
-else
-    echo -e "${VERDE}✅ Scripts do guardião já estavam configurados.${NC}"
-fi
-    # --- Executa ativação DNS com a interface detectada ---
+    # --- Ativa DNS na interface VPN detectada ---
     ativar_dns_vpn
+
+    # --- VERIFICAÇÃO FINAL DA VPN ---
+    echo -e "${AZUL}🔎 Verificando status do OpenVPN...${NC}"
+    if systemctl is-active --quiet openvpn-server@server; then
+        local INT_ATIVA=$(ls /sys/class/net | grep '^tun' | head -n 1)
+        if [[ -n "$INT_ATIVA" ]]; then
+            local IP_TUN=$(ip -4 addr show "$INT_ATIVA" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+            echo -e "${VERDE}✅ OpenVPN ativo e conectado na interface $INT_ATIVA ($IP_TUN)${NC}"
+        else
+            echo -e "${AMARELO}⚠️ OpenVPN ativo, mas nenhuma interface TUN encontrada.${NC}"
+        fi
+    else
+        echo -e "${VERMELHO}❌ OpenVPN não está rodando. Verifique logs e reinicie o serviço.${NC}"
+    fi
 
     echo -e "${VERDE}✅ Configuração finalizada com sucesso.${NC}"
 }
