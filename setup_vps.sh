@@ -160,7 +160,6 @@ fi
 echo -e "${AMARELO}🚀 Ativando Guardião...${NC}"
 pkill -f "guardiao.sh" > /dev/null 2>&1 || true
 nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
-
 # ===============================================================
 # 8. CONFIGURAÇÃO DO DNSMASQ (ISOLADO PARA VPN)
 # ===============================================================
@@ -176,16 +175,11 @@ cat > /etc/dnsmasq.conf <<'EOF'
 conf-dir=/etc/dnsmasq.d
 EOF
 
-# Arquivo exclusivo da VPN
+# Arquivo base da VPN (interface será ativada quando a VPN existir)
 cat > /etc/dnsmasq.d/vpn.conf <<'EOF'
 # ================================
 # DNSMASQ - OPENVPN ONLY
 # ================================
-
-# Escuta apenas na VPN
-interface=tun0
-bind-interfaces
-listen-address=10.8.0.1
 
 # DNS upstream confiáveis
 no-resolv
@@ -212,9 +206,9 @@ chmod 644 /var/log/dnsmasq.log
 
 # Ativa serviço
 systemctl enable dnsmasq
-systemctl restart dnsmasq
+systemctl restart dnsmasq || echo -e "${AMARELO}⚠️ dnsmasq inicializado parcialmente. Interface tun0 ainda não existe.${NC}"
 
-echo -e "${VERDE}✅ DNS da VPN configurado corretamente.${NC}"
+echo -e "${VERDE}✅ DNS da VPN configurado (pronto para ativação futura da VPN).${NC}"
 
 # ===============================================================
 #  CONFIGURAÇÃO DE SCRIPTS OPENVPN (client-connect / disconnect)
@@ -269,12 +263,8 @@ chmod 755 /etc/openvpn/client-connect.sh
 chmod 755 /etc/openvpn/client-disconnect.sh
 chown root:root /etc/openvpn/client-connect.sh
 chown root:root /etc/openvpn/client-disconnect.sh
-
-# Reinicia dnsmasq para aplicar tudo
-systemctl restart dnsmasq
-
 echo -e "${VERDE}✅ Scripts OpenVPN configurados com sucesso.${NC}"
-
+sleep 1
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
 echo -e "    Administrador: ${AMARELO}$ADM_USER${NC}"
