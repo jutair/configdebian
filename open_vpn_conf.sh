@@ -9,7 +9,12 @@ AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31
 
 # Cria o diretório de armazenamento dos arquivos se não existir
 mkdir -p "$DIR_CLIENTES"
-
+testa_velocidade() {
+    echo -e "${AMARELO}Iniciando speedtest na interface $INT_VPN...${NC}"
+    # Tenta forçar o speedtest pela tun0
+    speedtest-cli --source $(ip -4 addr show $INT_VPN | grep -oP '(?<=inet\s)\d+(\.\d+){3}') 2>/dev/null || speedtest-cli
+    read -p "Pressione ENTER..."
+}
 # --- FUNÇÃO 1: ENVIAR TELEGRAM (CORE) ---
 enviar_telegram() {
     local ARQUIVO=$1
@@ -561,6 +566,16 @@ gerenciar_banda() {
     # Definições de caminhos
     PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
     MES_ATUAL=$(date +'%m-%Y')
+    clear
+    # Interface da VPN
+    local INT_VPN="tun0"
+    # Verifica se o vnStat já conhece a tun0, se não, tenta adicionar
+    if ! vnstat --iflist | grep -q "$INT_VPN"; then
+        echo -e "${AMARELO}Habilitando monitoramento para $INT_VPN...${NC}"
+        vnstat -u -i "$INT_VPN"
+        systemctl restart vnstat
+        sleep 2
+    fi
 
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "                ${VERDE}📊 GERENCIAMENTO DE BANDA${NC}"
@@ -576,13 +591,13 @@ gerenciar_banda() {
     read -n 1 -p " Escolha uma opção: " OP_BANDA; echo ""
 
     case $OP_BANDA in
-        1)
-            echo -e "${AMARELO}Iniciando speedtest...${NC}"
-            speedtest-cli --source $(ip -4 addr show tun0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}') 2>/dev/null || speedtest-cli
-            read -p "Pressione ENTER..."
-            ;;
-        2) vnstat -d; read -p "Pressione ENTER..." ;;
-        3) vnstat -m; read -p "Pressione ENTER..." ;;
+        1) testa_velocidade ;;
+        2) vnstat -i "$INT_VPN" -d
+           read -p "Pressione ENTER..." 
+           ;;
+        3) vnstat -i "$INT_VPN" -m
+           read -p "Pressione ENTER..." 
+           ;;
         4) listar_usuarios_online ;; 
         5)
             clear
