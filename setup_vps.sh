@@ -161,34 +161,39 @@ echo -e "${AMARELO}🚀 Ativando Guardião...${NC}"
 pkill -f "guardiao.sh" > /dev/null 2>&1 || true
 nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
 
-# --- 8 CONFIGURAÇÃO DO DNS MASQ ----
+# ===============================================================
+# 8. CONFIGURAÇÃO DO DNSMASQ (ISOLADO PARA VPN)
+# ===============================================================
+
 echo -e "${AMARELO}🔧 Configurando DNS da VPN (dnsmasq)...${NC}"
 
-# Backup de segurança
+# Backup do dnsmasq.conf original
 cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%F-%H%M)
 
-# Limpa configuração padrão
+# Mantém dnsmasq.conf LIMPO
 cat > /etc/dnsmasq.conf <<'EOF'
+# dnsmasq.conf limpo
+conf-dir=/etc/dnsmasq.d
+EOF
+
+# Arquivo exclusivo da VPN
+cat > /etc/dnsmasq.d/vpn.conf <<'EOF'
 # ================================
-# DNSMASQ - APENAS PARA OPENVPN
+# DNSMASQ - OPENVPN ONLY
 # ================================
 
-# Não usar resolv.conf do sistema
+# Escuta apenas na VPN
+interface=tun0
+bind-interfaces
+listen-address=10.8.0.1
+
+# DNS upstream
 no-resolv
-
-# DNS upstream confiáveis
 server=1.1.1.1
 server=8.8.8.8
 
-# Escutar SOMENTE na VPN
-interface=tun0
-listen-address=10.8.0.1
-
-# Porta padrão DNS
-port=53
-
 # Cache
-cache-size=1000
+cache-size=5000
 
 # Segurança
 domain-needed
@@ -196,26 +201,57 @@ bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
 
-# Log (opcional)
+# Log
 log-queries
 log-facility=/var/log/dnsmasq.log
 EOF
 
-# Garante que o log existe
+# Log
 touch /var/log/dnsmasq.log
 chmod 644 /var/log/dnsmasq.log
-# Cria as pastas de categorias de clientes
-BASE="/etc/vps_protecao"
-DIR_CAT="$BASE/categorias"
-DIR_PERF="$BASE/perfis"
-DIR_CLIENT="$BASE/clientes"
-mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT"
 
-# Habilita e inicia
+# Ativa serviço
 systemctl enable dnsmasq
 systemctl restart dnsmasq
 
-# -- FIM DA CONFIGURAÇÃO DO DNSMASQ --
+echo -e "${VERDE}✅ DNS da VPN configurado corretamente.${NC}"
+
+# ===============================================================
+#  CONFIGURAÇÃO DE SCRIPTS OPENVPN (client-connect / disconnect)
+# ===============================================================
+
+echo -e "${AMARELO}🔐 Configurando scripts de controle OpenVPN...${NC}"
+
+DIR_CONFIG="/opt/configdebian"
+BASE_PROT="/etc/vps_protecao"
+
+# Cria diretórios base
+mkdir -p "$DIR_CONFIG"
+mkdir -p "$BASE_PROT"/{categorias,perfis,clientes}
+
+# --- DOWNLOAD DOS SCRIPTS ---
+# Ajuste as URLs conforme seu repositório GitHub
+wget -q -O "$DIR_CONFIG/client-connect.sh" \
+    https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh
+
+wget -q -O "$DIR_CONFIG/client-disconnect.sh" \
+    https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh
+
+# --- MOVE PARA O OPENVPN ---
+mv "$DIR_CONFIG/client-connect.sh" /etc/openvpn/client-connect.sh
+mv "$DIR_CONFIG/client-disconnect.sh" /etc/openvpn/client-disconnect.sh
+
+# --- PERMISSÕES ---
+chmod 755 /etc/openvpn/client-connect.sh
+chmod 755 /etc/openvpn/client-disconnect.sh
+chown root:root /etc/openvpn/client-connect.sh
+chown root:root /etc/openvpn/client-disconnect.sh
+
+systemctl enable dnsmasq
+systemctl restart dnsmasq
+
+echo -e "${VERDE}✅ Scripts OpenVPN configurados com sucesso.${NC}"
+
 
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
