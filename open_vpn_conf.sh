@@ -102,21 +102,35 @@ configurar_servidor_vpn() {
     echo -e "${VERDE}✅ Configuração do servidor OpenVPN finalizada.${NC}"
 }
 # --- FUNÇÃO: CONFIGURAR E GERENCIAR DNSMASQ ---
-configurar_dnsmasq() {
-    local ACTION=${1:-"setup"}   # ações: setup, ativar, desativar
+# ==========================================
+# FUNÇÃO: Ativar DNS da VPN com segurança
+# ==========================================
+ativa_dns() {
+    local LOCK="/var/run/vpn_dns_ativado.lock"
+    local ALERTA_LOCK="/tmp/alerta_dns_enviado"
     local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
-    local LOG_FILE="/var/log/dnsmasq.log"
-    # --- DETECÇÃO DINÂMICA (Sistema de Arquivos + IP Link) ---
-    # Procura qualquer tun ativa no Kernel
-    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-    [ -z "$INT_VPN" ] && INT_VPN=$(ip link show up | grep -o 'tun[0-9]*' | head -n 1)
-    local IP_INT
 
-    case "$ACTION" in
-        setup)
-            echo -e "${AZUL}🔹 Configurando dnsmasq base...${NC}"
-            sudo mkdir -p /etc/dnsmasq.d
-            cat > "$DNS_CONF" <<'EOF'
+    # Se já executou, sai
+    [ -f "$LOCK" ] && return 0
+
+    # Detecta interface TUN
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
+    if [[ -z "$INT_VPN" ]]; then
+        # Envia alerta apenas uma vez
+        if [ ! -f "$ALERTA_LOCK" ]; then
+            enviar_alerta "❌ Nenhuma interface TUN detectada para a VPN!"
+            touch "$ALERTA_LOCK"
+        fi
+        return 1
+    fi
+
+    # IP da interface TUN
+    local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+    IP_INT=${IP_INT:-"10.8.0.1"}
+
+    # Cria DNS_CONF se não existir
+    if [ ! -f "$DNS_CONF" ]; then
+        cat > "$DNS_CONF" <<EOF
 no-resolv
 server=1.1.1.1
 server=8.8.8.8
@@ -128,41 +142,29 @@ rebind-localhost-ok
 log-queries
 log-facility=/var/log/dnsmasq.log
 EOF
-            sudo touch "$LOG_FILE"
-            sudo chmod 644 "$LOG_FILE"
-            sudo systemctl enable dnsmasq
-            sudo systemctl restart dnsmasq
-            echo -e "${VERDE}✅ dnsmasq configurado com sucesso.${NC}"
-            ;;
+        touch /var/log/dnsmasq.log
+        chmod 644 /var/log/dnsmasq.log
+    fi
 
-        ativar)
-            if [[ -z "$INT_VPN" ]]; then
-                echo -e "${AMARELO}⚠️ Nenhuma interface TUN detectada. DNS ficará em todas as interfaces.${NC}"
-                return
-            fi
-            IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
-            IP_INT=${IP_INT:-"10.8.0.1"}
+    # Verifica se configuração já existe
+    if ! grep -q "^interface=$INT_VPN" "$DNS_CONF"; then
+        # Remove entradas antigas
+        sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
+        echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a "$DNS_CONF" >/dev/null
 
-            echo -e "${AZUL}🔹 Ativando dnsmasq para $INT_VPN ($IP_INT)...${NC}"
-            sudo sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
-            echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a "$DNS_CONF" >/dev/null
-            sudo systemctl restart dnsmasq
-            echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
-            ;;
+        # Reinicia dnsmasq apenas se houve mudança
+        systemctl restart dnsmasq
 
-        desativar)
-            echo -e "${AZUL}🔹 Desativando DNS exclusivo da VPN...${NC}"
-            sudo sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
-            sudo systemctl restart dnsmasq
-            echo -e "${VERDE}✅ DNS da VPN desativado, dnsmasq funcionando em todas as interfaces.${NC}"
-            ;;
+        logger "[GUARDIAO] DNS da VPN ativado para $INT_VPN ($IP_INT)"
+    fi
 
-        *)
-            echo -e "${VERMELHO}Opção inválida para configurar_dnsmasq: $ACTION${NC}"
-            ;;
-    esac
+    # Cria lock para não repetir execução
+    touch "$LOCK"
+    chmod 600 "$LOCK"
+
+    # Remove lock de alerta, se existia
+    [ -f "$ALERTA_LOCK" ] && rm -f "$ALERTA_LOCK"
 }
-
 
 testa_velocidade() {
     clear
