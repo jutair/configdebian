@@ -9,6 +9,24 @@ AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31
 
 # Cria o diretório de armazenamento dos arquivos se não existir
 mkdir -p "$DIR_CLIENTES"
+# --- DETECÇÃO AUTOMÁTICA DA INTERFACE TUN ---
+    # Busca qualquer interface que comece com 'tun' (tun0, tun1, etc)
+    local INT_VPN=$(ip addr | grep -o 'tun[0-9]*' | head -n 1)
+
+    if [[ -z "$INT_VPN" ]]; then
+        echo -e "${VERMELHO}⚠️ ERRO: Nenhuma interface TUN encontrada!${NC}"
+        echo -e "${AMARELO}A VPN precisa estar ativa para monitorar a tun0.${NC}"
+        read -p "Pressione ENTER para voltar..."
+        return
+    fi
+
+    # Garante que o vnStat esteja monitorando esta interface
+    if ! vnstat --iflist | grep -q "$INT_VPN"; then
+        echo -e "${AMARELO}Configurando vnStat para monitorar $INT_VPN...${NC}"
+        vnstat --add -i "$INT_VPN"
+        systemctl restart vnstat
+        sleep 2
+    fi
 testa_velocidade() {
     echo -e "${AMARELO}Iniciando speedtest na interface $INT_VPN...${NC}"
     # Tenta forçar o speedtest pela tun0
