@@ -22,7 +22,7 @@ set -e
 DIR_CONFIG="/opt/configdebian"
 DIR_PROT="/etc/vps_protecao"
 GITHUB_REPO="https://raw.githubusercontent.com/jutair/configdebian/main"
-SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "update_sistema.sh" "backup.sh" "setup_vps.sh" "guardiao.sh" "login.sh")
+SCRIPTS=("menu.sh" "open_vpn_conf.sh" "gerencia_rede.sh" "usuarios.sh" "update_sistema.sh" "backup.sh" "setup_vps.sh" "guardiao.sh" "login.sh" "client-disconnect.sh" "client-connect.sh")
 
 clear
 echo -e "${AZUL}===============================================================${NC}"
