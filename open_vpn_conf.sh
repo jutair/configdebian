@@ -36,20 +36,13 @@ enviar_telegram() {
 # --- FUNÇÃO 2: CONFIGURAR SERVIDOR ---
 configurar_servidor_vpn() {
     clear
-    # --- 1. Carrega o Admin cadastrado ---
     [ -f "$ADMIN_CONF" ] && source "$ADMIN_CONF"
-
     local USUARIO_ATUAL=$(logname 2>/dev/null || whoami)
     local DATA_ATUAL=$(date +'%d/%m/%Y')
     local HORA_ATUAL=$(date +'%H:%M:%S')
 
-    # 🛡️ VERIFICAÇÃO DE PERMISSÃO
     if [[ "$USUARIO_ATUAL" != "$ADM_USER" ]]; then
-        echo -e "${VERMELHO}===============================================================${NC}"
-        echo -e "          ⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️"
-        echo -e "${VERMELHO}===============================================================${NC}"
-        echo -e "Tentativa de alteração do servidor por: ${AMARELO}$USUARIO_ATUAL${NC}"
-
+        echo -e "${VERMELHO}⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️${NC}"
         if [ -f "$TELEGRAM_CONF" ]; then
             source "$TELEGRAM_CONF"
             MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
@@ -59,31 +52,19 @@ configurar_servidor_vpn() {
         return
     fi
 
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "              ${VERDE}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "${AZUL}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
 
-    # --- 2. PREPARA DIRETÓRIOS ---
-    sudo mkdir -p "$DIR_CLIENTES"
-    sudo mkdir -p /etc/vps_protecao/consumo_clientes
-    sudo mkdir -p /etc/vps_protecao/{categorias,perfis,clientes}
-    sudo chmod 755 /etc/vps_protecao
-    sudo chmod 755 /etc/vps_protecao/consumo_clientes
-    sudo chmod 755 "$DIR_CLIENTES"
+    # --- Diretórios ---
+    sudo mkdir -p "$DIR_CLIENTES" /etc/vps_protecao/consumo_clientes /etc/vps_protecao/{categorias,perfis,clientes}
+    sudo chmod 755 /etc/vps_protecao /etc/vps_protecao/consumo_clientes "$DIR_CLIENTES"
 
-    # --- 3. CONFIGURA DNSMASQ PARA VPN ---
-    echo -e "${AMARELO}🔧 Configurando DNS da VPN (dnsmasq)...${NC}"
+    # --- DNSMASQ ---
     [ -f /etc/dnsmasq.conf ] && cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%F-%H%M)
-
     cat > /etc/dnsmasq.conf <<'EOF'
-# dnsmasq.conf limpo
 conf-dir=/etc/dnsmasq.d
 EOF
 
     cat > /etc/dnsmasq.d/vpn.conf <<'EOF'
-# ================================
-# DNSMASQ - OPENVPN ONLY
-# ================================
 interface=tun0
 bind-interfaces
 listen-address=10.8.0.1
@@ -103,69 +84,74 @@ EOF
     chmod 644 /var/log/dnsmasq.log
     systemctl enable dnsmasq
     systemctl restart dnsmasq
-    echo -e "${VERDE}✅ DNS da VPN configurado corretamente.${NC}"
 
-    # --- 4. VERIFICAÇÃO DO OPENVPN ---
+    # --- OpenVPN ---
     SERVER_CONF="/etc/openvpn/server.conf"
     [ ! -f "$SERVER_CONF" ] && SERVER_CONF="/etc/openvpn/server/server.conf"
 
     if [ ! -f "$SERVER_CONF" ]; then
-        echo -e "${AMARELO}O OpenVPN não está instalado.${NC}"
+        echo -e "${AMARELO}OpenVPN não instalado.${NC}"
         read -p "Deseja instalar agora? (s/n): " INST
-        if [[ "$INST" == "s" || "$INST" == "S" ]]; then
+        if [[ "$INST" =~ ^[Ss]$ ]]; then
             wget https://git.io/vpn -O /root/openvpn-install.sh
             chmod +x /root/openvpn-install.sh
             bash /root/openvpn-install.sh
         fi
     else
         echo -e "${VERDE}Servidor já instalado.${NC}"
-        echo -e "  [1] Menu de Gerenciamento do Instalador (Portas/Protocolos/Remover)"
-        echo -e "  [2] Reinstalar Script de Instalação (Update)"
-        echo -e "  [3] Forçar Ativação de Logs"
-        echo -e "  [0] Voltar"
-        read -n 1 -p " Escolha: " OP_SVR; echo ""
-        case $OP_SVR in
-            1) bash /root/openvpn-install.sh ;;
-            2) wget https://git.io/vpn -O /root/openvpn-install.sh && chmod +x /root/openvpn-install.sh && echo -e "\n${VERDE}Atualizado!${NC}" && sleep 2 ;;
-            3) ativar_logs_status ;;
-            *) return ;;
-        esac
+        read -p "Deseja forçar ativação dos logs de status? (s/n): " LOGS
+        [[ "$LOGS" =~ ^[Ss]$ ]] && ativar_logs_status
     fi
 
-    # --- 5. CONFIGURAÇÃO DOS SCRIPTS OPENVPN ---
+    # --- Scripts client-connect / disconnect ---
     DIR_CONFIG="/opt/configdebian"
     mkdir -p "$DIR_CONFIG"
-
-    echo -e "${AMARELO}🔐 Configurando scripts client-connect / disconnect...${NC}"
-
     wget -q -O "$DIR_CONFIG/client-connect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh"
     wget -q -O "$DIR_CONFIG/client-disconnect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh"
-
     mv "$DIR_CONFIG/client-connect.sh" /etc/openvpn/client-connect.sh
     mv "$DIR_CONFIG/client-disconnect.sh" /etc/openvpn/client-disconnect.sh
+    chmod 755 /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
+    chown root:root /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
 
-    chmod 755 /etc/openvpn/client-connect.sh
-    chmod 755 /etc/openvpn/client-disconnect.sh
-    chown root:root /etc/openvpn/client-connect.sh
-    chown root:root /etc/openvpn/client-disconnect.sh
-
-    # --- 6. ATIVA LOGS DE STATUS ---
     ativar_logs_status() {
-        echo -e "${AMARELO}Configurando logs de monitoramento...${NC}"
         [ -f "$SERVER_CONF" ] || return
         sudo sed -i '/^status /d' "$SERVER_CONF"
         sudo sed -i '/^status-version/d' "$SERVER_CONF"
         echo "status /etc/openvpn/server/openvpn-status.log" >> "$SERVER_CONF"
         echo "status-version 2" >> "$SERVER_CONF"
         systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
-        echo -e "${VERDE}Logs de status ativados com sucesso!${NC}"
-        sleep 2
     }
 
-    [ -f "$SERVER_CONF" ] && ativar_logs_status
-    echo -e "${VERDE}✅ Configuração do servidor VPN finalizada.${NC}"
-}
+    # --- Categorias e perfis padrão ---
+    DIR_CAT=/etc/vps_protecao/categorias
+    DIR_PERF=/etc/vps_protecao/perfis
+    DIR_CLIENT=/etc/vps_protecao/clientes
+    mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT"
 
+    [ ! -f "$DIR_CAT/adultos.list" ] && cat > "$DIR_CAT/adultos.list" <<EOF
+pornhub.com
+xvideos.com
+xnxx.com
+youporn.com
+redtube.com
+EOF
+
+    [ ! -f "$DIR_CAT/bancos.list" ] && cat > "$DIR_CAT/bancos.list" <<EOF
+bb.com.br
+itau.com.br
+bradesco.com.br
+santander.com.br
+nubank.com.br
+caixa.gov.br
+inter.co
+EOF
+
+    [ ! -f "$DIR_PERF/criancas.conf" ] && echo "adultos" > "$DIR_PERF/criancas.conf"
+    [ ! -f "$DIR_PERF/idosos.conf" ] && echo "bancos" > "$DIR_PERF/idosos.conf"
+    [ ! -f "$DIR_PERF/livre.conf" ] && : > "$DIR_PERF/livre.conf"
+
+    echo -e "${VERDE}✅ Configuração do servidor VPN e categorias finalizada.${NC}"
+}
 
 # --- FUNÇÃO 3: LISTAR CERTIFICADOS ATIVOS ---
 listar_usuarios() {
