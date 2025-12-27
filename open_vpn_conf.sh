@@ -176,8 +176,7 @@ EOF
     echo -e "${VERDE}✅ Configuração do servidor VPN e categorias finalizada.${NC}"
 }
 
-
-# --- FUNÇÃO 4: CRIAR USUÁRIO ---
+# --- FUNÇÃO 3: CRIAR USUÁRIO ---
 criar_usuario() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
@@ -194,12 +193,8 @@ criar_usuario() {
         [ ! -f "$ARQUIVO_ORIGEM" ] && ARQUIVO_ORIGEM="$HOME/$NOVO_USER.ovpn"
 
         if [ -f "$ARQUIVO_ORIGEM" ]; then
-            # Move para a nova pasta pública
             mv "$ARQUIVO_ORIGEM" "$DIR_CLIENTES/"
-            
-            # 🛡️ AJUSTE DE PERMISSÃO: Permite que qualquer usuário baixe o arquivo
             chmod 644 "$DIR_CLIENTES/$NOVO_USER.ovpn"
-            
             echo -e "${VERDE}Usuário criado com sucesso!${NC}"
             enviar_telegram "$DIR_CLIENTES/$NOVO_USER.ovpn" "$NOVO_USER"
         fi
@@ -209,7 +204,7 @@ criar_usuario() {
     sleep 2
 }
 
-# --- FUNÇÃO 5: REMOVER USUÁRIO ---
+# --- FUNÇÃO 4: REMOVER USUÁRIO ---
 remover_usuario() {
     clear
     echo -e "${AZUL}===============================================================${NC}"
@@ -227,365 +222,8 @@ remover_usuario() {
     sleep 2
 }
 
-# --- FUNÇÃO 6: LISTAR E GERAR LINKS SCP ---
-listar_arquivos_ovpn() {
-    clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}📂 GERENCIADOR DE DOWNLOADS (SCP)${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    IP_EXT=$(curl -s ifconfig.me)
-    mapfile -t ARQUIVOS < <(ls "$DIR_CLIENTES"/*.ovpn 2>/dev/null)
-
-    if [ ${#ARQUIVOS[@]} -eq 0 ]; then
-        echo -e "${VERMELHO}Nenhum arquivo encontrado.${NC}"; sleep 2; return
-    fi
-
-    for ((i=0; i<${#ARQUIVOS[@]}; i+=2)); do
-        printf "  %-28s  %-28s\n" "$(basename "${ARQUIVOS[i]}")" "$(basename "${ARQUIVOS[i+1]}")"
-    done
-
-    echo -ne "\n${AMARELO}Digite o nome para gerar comando de download: ${NC}"
-    read BUSCA
-    ARQ=$(ls "$DIR_CLIENTES"/*"$BUSCA"*.ovpn 2>/dev/null | head -n 1)
-
-    if [ -f "$ARQ" ]; then
-        echo -e "\n${VERDE}🐧 Linux/Mac:${NC}\nscp $USER_LOGADO@$IP_EXT:$ARQ ~/Downloads/"
-        echo -e "\n${VERDE}🪟 Windows:${NC}\nscp $USER_LOGADO@$IP_EXT:$ARQ \$env:USERPROFILE\Downloads\\"
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        read -p "Pressione ENTER..."
-    fi
-}
-
-enviar_ovpn_telegram_manual() {
-    clear
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}📤 REENVIAR VIA TELEGRAM${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-
-    # 1. Carrega e verifica se existem arquivos
-    mapfile -t ARQUIVOS < <(ls "$DIR_CLIENTES"/*.ovpn 2>/dev/null)
-    
-    if [ ${#ARQUIVOS[@]} -eq 0 ]; then
-        echo -e "${VERMELHO}Nenhum arquivo .ovpn encontrado em: $DIR_CLIENTES${NC}"
-        echo -e "${AZUL}---------------------------------------------------------------${NC}"
-        read -p "Pressione ENTER para voltar..."
-        return
-    fi
-
-    # 2. Exibe a lista de arquivos disponíveis na tela
-    echo -e "${AMARELO}Arquivos disponíveis na pasta:${NC}"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    
-    for ((i=0; i<${#ARQUIVOS[@]}; i+=2)); do
-        arq1=$(basename "${ARQUIVOS[i]}")
-        # Verifica se existe um segundo arquivo para a coluna ao lado
-        if [ -n "${ARQUIVOS[i+1]}" ]; then
-            arq2=$(basename "${ARQUIVOS[i+1]}")
-            printf "  %-28s  %-28s\n" "$arq1" "$arq2"
-        else
-            printf "  %-28s\n" "$arq1"
-        fi
-    done
-
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    
-    # 3. Solicita o nome com a lista ainda visível acima
-    echo -ne "${AMARELO}Digite o nome do cliente para enviar: ${NC}"
-    read BUSCA
-
-    # Sai se a busca estiver vazia
-    [[ -z "$BUSCA" ]] && return
-
-    # 4. Localiza o arquivo correspondente
-    ARQ=$(ls "$DIR_CLIENTES"/*"$BUSCA"*.ovpn 2>/dev/null | head -n 1)
-
-    if [ -f "$ARQ" ]; then
-        NOME_ARQ=$(basename "$ARQ")
-        echo -e "${VERDE}Enviando $NOME_ARQ...${NC}"
-        
-        # Chama a função de envio do Telegram
-        enviar_telegram "$ARQ" "$NOME_ARQ"
-        
-        if [ $? -eq 0 ]; then
-            echo -e "${VERDE}✅ Arquivo enviado com sucesso!${NC}"
-        else
-            echo -e "${VERMELHO}❌ Falha ao enviar para o Telegram.${NC}"
-        fi
-    else
-        echo -e "${VERMELHO}Arquivo não encontrado para o termo: $BUSCA${NC}"
-    fi
-
-    sleep 2
-}
-# --- MENU LOCAL ---
-listar_usuarios_online() {
-    clear
-    # 1. Localiza o log de forma silenciosa
-    STATUS_LOG=""
-    # Tenta caminhos comuns, jogando erros para o limbo (2>/dev/null)
-    if [ -f "/etc/openvpn/server.conf" ]; then
-        STATUS_LOG=$(grep -E "^status " /etc/openvpn/server.conf 2>/dev/null | awk '{print $2}')
-    elif [ -f "/etc/openvpn/server/server.conf" ]; then
-        STATUS_LOG=$(grep -E "^status " /etc/openvpn/server/server.conf 2>/dev/null | awk '{print $2}')
-    fi
-
-    # Se não encontrou no config, define o padrão absoluto
-    [[ -z "$STATUS_LOG" ]] && STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
-
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}USUÁRIOS OPENVPN ONLINE${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-
-    if [ ! -f "$STATUS_LOG" ]; then
-        echo -e "${VERMELHO}Erro: Arquivo de status não encontrado!${NC}"
-        echo -e "Caminho esperado: $STATUS_LOG"
-        read -p "Pressione ENTER..." ; return
-    fi
-
-    printf "${AMARELO}%-15s %-18s %-12s %-10s${NC}\n" "USUÁRIO" "IP REAL" "RECEBIDO" "ENVIADO"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-
-    local TOTAL_CON=0
-
-    # 2. Processamento robusto do log
-    while IFS=',' read -r TIPO NOME IP_PORTA REAL_IP RECV SENT DATA_RAW; do
-        # Filtra apenas linhas de clientes e garante que RECV/SENT sejam números
-        if [[ "$TIPO" == "CLIENT_LIST" && "$NOME" != "Common Name" ]]; then
-            
-            # Garante que se RECV ou SENT estiverem vazios, virem 0 para não quebrar o awk
-            [[ -z "$RECV" || "$RECV" == " " ]] && RECV=0
-            [[ -z "$SENT" || "$SENT" == " " ]] && SENT=0
-
-            # Cálculo de MB (usando printf do awk para evitar runaway regex)
-            RECV_MB=$(awk "BEGIN { printf \"%.2f\", $RECV / 1048576 }")
-            SENT_MB=$(awk "BEGIN { printf \"%.2f\", $SENT / 1048576 }")
-            
-            # Limpa a porta do IP
-            IP_LMP=$(echo "$IP_PORTA" | cut -d: -f1)
-
-            printf "%-15s %-18s %-12s %-10s\n" "$NOME" "$IP_LMP" "${RECV_MB}MB" "${SENT_MB}MB"
-            ((TOTAL_CON++))
-        fi
-    done < "$STATUS_LOG"
-
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e " Total de conexões ativas: ${VERDE}$TOTAL_CON${NC}"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    read -p "Pressione ENTER para voltar..."
-}
-# --- FUNÇÃO: RELATÓRIO DE CONSUMO ACUMULADO ---
-relatorio_consumo_acumulado() {
-    clear
-    PASTA_DB="/etc/vps_protecao/consumo_clientes"
-    MES_ATUAL=$(date +'%m-%Y')
-    # Dentro da função relatorio_consumo_detalhado
-    read -r BRECV BSENT < "$arq"
-    
-    # Inverte SENT e RECV para a perspectiva do CLIENTE:
-    # SENT do servidor = DOWNLOAD do cliente
-    # RECV no servidor = UPLOAD do cliente
-    DOWNLOAD_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
-    UPLOAD_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
-    
-    printf "%-18s %-15s %-15s\n" "$NOME" "$DOWNLOAD_H" "$UPLOAD_H"
-
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "              ${VERDE}RELATÓRIO DE CONSUMO MENSAL ($MES_ATUAL)${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    printf "${AMARELO}%-15s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-
-    for arq in "$PASTA_DB"/*_${MES_ATUAL}.log; do
-        [ ! -e "$arq" ] && break
-        
-        NOME=$(basename "$arq" | cut -d'_' -f1)
-        # Lê os bytes salvos
-        read -r RECV SENT DIA < "$arq"
-
-        # Converte para MB ou GB
-        RECV_H=$(awk "BEGIN {if ($RECV>1073741824) printf \"%.2f GB\", $RECV/1073741824; else printf \"%.2f MB\", $RECV/1048576}")
-        SENT_H=$(awk "BEGIN {if ($SENT>1073741824) printf \"%.2f GB\", $SENT/1073741824; else printf \"%.2f MB\", $SENT/1048576}")
-
-        printf "%-15s %-15s %-15s\n" "$NOME" "$RECV_H" "$SENT_H"
-    done
-
-    echo -e "${AZUL}===============================================================${NC}"
-    read -p "Pressione ENTER para voltar..."
-}
-
-relatorio_consumo_detalhado() {
-    clear
-    PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
-    MES_ATUAL=$(date +'%m-%Y')
-    ARQUIVO_CSV="/tmp/consumo_${MES_ATUAL}.csv"
-    
-    # Cores para o layout
-    local CYAN='\033[0;36m'
-    local GOLD='\033[1;33m'
-    local VERDE='\033[0;32m'
-    local AMARELO='\033[1;33m'
-    local VERMELHO='\033[0;31m'
-    local NC='\033[0m'
-    
-    # Carrega configurações do Telegram
-    [ -f "/etc/vps_protecao/telegram.conf" ] && source "/etc/vps_protecao/telegram.conf"
-
-    echo -e "${CYAN}===============================================================${NC}"
-    echo -e "           ${GOLD}📊 RELATÓRIO DE CONSUMO (${MES_ATUAL})${NC}"
-    echo -e "${CYAN}===============================================================${NC}"
-    printf "${GOLD}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
-    echo -e "${CYAN}---------------------------------------------------------------${NC}"
-
-    # Cabeçalho do CSV
-    echo "Cliente,Download (Bytes),Upload (Bytes),Download (Formatado),Upload (Formatado)" > "$ARQUIVO_CSV"
-
-    # shopt evita erros se não houver arquivos .log na pasta
-    shopt -s nullglob
-    for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
-        # Extrai o nome do cliente do nome do arquivo
-        NOME=$(basename "$arq" | cut -d'_' -f1)
-        
-        # Lê os valores ACUMULADOS (Gerados pelo script Guardião)
-        # Formato esperado no arquivo: "RECEBIDOS ENVIADOS"
-        read -r BRECV BSENT < "$arq"
-        
-        # Validação para garantir que são números e evitar erros no awk
-        [[ ! "$BRECV" =~ ^[0-9]+$ ]] && BRECV=0
-        [[ ! "$BSENT" =~ ^[0-9]+$ ]] && BSENT=0
-
-        # --- LÓGICA DE PERSPECTIVA DO CLIENTE ---
-        # SENT (Enviado pelo servidor) = DOWNLOAD do cliente
-        # RECV (Recebido pelo servidor) = UPLOAD do cliente
-        DOWNLOAD_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
-        UPLOAD_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
-        
-        # Exibição formatada no terminal
-        printf "%-18s %-15s %-15s\n" "$NOME" "$DOWNLOAD_H" "$UPLOAD_H"
-        
-        # Alimenta o arquivo CSV (usando a mesma lógica de Download/Upload)
-        echo "$NOME,$BSENT,$BRECV,$DOWNLOAD_H,$UPLOAD_H" >> "$ARQUIVO_CSV"
-    done
-    shopt -u nullglob
-
-    echo -e "${CYAN}---------------------------------------------------------------${NC}"
-    echo -e "  [1] 📥 Baixar CSV | [2] 📤 Telegram | [0] ⬅️ Voltar"
-    echo -e "${CYAN}---------------------------------------------------------------${NC}"
-    read -n 1 -p " Escolha uma ação: " OP_REL; echo ""
-
-    case $OP_REL in
-        1)
-            DESTINO="$HOME/consumo_${MES_ATUAL}.csv"
-            cp "$ARQUIVO_CSV" "$DESTINO"
-            echo -e "${VERDE}✅ Relatório salvo em: ${AMARELO}$DESTINO${NC}"
-            read -p "Pressione ENTER para continuar..."
-            ;;
-        2)
-            if [[ -n "$TOKEN" && -n "$ID_CHAT" ]]; then
-                echo -e "${AMARELO}Enviando relatório ao Telegram...${NC}"
-                curl -s -F chat_id="$ID_CHAT" -F document=@"$ARQUIVO_CSV" \
-                     -F caption="📊 Relatório VPN - Mês: $MES_ATUAL" \
-                     "https://api.telegram.org/bot$TOKEN/sendDocument" > /dev/null
-                echo -e "${VERDE}✅ Relatório enviado com sucesso!${NC}"
-            else
-                echo -e "${VERMELHO}❌ Erro: Token ou ID do Telegram não configurados.${NC}"
-            fi
-            read -p "Pressione ENTER para continuar..."
-            ;;
-        *)
-            return
-            ;;
-    esac
-}
-
-gerenciar_banda() {
-    clear
-    # Detecta a interface de rede principal (ex: eth0 ou ens3)
-    INTERFACE_PRINCIPAL=$(ip route | grep default | awk '{print $5}')
-    # Garante que a variável não seja vazia (fallback para eth0)
-    [[ -z "$INTERFACE_PRINCIPAL" ]] && INTERFACE_PRINCIPAL="eth0"
-    
-    # Definições de caminhos
-    PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
-    MES_ATUAL=$(date +'%m-%Y')
-
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "                ${VERDE}📊 GERENCIAMENTO DE BANDA${NC}"
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "  [1] ⚡ Testar Velocidade (tun0)"
-    echo -e "  [2] 📅 Ver Consumo Diário (VPS)"
-    echo -e "  [3] 🗓️  Ver Consumo Mensal (VPS)"
-    echo -e "  [4] 🟢 Usuários Online Agora"
-    echo -e "  [5] 🛰️  Cota Global VPS (Limite 900GB)"
-    echo -e "  [6] 👤 Consumo Acumulado por Cliente (Mês)"
-    echo -e "  [0] ⬅️  Voltar"
-    echo -e "${AZUL}---------------------------------------------------------------${NC}"
-    read -n 1 -p " Escolha uma opção: " OP_BANDA; echo ""
-
-    case $OP_BANDA in
-        1)
-            echo -e "${AMARELO}Iniciando speedtest...${NC}"
-            speedtest-cli --source $(ip -4 addr show tun0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}') 2>/dev/null || speedtest-cli
-            read -p "Pressione ENTER..."
-            ;;
-        2) vnstat -d; read -p "Pressione ENTER..." ;;
-        3) vnstat -m; read -p "Pressione ENTER..." ;;
-        4) listar_usuarios_online ;; 
-        5)
-            clear
-            if ! command -v jq &>/dev/null || ! command -v bc &>/dev/null; then
-                echo -e "${VERMELHO}Erro: jq ou bc não instalados.${NC}"
-                read -p "Pressione ENTER..."; return
-            fi
-
-            DATA_JSON=$(vnstat --json m 2>/dev/null)
-            RX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0].rx" 2>/dev/null)
-            TX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRINCIPAL\") | .traffic.months[0].tx" 2>/dev/null)
-            
-            [[ "$RX" == "null" || -z "$RX" ]] && RX=0
-            [[ "$TX" == "null" || -z "$TX" ]] && TX=0
-
-            TOTAL_GB=$(echo "scale=2; ($RX + $TX) / 1024 / 1024 / 1024" | bc -l)
-            [[ "$TOTAL_GB" == .* ]] && TOTAL_GB="0$TOTAL_GB"
-            TOTAL_GB_FORMAT=$(printf "%.2f" "$TOTAL_GB")
-            
-            echo -e "${AZUL}===============================================================${NC}"
-            echo -e "              ${VERDE}STATUS DA COTA GLOBAL (900GB)${NC}"
-            echo -e "${AZUL}===============================================================${NC}"
-            echo -e " Interface: $INTERFACE_PRINCIPAL | Consumo: ${AMARELO}$TOTAL_GB_FORMAT GB${NC}"
-            
-            INT_GB=$(echo "$TOTAL_GB / 1" | bc 2>/dev/null || echo 0)
-            PORC=$(( INT_GB * 100 / 900 ))
-            
-            echo -ne " [ "
-            for i in {1..20}; do
-                if [ $((i*5)) -le $PORC ]; then echo -ne "${VERDE}#${NC}"; else echo -ne "."; fi
-            done
-            echo -e " ] $PORC%"
-            echo -e "${AZUL}---------------------------------------------------------------${NC}"
-            read -p "Pressione ENTER..."
-            ;;
-        6) relatorio_consumo_detalhado ;;
-        0) return ;;
-    esac
-}
-aplicar_bloqueio() {
-    # Limpa o arquivo de configuração do DNS
-    echo "# Gerado automaticamente" > "$DNSMASQ_FILE"
-    
-    # Lê a lista e formata para o dnsmasq
-    while read -r linha; do
-        # Remove espaços e ignora linhas vazias ou comentários
-        dom=$(echo "$linha" | xargs)
-        [[ -z "$dom" || "$dom" == "#"* ]] && continue
-        echo "address=/$dom/0.0.0.0" >> "$DNSMASQ_FILE"
-    done < "$BLOQ_FILE"
-    
-    # Reinicia o serviço
-    systemctl restart dnsmasq
-}
-
+# --- FUNÇÃO 5: BLOQUEIO DE SERVIÇOS E PERFIS ---
 bloq_servicos() {
-
     BASE="/etc/vps_protecao"
     DIR_CAT="$BASE/categorias"
     DIR_PERF="$BASE/perfis"
@@ -593,7 +231,6 @@ bloq_servicos() {
 
     mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT"
 
-    # ---------- CATEGORIAS PADRÃO ----------
     [ ! -f "$DIR_CAT/adultos.list" ] && cat > "$DIR_CAT/adultos.list" <<EOF
 pornhub.com
 xvideos.com
@@ -612,7 +249,6 @@ caixa.gov.br
 inter.co
 EOF
 
-    # ---------- PERFIS PADRÃO ----------
     [ ! -f "$DIR_PERF/criancas.conf" ] && echo "adultos" > "$DIR_PERF/criancas.conf"
     [ ! -f "$DIR_PERF/idosos.conf" ] && echo "bancos" > "$DIR_PERF/idosos.conf"
     [ ! -f "$DIR_PERF/livre.conf" ] && : > "$DIR_PERF/livre.conf"
@@ -635,43 +271,12 @@ EOF
         read -p "Escolha: " OP
 
         case "$OP" in
-
-        1)
-            clear
-            echo "Categorias existentes:"
-            ls "$DIR_CAT" | sed 's/.list//'
-            read -p "ENTER..."
-            ;;
-
-        2)
-            read -p "Nome da nova categoria: " CAT
-            [ -z "$CAT" ] && continue
-            nano "$DIR_CAT/$CAT.list"
-            ;;
-
-        3)
-            read -p "Categoria para editar: " CAT
-            [ -f "$DIR_CAT/$CAT.list" ] && nano "$DIR_CAT/$CAT.list"
-            ;;
-
-        4)
-            clear
-            echo "Perfis existentes:"
-            ls "$DIR_PERF" | sed 's/.conf//'
-            read -p "ENTER..."
-            ;;
-
-        5)
-            read -p "Nome do novo perfil: " PERF
-            [ -z "$PERF" ] && continue
-            nano "$DIR_PERF/$PERF.conf"
-            ;;
-
-        6)
-            read -p "Perfil para editar: " PERF
-            [ -f "$DIR_PERF/$PERF.conf" ] && nano "$DIR_PERF/$PERF.conf"
-            ;;
-
+        1) clear; echo "Categorias existentes:"; ls "$DIR_CAT" | sed 's/.list//'; read -p "ENTER..." ;;
+        2) read -p "Nome da nova categoria: " CAT; [ -z "$CAT" ] && continue; nano "$DIR_CAT/$CAT.list" ;;
+        3) read -p "Categoria para editar: " CAT; [ -f "$DIR_CAT/$CAT.list" ] && nano "$DIR_CAT/$CAT.list" ;;
+        4) clear; echo "Perfis existentes:"; ls "$DIR_PERF" | sed 's/.conf//'; read -p "ENTER..." ;;
+        5) read -p "Nome do novo perfil: " PERF; [ -z "$PERF" ] && continue; nano "$DIR_PERF/$PERF.conf" ;;
+        6) read -p "Perfil para editar: " PERF; [ -f "$DIR_PERF/$PERF.conf" ] && nano "$DIR_PERF/$PERF.conf" ;;
         7)
             read -p "Nome do cliente (Common Name): " CLI
             read -p "Perfil (ex: criancas, idosos, livre): " PERF
@@ -683,30 +288,66 @@ EOF
             fi
             read -p "ENTER..."
             ;;
-
         8)
             clear
-            echo "Clientes e perfis:"
-            for f in "$DIR_CLIENT"/*.profile 2>/dev/null; do
+            shopt -s nullglob
+            for f in "$DIR_CLIENT"/*.profile; do
                 CLI=$(basename "$f" .profile)
                 PERF=$(cat "$f")
                 echo "👤 $CLI → $PERF"
             done
+            shopt -u nullglob
             read -p "ENTER..."
             ;;
-
-        9)
-            break
-            ;;
-
-        *)
-            echo "Opção inválida"
-            sleep 1
-            ;;
+        9) break ;;
+        *) echo "Opção inválida"; sleep 1 ;;
         esac
     done
 }
+# --- FUNÇÃO 7: ENVIAR OVPN MANUAL PELO TELEGRAM ---
+# --- FUNÇÃO 7: ENVIAR OVPN MANUAL PELO TELEGRAM ---
+enviar_ovpn_telegram_manual() {
+    clear
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "           ${VERDE}ENVIAR OVPN PELO TELEGRAM (MANUAL)${NC}"
+    echo -e "${AZUL}===============================================================${NC}"
 
+    shopt -s nullglob
+    OVPN_FILES=("$DIR_CLIENTES"/*.ovpn)
+    shopt -u nullglob
+
+    if [ ${#OVPN_FILES[@]} -eq 0 ]; then
+        echo -e "${AMARELO}⚠️ Nenhum arquivo .ovpn encontrado em $DIR_CLIENTES${NC}"
+        sleep 2
+        return
+    fi
+
+    echo -e "Arquivos disponíveis:"
+    for i in "${!OVPN_FILES[@]}"; do
+        FILE_NAME=$(basename "${OVPN_FILES[$i]}")
+        echo "[$i] $FILE_NAME"
+    done
+
+    read -p "Escolha o número do arquivo para enviar: " IDX
+    if ! [[ "$IDX" =~ ^[0-9]+$ ]] || [ "$IDX" -ge "${#OVPN_FILES[@]}" ]; then
+        echo -e "${VERMELHO}Opção inválida!${NC}"
+        sleep 2
+        return
+    fi
+
+    ARQUIVO_SELECIONADO="${OVPN_FILES[$IDX]}"
+    NOME_USER=$(basename "$ARQUIVO_SELECIONADO" .ovpn)
+
+    if enviar_telegram "$ARQUIVO_SELECIONADO" "$NOME_USER"; then
+        echo -e "${VERDE}✅ Arquivo $ARQUIVO_SELECIONADO enviado com sucesso!${NC}"
+    else
+        echo -e "${VERMELHO}❌ Falha ao enviar o arquivo. Verifique as configurações do Telegram.${NC}"
+    fi
+
+    sleep 2
+}
+
+# --- MENU PRINCIPAL ---
 while true; do
     clear
     echo -e "${AZUL}===============================================================${NC}"
@@ -716,13 +357,13 @@ while true; do
     echo -e "  [1] 👤 Criar Usuário                  [7] 📤 Enviar Telegram (Manual)"
     echo -e "  [3] 📋 Listar Cadastros               [8] 📊 Gerenciamento de Banda"
     echo -e "  [4] 🟢 Ver Usuários Online            [9] Bloquear Serviços da VPN"
-    echo -e "  [5] ⚙️  Configurar Servidor           [0] ⬅️  Voltar ao Painel Principal"
+    echo -e "  [5] ⚙️  Configurar Servidor           [0] ⬅️ Sair"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Escolha uma opção: " OP; echo ""
     case $OP in
         1) criar_usuario ;;
         2) remover_usuario ;;
-        3) listar_usuarios ;;
+        3) listar_arquivos_ovpn ;;
         4) listar_usuarios_online ;;
         5) configurar_servidor_vpn ;;
         6) listar_arquivos_ovpn ;;
