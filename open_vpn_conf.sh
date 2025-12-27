@@ -106,7 +106,10 @@ configurar_dnsmasq() {
     local ACTION=${1:-"setup"}   # ações: setup, ativar, desativar
     local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
     local LOG_FILE="/var/log/dnsmasq.log"
-    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
+    # --- DETECÇÃO DINÂMICA (Sistema de Arquivos + IP Link) ---
+    # Procura qualquer tun ativa no Kernel
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+    [ -z "$INT_VPN" ] && INT_VPN=$(ip link show up | grep -o 'tun[0-9]*' | head -n 1)
     local IP_INT
 
     case "$ACTION" in
