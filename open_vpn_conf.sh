@@ -533,53 +533,6 @@ gerenciar_banda() {
         0) return ;;
     esac
 }
-bloq_servicos() {
-    BLOQ_FILE="/etc/vps_protecao/bloqueio_servicos.list"
-    HOSTS_FILE="/etc/hosts"
-
-    mkdir -p "$(dirname "$BLOQ_FILE")"
-    touch "$BLOQ_FILE"
-
-    while true; do
-        clear
-        echo "=============================="
-        echo "     BLOQUEIO DE SERVIÇOS"
-        echo "=============================="
-        echo "1) Listar domínios bloqueados"
-        echo "2) Adicionar domínio ao bloqueio"
-        echo "3) Remover domínio do bloqueio"
-        echo "4) Sair"
-        read -p "Escolha uma opção: " OP
-
-        case $OP in
-            1)
-                echo "Domínios bloqueados:"
-                cat "$BLOQ_FILE"
-                read -p "Pressione ENTER para voltar..."
-                ;;
-            2)
-                read -p "Digite o domínio para bloquear: " DOM
-                if ! grep -qx "$DOM" "$BLOQ_FILE"; then
-                    echo "$DOM" >> "$BLOQ_FILE"
-                    echo "127.0.0.1 $DOM" >> "$HOSTS_FILE"
-                    echo "Domínio $DOM bloqueado."
-                else
-                    echo "Domínio já bloqueado."
-                fi
-                read -p "ENTER..."
-                ;;
-            3)
-                read -p "Digite o domínio para desbloquear: " DOM
-                sed -i "/$DOM/d" "$BLOQ_FILE"
-                sed -i "/$DOM/d" "$HOSTS_FILE"
-                echo "Domínio $DOM removido do bloqueio."
-                read -p "ENTER..."
-                ;;
-            4) break ;;
-            *) echo "Opção inválida"; sleep 1 ;;
-        esac
-    done
-}
 
 while true; do
     clear
@@ -590,7 +543,7 @@ while true; do
     echo -e "  [2] 🗑️  Remover Usuário                [6] 📂 Listar Downloads (SCP)"
     echo -e "  [3] 📋 Listar Cadastros               [7] 📤 Enviar Telegram (Manual)"
     echo -e "  [4] 🟢 Ver Usuários Online            [8] 📊 Gerenciamento de Banda"
-    echo -e "  [0] 🔒 Bloqueio de Serviços           [9] ⬅️  Voltar ao Painel Principal"
+    echo -e "                                        [0] ⬅️  Voltar ao Painel Principal"
     echo -e "${AZUL}---------------------------------------------------------------${NC}"
     read -n 1 -p " Escolha uma opção: " OP; echo ""
     case $OP in
