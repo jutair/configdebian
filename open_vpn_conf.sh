@@ -533,6 +533,144 @@ gerenciar_banda() {
         0) return ;;
     esac
 }
+aplicar_bloqueio() {
+    # Limpa o arquivo de configuração do DNS
+    echo "# Gerado automaticamente" > "$DNSMASQ_FILE"
+    
+    # Lê a lista e formata para o dnsmasq
+    while read -r linha; do
+        # Remove espaços e ignora linhas vazias ou comentários
+        dom=$(echo "$linha" | xargs)
+        [[ -z "$dom" || "$dom" == "#"* ]] && continue
+        echo "address=/$dom/0.0.0.0" >> "$DNSMASQ_FILE"
+    done < "$BLOQ_FILE"
+    
+    # Reinicia o serviço
+    systemctl restart dnsmasq
+}
+
+bloq_servicos() {
+
+    BASE="/etc/vps_protecao"
+    DIR_CAT="$BASE/categorias"
+    DIR_PERF="$BASE/perfis"
+    DIR_CLIENT="$BASE/clientes"
+
+    mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT"
+
+    # ---------- CATEGORIAS PADRÃO ----------
+    [ ! -f "$DIR_CAT/adultos.list" ] && cat > "$DIR_CAT/adultos.list" <<EOF
+pornhub.com
+xvideos.com
+xnxx.com
+youporn.com
+redtube.com
+EOF
+
+    [ ! -f "$DIR_CAT/bancos.list" ] && cat > "$DIR_CAT/bancos.list" <<EOF
+bb.com.br
+itau.com.br
+bradesco.com.br
+santander.com.br
+nubank.com.br
+caixa.gov.br
+inter.co
+EOF
+
+    # ---------- PERFIS PADRÃO ----------
+    [ ! -f "$DIR_PERF/criancas.conf" ] && echo "adultos" > "$DIR_PERF/criancas.conf"
+    [ ! -f "$DIR_PERF/idosos.conf" ] && echo "bancos" > "$DIR_PERF/idosos.conf"
+    [ ! -f "$DIR_PERF/livre.conf" ] && : > "$DIR_PERF/livre.conf"
+
+    while true; do
+        clear
+        echo "=========================================="
+        echo " 🔒 GERENCIAMENTO DE BLOQUEIOS (VPN)"
+        echo "=========================================="
+        echo "1) 📂 Listar categorias"
+        echo "2) ➕ Criar categoria"
+        echo "3) 📝 Editar categoria"
+        echo "4) 👥 Listar perfis"
+        echo "5) ➕ Criar perfil"
+        echo "6) 📝 Editar perfil"
+        echo "7) 🧍 Associar cliente a perfil"
+        echo "8) 📄 Listar clientes"
+        echo "9) ⬅️  Voltar"
+        echo "=========================================="
+        read -p "Escolha: " OP
+
+        case "$OP" in
+
+        1)
+            clear
+            echo "Categorias existentes:"
+            ls "$DIR_CAT" | sed 's/.list//'
+            read -p "ENTER..."
+            ;;
+
+        2)
+            read -p "Nome da nova categoria: " CAT
+            [ -z "$CAT" ] && continue
+            nano "$DIR_CAT/$CAT.list"
+            ;;
+
+        3)
+            read -p "Categoria para editar: " CAT
+            [ -f "$DIR_CAT/$CAT.list" ] && nano "$DIR_CAT/$CAT.list"
+            ;;
+
+        4)
+            clear
+            echo "Perfis existentes:"
+            ls "$DIR_PERF" | sed 's/.conf//'
+            read -p "ENTER..."
+            ;;
+
+        5)
+            read -p "Nome do novo perfil: " PERF
+            [ -z "$PERF" ] && continue
+            nano "$DIR_PERF/$PERF.conf"
+            ;;
+
+        6)
+            read -p "Perfil para editar: " PERF
+            [ -f "$DIR_PERF/$PERF.conf" ] && nano "$DIR_PERF/$PERF.conf"
+            ;;
+
+        7)
+            read -p "Nome do cliente (Common Name): " CLI
+            read -p "Perfil (ex: criancas, idosos, livre): " PERF
+            if [ -f "$DIR_PERF/$PERF.conf" ]; then
+                echo "$PERF" > "$DIR_CLIENT/$CLI.profile"
+                echo "✔ Cliente $CLI associado ao perfil $PERF"
+            else
+                echo "❌ Perfil não existe"
+            fi
+            read -p "ENTER..."
+            ;;
+
+        8)
+            clear
+            echo "Clientes e perfis:"
+            for f in "$DIR_CLIENT"/*.profile 2>/dev/null; do
+                CLI=$(basename "$f" .profile)
+                PERF=$(cat "$f")
+                echo "👤 $CLI → $PERF"
+            done
+            read -p "ENTER..."
+            ;;
+
+        9)
+            break
+            ;;
+
+        *)
+            echo "Opção inválida"
+            sleep 1
+            ;;
+        esac
+    done
+}
 
 while true; do
     clear
