@@ -10,44 +10,156 @@ AZUL='\033[0;34m'; VERDE='\033[0;32m'; AMARELO='\033[1;33m'; VERMELHO='\033[0;31
 # Cria o diretório de armazenamento dos arquivos se não existir
 mkdir -p "$DIR_CLIENTES"
 
-configurar_dnsmasq_individual() {
-    local TIMEOUT=30  # tempo máximo para esperar a interface TUN
-    local INTERVAL=1  # intervalo entre checagens
-    local CONT=0
+# --- FUNÇÃO: CONFIGURAR SERVIDOR OPENVPN ---
+configurar_servidor_vpn() {
+    clear
+    [ -f "$ADMIN_CONF" ] && source "$ADMIN_CONF"
 
-    echo -e "${AZUL}🔹 Aguardando interface TUN ficar ativa...${NC}"
+    local USUARIO_ATUAL=$(logname 2>/dev/null || whoami)
+    local DATA_ATUAL=$(date +'%d/%m/%Y')
+    local HORA_ATUAL=$(date +'%H:%M:%S')
 
-    # Espera a interface TUN ficar disponível
-    while [[ -z $(ls /sys/class/net | grep '^tun') ]] && [[ $CONT -lt $TIMEOUT ]]; do
-        sleep $INTERVAL
-        ((CONT++))
-    done
-
-    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-
-    if [[ -z "$INT_VPN" ]]; then
-        echo -e "${AMARELO}⚠️ Nenhuma interface TUN ativa após $TIMEOUT segundos.${NC}"
-        echo -e "${AMARELO}O dnsmasq continuará funcionando em todas as interfaces.${NC}"
+    # 🛡️ Verifica se é admin
+    if [[ "$USUARIO_ATUAL" != "$ADM_USER" ]]; then
+        echo -e "${VERMELHO}⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️${NC}"
+        if [ -f "$TELEGRAM_CONF" ]; then
+            source "$TELEGRAM_CONF"
+            MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
+            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+                 -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
+        fi
+        sleep 3
         return
     fi
 
-    # Pega o IP da interface TUN
-    local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
-    IP_INT=${IP_INT:-"10.8.0.1"}
+    echo -e "${AZUL}⚙️ Configurando servidor OpenVPN...${NC}"
 
-    echo -e "${AZUL}🔹 Configurando dnsmasq para interface $INT_VPN ($IP_INT)...${NC}"
+    # --- Diretórios ---
+    sudo mkdir -p "$DIR_CLIENTES" /etc/vps_protecao/consumo_clientes /etc/vps_protecao/{categorias,perfis,clientes}
+    sudo chmod 755 /etc/vps_protecao /etc/vps_protecao/consumo_clientes "$DIR_CLIENTES"
 
-    # Remove entradas antigas caso existam
-    sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' /etc/dnsmasq.d/vpn.conf
+    # --- OpenVPN ---
+    SERVER_CONF="/etc/openvpn/server.conf"
+    [ ! -f "$SERVER_CONF" ] && SERVER_CONF="/etc/openvpn/server/server.conf"
 
-    # Adiciona a configuração correta
-    echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a /etc/dnsmasq.d/vpn.conf >/dev/null
+    if [ ! -f "$SERVER_CONF" ]; then
+        echo -e "${AMARELO}OpenVPN não instalado.${NC}"
+        read -p "Deseja instalar agora? (s/n): " INST
+        [[ "$INST" =~ ^[Ss]$ ]] && \
+            wget https://git.io/vpn -O /root/openvpn-install.sh && \
+            chmod +x /root/openvpn-install.sh && \
+            bash /root/openvpn-install.sh
+    else
+        echo -e "${VERDE}Servidor já instalado.${NC}"
+        # Força ativação dos logs de status
+        sudo sed -i '/^status /d' "$SERVER_CONF"
+        sudo sed -i '/^status-version/d' "$SERVER_CONF"
+        echo "status /etc/openvpn/server/openvpn-status.log" >> "$SERVER_CONF"
+        echo "status-version 2" >> "$SERVER_CONF"
+        systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
+    fi
 
-    # Reinicia dnsmasq com segurança
-    sudo systemctl restart dnsmasq
+    # --- Categorias e perfis padrão ---
+    [ ! -f "/etc/vps_protecao/categorias/adultos.list" ] && echo -e "pornhub.com\nxvideos.com" > /etc/vps_protecao/categorias/adultos.list
+    [ ! -f "/etc/vps_protecao/perfis/criancas.conf" ] && echo "adultos" > /etc/vps_protecao/perfis/criancas.conf
 
-    echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
+    # --- Garantir scripts client-connect / disconnect ---
+    echo -e "${AZUL}🔐 Configurando scripts client-connect / client-disconnect...${NC}"
+    SCRIPTS_ORIGEM="/opt/configdebian"
+    CLIENT_CONNECT="$SCRIPTS_ORIGEM/client-connect.sh"
+    CLIENT_DISCONNECT="$SCRIPTS_ORIGEM/client-disconnect.sh"
+
+    if [[ ! -f "$CLIENT_CONNECT" || ! -f "$CLIENT_DISCONNECT" ]]; then
+        echo -e "${VERMELHO}⚠️ Scripts não encontrados em $SCRIPTS_ORIGEM${NC}"
+    else
+        ALTEROU=0
+        sudo cp -f "$CLIENT_CONNECT" /etc/openvpn/
+        sudo cp -f "$CLIENT_DISCONNECT" /etc/openvpn/
+        sudo chmod +x /etc/openvpn/client-*.sh
+
+        if ! grep -q '^script-security 2' "$SERVER_CONF"; then
+            sed -i '/^script-security/d' "$SERVER_CONF"
+            echo "script-security 2" >> "$SERVER_CONF"
+            ALTEROU=1
+        fi
+        if ! grep -q '^client-connect /etc/openvpn/client-connect.sh' "$SERVER_CONF"; then
+            sed -i '/^client-connect /d' "$SERVER_CONF"
+            echo "client-connect /etc/openvpn/client-connect.sh" >> "$SERVER_CONF"
+            ALTEROU=1
+        fi
+        if ! grep -q '^client-disconnect /etc/openvpn/client-disconnect.sh' "$SERVER_CONF"; then
+            sed -i '/^client-disconnect /d' "$SERVER_CONF"
+            echo "client-disconnect /etc/openvpn/client-disconnect.sh" >> "$SERVER_CONF"
+            ALTEROU=1
+        fi
+
+        [[ "$ALTEROU" -eq 1 ]] && {
+            echo -e "${AMARELO}♻️ Reiniciando OpenVPN para aplicar scripts...${NC}"
+            systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
+        } || echo -e "${VERDE}✅ Scripts do guardião já estavam configurados.${NC}"
+    fi
+
+    echo -e "${VERDE}✅ Configuração do servidor OpenVPN finalizada.${NC}"
 }
+# --- FUNÇÃO: CONFIGURAR E GERENCIAR DNSMASQ ---
+configurar_dnsmasq() {
+    local ACTION=${1:-"setup"}   # ações: setup, ativar, desativar
+    local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
+    local LOG_FILE="/var/log/dnsmasq.log"
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
+    local IP_INT
+
+    case "$ACTION" in
+        setup)
+            echo -e "${AZUL}🔹 Configurando dnsmasq base...${NC}"
+            sudo mkdir -p /etc/dnsmasq.d
+            cat > "$DNS_CONF" <<'EOF'
+no-resolv
+server=1.1.1.1
+server=8.8.8.8
+cache-size=5000
+domain-needed
+bogus-priv
+stop-dns-rebind
+rebind-localhost-ok
+log-queries
+log-facility=/var/log/dnsmasq.log
+EOF
+            sudo touch "$LOG_FILE"
+            sudo chmod 644 "$LOG_FILE"
+            sudo systemctl enable dnsmasq
+            sudo systemctl restart dnsmasq
+            echo -e "${VERDE}✅ dnsmasq configurado com sucesso.${NC}"
+            ;;
+
+        ativar)
+            if [[ -z "$INT_VPN" ]]; then
+                echo -e "${AMARELO}⚠️ Nenhuma interface TUN detectada. DNS ficará em todas as interfaces.${NC}"
+                return
+            fi
+            IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+            IP_INT=${IP_INT:-"10.8.0.1"}
+
+            echo -e "${AZUL}🔹 Ativando dnsmasq para $INT_VPN ($IP_INT)...${NC}"
+            sudo sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
+            echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a "$DNS_CONF" >/dev/null
+            sudo systemctl restart dnsmasq
+            echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
+            ;;
+
+        desativar)
+            echo -e "${AZUL}🔹 Desativando DNS exclusivo da VPN...${NC}"
+            sudo sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
+            sudo systemctl restart dnsmasq
+            echo -e "${VERDE}✅ DNS da VPN desativado, dnsmasq funcionando em todas as interfaces.${NC}"
+            ;;
+
+        *)
+            echo -e "${VERMELHO}Opção inválida para configurar_dnsmasq: $ACTION${NC}"
+            ;;
+    esac
+}
+
 
 testa_velocidade() {
     clear
@@ -237,173 +349,7 @@ enviar_telegram() {
     return 1
 }
 
-# --- FUNÇÃO 2: CONFIGURAR SERVIDOR ---
-configurar_servidor_vpn() {
-    clear
-    [ -f "$ADMIN_CONF" ] && source "$ADMIN_CONF"
 
-    local USUARIO_ATUAL=$(logname 2>/dev/null || whoami)
-    local DATA_ATUAL=$(date +'%d/%m/%Y')
-    local HORA_ATUAL=$(date +'%H:%M:%S')
-
-    # 🛡️ Verifica se é admin
-    if [[ "$USUARIO_ATUAL" != "$ADM_USER" ]]; then
-        echo -e "${VERMELHO}⚠️ ACESSO NEGADO: APENAS ADMINISTRADOR ⚠️${NC}"
-        if [ -f "$TELEGRAM_CONF" ]; then
-            source "$TELEGRAM_CONF"
-            MENSAGEM="🚨 <b>TENTATIVA DE ALTERAR O SERVIDOR VPN!</b>%0A<b>Usuário:</b> <code>$USUARIO_ATUAL</code>%0A<b>Data/Hora:</b> $DATA_ATUAL às $HORA_ATUAL"
-            curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
-                 -d chat_id="$ID_CHAT" -d text="$MENSAGEM" -d parse_mode="HTML" > /dev/null
-        fi
-        sleep 3
-        return
-    fi
-
-    echo -e "${AZUL}CONFIGURAÇÃO DO SERVIDOR OPENVPN${NC}"
-
-    # --- Diretórios ---
-    sudo mkdir -p "$DIR_CLIENTES" /etc/vps_protecao/consumo_clientes /etc/vps_protecao/{categorias,perfis,clientes}
-    sudo chmod 755 /etc/vps_protecao /etc/vps_protecao/consumo_clientes "$DIR_CLIENTES"
-
-    # --- DNSMASQ base ---
-    cat > /etc/dnsmasq.d/vpn.conf <<'EOF'
-no-resolv
-server=1.1.1.1
-server=8.8.8.8
-cache-size=5000
-domain-needed
-bogus-priv
-stop-dns-rebind
-rebind-localhost-ok
-log-queries
-log-facility=/var/log/dnsmasq.log
-EOF
-
-    touch /var/log/dnsmasq.log
-    chmod 644 /var/log/dnsmasq.log
-    systemctl enable dnsmasq
-    systemctl restart dnsmasq
-
-    # --- Função Interna: Ativar DNS na Interface Detectada ---
-    ativar_dns_vpn() {
-        local TIMEOUT=30  # tempo máximo para esperar a interface TUN
-        local INTERVAL=1  # intervalo entre checagens
-        local CONT=0
-    
-        echo -e "${AZUL}🔹 Aguardando interface TUN ficar ativa...${NC}"
-    
-        # Espera a interface TUN ficar disponível
-        while [[ -z $(ls /sys/class/net | grep '^tun') ]] && [[ $CONT -lt $TIMEOUT ]]; do
-            sleep $INTERVAL
-            ((CONT++))
-        done
-    
-        local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-    
-        if [[ -z "$INT_VPN" ]]; then
-            echo -e "${AMARELO}⚠️ Nenhuma interface TUN ativa após $TIMEOUT segundos.${NC}"
-            echo -e "${AMARELO}O dnsmasq continuará funcionando em todas as interfaces.${NC}"
-            return
-        fi
-    
-        # Pega o IP da interface TUN
-        local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
-        IP_INT=${IP_INT:-"10.8.0.1"}
-    
-        echo -e "${AZUL}🔹 Configurando dnsmasq para interface $INT_VPN ($IP_INT)...${NC}"
-    
-        # Remove entradas antigas caso existam
-        sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' /etc/dnsmasq.d/vpn.conf
-    
-        # Adiciona a configuração correta
-        echo -e "interface=$INT_VPN\nbind-interfaces\nlisten-address=$IP_INT" | sudo tee -a /etc/dnsmasq.d/vpn.conf >/dev/null
-    
-        # Reinicia dnsmasq com segurança
-        sudo systemctl restart dnsmasq
-    
-        echo -e "${VERDE}✅ DNS da VPN ativado para $INT_VPN ($IP_INT).${NC}"
-    }
-
-
-    # --- OpenVPN ---
-    SERVER_CONF="/etc/openvpn/server.conf"
-    [ ! -f "$SERVER_CONF" ] && SERVER_CONF="/etc/openvpn/server/server.conf"
-
-    if [ ! -f "$SERVER_CONF" ]; then
-        echo -e "${AMARELO}OpenVPN não instalado.${NC}"
-        read -p "Deseja instalar agora? (s/n): " INST
-        [[ "$INST" =~ ^[Ss]$ ]] && \
-            wget https://git.io/vpn -O /root/openvpn-install.sh && \
-            chmod +x /root/openvpn-install.sh && \
-            bash /root/openvpn-install.sh
-    else
-        echo -e "${VERDE}Servidor já instalado.${NC}"
-        sudo sed -i '/^status /d' "$SERVER_CONF"
-        sudo sed -i '/^status-version/d' "$SERVER_CONF"
-        echo "status /etc/openvpn/server/openvpn-status.log" >> "$SERVER_CONF"
-        echo "status-version 2" >> "$SERVER_CONF"
-        systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
-    fi
-
-    # --- Categorias e perfis padrão ---
-    [ ! -f "/etc/vps_protecao/categorias/adultos.list" ] && echo -e "pornhub.com\nxvideos.com" > /etc/vps_protecao/categorias/adultos.list
-    [ ! -f "/etc/vps_protecao/perfis/criancas.conf" ] && echo "adultos" > /etc/vps_protecao/perfis/criancas.conf
-
-    # --- Garantir scripts client-connect / disconnect ---
-    echo -e "${AZUL}🔐 Configurando scripts client-connect / client-disconnect...${NC}"
-    SCRIPTS_ORIGEM="/opt/configdebian"
-    CLIENT_CONNECT="$SCRIPTS_ORIGEM/client-connect.sh"
-    CLIENT_DISCONNECT="$SCRIPTS_ORIGEM/client-disconnect.sh"
-
-    if [[ ! -f "$CLIENT_CONNECT" || ! -f "$CLIENT_DISCONNECT" ]]; then
-        echo -e "${VERMELHO}⚠️ Scripts não encontrados em $SCRIPTS_ORIGEM${NC}"
-    else
-        ALTEROU=0
-        sudo cp -f "$CLIENT_CONNECT" /etc/openvpn/
-        sudo cp -f "$CLIENT_DISCONNECT" /etc/openvpn/
-        sudo chmod +x /etc/openvpn/client-*.sh
-
-        if ! grep -q '^script-security 2' "$SERVER_CONF"; then
-            sed -i '/^script-security/d' "$SERVER_CONF"
-            echo "script-security 2" >> "$SERVER_CONF"
-            ALTEROU=1
-        fi
-        if ! grep -q '^client-connect /etc/openvpn/client-connect.sh' "$SERVER_CONF"; then
-            sed -i '/^client-connect /d' "$SERVER_CONF"
-            echo "client-connect /etc/openvpn/client-connect.sh" >> "$SERVER_CONF"
-            ALTEROU=1
-        fi
-        if ! grep -q '^client-disconnect /etc/openvpn/client-disconnect.sh' "$SERVER_CONF"; then
-            sed -i '/^client-disconnect /d' "$SERVER_CONF"
-            echo "client-disconnect /etc/openvpn/client-disconnect.sh" >> "$SERVER_CONF"
-            ALTEROU=1
-        fi
-
-        [[ "$ALTEROU" -eq 1 ]] && {
-            echo -e "${AMARELO}♻️ Reiniciando OpenVPN para aplicar scripts...${NC}"
-            systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
-        } || echo -e "${VERDE}✅ Scripts do guardião já estavam configurados.${NC}"
-    fi
-
-    # --- Ativa DNS na interface VPN detectada ---
-    ativar_dns_vpn
-
-    # --- VERIFICAÇÃO FINAL DA VPN ---
-    echo -e "${AZUL}🔎 Verificando status do OpenVPN...${NC}"
-    if systemctl is-active --quiet openvpn-server@server; then
-        local INT_ATIVA=$(ls /sys/class/net | grep '^tun' | head -n 1)
-        if [[ -n "$INT_ATIVA" ]]; then
-            local IP_TUN=$(ip -4 addr show "$INT_ATIVA" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
-            echo -e "${VERDE}✅ OpenVPN ativo e conectado na interface $INT_ATIVA ($IP_TUN)${NC}"
-        else
-            echo -e "${AMARELO}⚠️ OpenVPN ativo, mas nenhuma interface TUN encontrada.${NC}"
-        fi
-    else
-        echo -e "${VERMELHO}❌ OpenVPN não está rodando. Verifique logs e reinicie o serviço.${NC}"
-    fi
-
-    echo -e "${VERDE}✅ Configuração finalizada com sucesso.${NC}"
-}
 
 # --- FUNÇÃO 3: CRIAR USUÁRIO ---
 criar_usuario() {
@@ -874,7 +820,7 @@ chama_configuracao() {
                     configurar_servidor_vpn  # Chama a função que já revisamos
                     ;;
                 2)
-                    configurar_dnsmasq_individual
+                    configurar_dnsmasq
                     ;;
                 0)
                     break
