@@ -1,6 +1,6 @@
 #!/bin/bash
 # setup_vps.sh - Instalador de Segurança e Gestão VPS
-# Atualizado: 26-12-2025
+# Atualizado: 27-12-2025
 
 # --- CORES ---
 VERMELHO='\033[0;31m'; AMARELO='\033[1;33m'; VERDE='\033[0;32m'; AZUL='\033[0;34m'; NC='\033[0m'
@@ -56,47 +56,34 @@ fi
 echo -e "${AZUL}---------------------------------------------------------------${NC}"
 
 # --- 3. CRIAÇÃO DAS PASTAS E ARQUIVOS ---
-mkdir -p "$DIR_PROT"
-mkdir -p "$DIR_CONFIG"
-
+mkdir -p "$DIR_PROT" "$DIR_CONFIG"
 echo "ADM_USER=\"$ADM_USER\"" > "$DIR_PROT/admin.conf"
 echo "OPE_USER=\"$OPE_USER\"" >> "$DIR_PROT/admin.conf"
 echo "TOKEN=\"$TOKEN\"" > "$DIR_PROT/telegram.conf"
 echo "ID_CHAT=\"$ID_CHAT\"" >> "$DIR_PROT/telegram.conf"
-
 chmod 700 "$DIR_PROT"
-chmod 600 "$DIR_PROT/admin.conf"
-chmod 600 "$DIR_PROT/telegram.conf"
+chmod 600 "$DIR_PROT/admin.conf" "$DIR_PROT/telegram.conf"
 
 # --- 4. INSTALAÇÃO DE PACOTES ---
 echo -e "${AMARELO}🔧 Instalando pacotes necessários...${NC}"
 apt-get update -y && apt-get install -y vnstat ufw fail2ban openvpn sudo curl wget bc jq unzip procps speedtest-cli dnsmasq
-# Define o fuso horário para Manaus
-sudo timedatectl set-timezone America/Manaus
-# Sincroniza o relógio com os servidores NTP
-sudo timedatectl set-ntp true
-# Inicia o vnstat para evitar erro de banco de dados vazio
+timedatectl set-timezone America/Manaus
+timedatectl set-ntp true
 systemctl enable vnstat
 systemctl start vnstat
-# 2. Criação das Pastas (ATUALIZADO)
-mkdir -p "$DIR_PROT"
-mkdir -p "$DIR_CONFIG"
-mkdir -p "$DIR_PROT/clientes_ovpn"
-mkdir -p "$DIR_PROT/consumo_clientes"
-# Aplica permissões iniciais de navegação
-chmod 755 "$DIR_PROT"
-chmod 755 "$DIR_PROT/clientes_ovpn"
-chmod 755 "$DIR_PROT/consumo_clientes"
 
-# --- 5. DOWNLOAD DOS SCRIPTS ---
+# --- 5. CRIAÇÃO DE DIRETÓRIOS ADICIONAIS ---
+mkdir -p "$DIR_PROT/clientes_ovpn" "$DIR_PROT/consumo_clientes"
+chmod 755 "$DIR_PROT" "$DIR_PROT/clientes_ovpn" "$DIR_PROT/consumo_clientes"
+
+# --- 6. DOWNLOAD DOS SCRIPTS ---
 echo -e "${AMARELO}⏳ Sincronizando ferramentas do GitHub...${NC}"
 for SCRIPT in "${SCRIPTS[@]}"; do
-    URL_DOWNLOAD="$GITHUB_REPO/$SCRIPT"
-    curl -fsSL "$URL_DOWNLOAD" -o "$DIR_CONFIG/$SCRIPT" || echo -e "${VERMELHO}⚠ Erro ao baixar $SCRIPT${NC}"
+    curl -fsSL "$GITHUB_REPO/$SCRIPT" -o "$DIR_CONFIG/$SCRIPT" || echo -e "${VERMELHO}⚠ Erro ao baixar $SCRIPT${NC}"
     chmod +x "$DIR_CONFIG/$SCRIPT"
 done
 
-# --- 6. CRIAÇÃO DE USUÁRIOS NO LINUX ---
+# --- 7. CRIAÇÃO DE USUÁRIOS ---
 echo -e "${AMARELO}👤 Configurando contas de acesso...${NC}"
 for USUARIO in "$ADM_USER" "$OPE_USER"; do
     if ! id "$USUARIO" &>/dev/null; then
@@ -109,31 +96,21 @@ usermod -aG sudo "$ADM_USER"
 echo "%sudo ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-vpn-users
 chmod 440 /etc/sudoers.d/90-vpn-users
 
-# --- 7. BLINDAGEM E LIBERAÇÃO DE ACESSO ---
-echo -e "${AMARELO}🛡️  Aplicando travas e liberando SSH por senha...${NC}"
-
-# Ajuste no SSHD_CONFIG para permitir senhas
+# --- 8. BLINDAGEM SSH ---
+echo -e "${AMARELO}🛡️ Aplicando travas e liberando SSH por senha...${NC}"
 SSH_CONF="/etc/ssh/sshd_config"
 sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' $SSH_CONF
 sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' $SSH_CONF
 sed -i 's/^KbdInteractiveAuthentication no/KbdInteractiveAuthentication yes/' $SSH_CONF
-# Garante que o root também possa entrar se necessário inicialmente
 sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' $SSH_CONF
-
-# Configura execução do login.sh no SSH
 sed -i '/login.sh/d' /etc/pam.d/sshd
 echo "session optional pam_exec.so $DIR_CONFIG/login.sh" >> /etc/pam.d/sshd
-
-# Configura o menu automático
 sed -i '/menu.sh/d' /etc/profile
 echo "[ -f $DIR_CONFIG/menu.sh ] && exec bash $DIR_CONFIG/menu.sh" >> /etc/profile
-
-# Reinicia SSH para aplicar mudanças
 systemctl restart ssh
-# 10. Proteção contra Fork Bomb e Limite de Processos
-echo -e "${AMARELO}🛡️  Configurando limites de processos (Anti-ForkBomb)...${NC}"
 
-# Usamos 'EOF' com aspas para evitar erros de interpretação de variáveis e caracteres
+# --- 9. LIMITE DE PROCESSOS (Anti-ForkBomb) ---
+echo -e "${AMARELO}🛡️ Configurando limites de processos...${NC}"
 cat <<'EOF' > /etc/security/limits.d/99-vpn-limits.conf
 * soft    nproc           100
 * hard    nproc           150
@@ -142,97 +119,47 @@ cat <<'EOF' > /etc/security/limits.d/99-vpn-limits.conf
 root            soft    nproc           unlimited
 root            hard    nproc           unlimited
 EOF
-
-# Adiciona a exceção para o seu usuário ADM via comando separado para evitar erro de sintaxe
 echo "$ADM_USER       soft    nproc           unlimited" >> /etc/security/limits.d/99-vpn-limits.conf
 echo "$ADM_USER       hard    nproc           unlimited" >> /etc/security/limits.d/99-vpn-limits.conf
+grep -q "pam_limits.so" /etc/pam.d/common-session || echo "session required pam_limits.so" >> /etc/pam.d/common-session
 
-# Garante que o PAM aplique esses limites nas sessões
-if ! grep -q "pam_limits.so" /etc/pam.d/common-session; then
-    echo "session required pam_limits.so" >> /etc/pam.d/common-session
-fi
-# Adicionado a tun0 no monitoramente do vnstat
-if ip link show tun0 > /dev/null 2>&1; then
-    vnstat -i tun0 --add
-    systemctl restart vnstat
-fi
-# --- 8. INICIALIZAÇÃO DO GUARDIÃO ---
-echo -e "${AMARELO}🚀 Ativando Guardião...${NC}"
-pkill -f "guardiao.sh" > /dev/null 2>&1 || true
-nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
-# ===============================================================
-# 8. CONFIGURAÇÃO DO DNSMASQ (ISOLADO PARA VPN)
-# ===============================================================
-
+# --- 10. CONFIGURAÇÃO DO DNSMASQ (CORRIGIDO PARA VPN FUTURA) ---
 echo -e "${AMARELO}🔧 Configurando DNS da VPN (dnsmasq)...${NC}"
-
-# Backup do dnsmasq.conf original
 [ -f /etc/dnsmasq.conf ] && cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak.$(date +%F-%H%M)
-
-# Mantém dnsmasq.conf limpo
 cat > /etc/dnsmasq.conf <<'EOF'
 # dnsmasq.conf limpo
 conf-dir=/etc/dnsmasq.d
 EOF
-
-# Arquivo base da VPN (interface será ativada quando a VPN existir)
 cat > /etc/dnsmasq.d/vpn.conf <<'EOF'
-# ================================
-# DNSMASQ - OPENVPN ONLY
-# ================================
-
-# DNS upstream confiáveis
+# DNSMASQ - OPENVPN (interface ativada futuramente)
 no-resolv
 server=1.1.1.1
 server=8.8.8.8
-
-# Cache
 cache-size=5000
-
-# Segurança
 domain-needed
 bogus-priv
 stop-dns-rebind
 rebind-localhost-ok
-
-# Log
 log-queries
 log-facility=/var/log/dnsmasq.log
 EOF
-
-# Log
 touch /var/log/dnsmasq.log
 chmod 644 /var/log/dnsmasq.log
-
-# Ativa serviço
 systemctl enable dnsmasq
 systemctl restart dnsmasq || echo -e "${AMARELO}⚠️ dnsmasq inicializado parcialmente. Interface tun0 ainda não existe.${NC}"
-
 echo -e "${VERDE}✅ DNS da VPN configurado (pronto para ativação futura da VPN).${NC}"
 
-# ===============================================================
-#  CONFIGURAÇÃO DE SCRIPTS OPENVPN (client-connect / disconnect)
-# ===============================================================
-
+# --- 11. CONFIGURAÇÃO DE SCRIPTS OPENVPN ---
 echo -e "${AMARELO}🔐 Configurando scripts de controle OpenVPN...${NC}"
-
-DIR_CONFIG="/opt/configdebian"
-BASE_PROT="/etc/vps_protecao"
-
-# Cria diretórios base
-mkdir -p "$DIR_CONFIG"
-mkdir -p "$BASE_PROT"/{categorias,perfis,clientes}
-
-# ---------- CATEGORIAS PADRÃO ----------
-[ ! -f "$BASE_PROT/categorias/adultos.list" ] && cat > "$BASE_PROT/categorias/adultos.list" <<EOF
+mkdir -p "$DIR_CONFIG" "$DIR_PROT"/{categorias,perfis,clientes}
+[ ! -f "$DIR_PROT/categorias/adultos.list" ] && cat > "$DIR_PROT/categorias/adultos.list" <<EOF
 pornhub.com
 xvideos.com
 xnxx.com
 youporn.com
 redtube.com
 EOF
-
-[ ! -f "$BASE_PROT/categorias/bancos.list" ] && cat > "$BASE_PROT/categorias/bancos.list" <<EOF
+[ ! -f "$DIR_PROT/categorias/bancos.list" ] && cat > "$DIR_PROT/categorias/bancos.list" <<EOF
 bb.com.br
 itau.com.br
 bradesco.com.br
@@ -241,30 +168,19 @@ nubank.com.br
 caixa.gov.br
 inter.co
 EOF
-
-# ---------- PERFIS PADRÃO ----------
-[ ! -f "$BASE_PROT/perfis/criancas.conf" ] && echo "adultos" > "$BASE_PROT/perfis/criancas.conf"
-[ ! -f "$BASE_PROT/perfis/idosos.conf" ] && echo "bancos" > "$BASE_PROT/perfis/idosos.conf"
-[ ! -f "$BASE_PROT/perfis/livre.conf" ] && : > "$BASE_PROT/perfis/livre.conf"
-
-# --- DOWNLOAD DOS SCRIPTS ---
-wget -q -O "$DIR_CONFIG/client-connect.sh" \
-    https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh
-
-wget -q -O "$DIR_CONFIG/client-disconnect.sh" \
-    https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh
-
-# --- MOVE PARA O OPENVPN ---
+[ ! -f "$DIR_PROT/perfis/criancas.conf" ] && echo "adultos" > "$DIR_PROT/perfis/criancas.conf"
+[ ! -f "$DIR_PROT/perfis/idosos.conf" ] && echo "bancos" > "$DIR_PROT/perfis/idosos.conf"
+[ ! -f "$DIR_PROT/perfis/livre.conf" ] && : > "$DIR_PROT/perfis/livre.conf"
+wget -q -O "$DIR_CONFIG/client-connect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-connect.sh"
+wget -q -O "$DIR_CONFIG/client-disconnect.sh" "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/client-disconnect.sh"
 mv "$DIR_CONFIG/client-connect.sh" /etc/openvpn/client-connect.sh
 mv "$DIR_CONFIG/client-disconnect.sh" /etc/openvpn/client-disconnect.sh
-
-# --- PERMISSÕES ---
-chmod 755 /etc/openvpn/client-connect.sh
-chmod 755 /etc/openvpn/client-disconnect.sh
-chown root:root /etc/openvpn/client-connect.sh
-chown root:root /etc/openvpn/client-disconnect.sh
+chmod 755 /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
+chown root:root /etc/openvpn/client-connect.sh /etc/openvpn/client-disconnect.sh
 echo -e "${VERDE}✅ Scripts OpenVPN configurados com sucesso.${NC}"
 sleep 1
+
+# --- 12. FINALIZAÇÃO ---
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
 echo -e "    Administrador: ${AMARELO}$ADM_USER${NC}"
