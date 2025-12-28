@@ -113,16 +113,15 @@ verificar_status_dnsmasq() {
     echo -e "             🔍 DIAGNÓSTICO DO DNSMASQ & VPN"
     echo -e "${AZUL}===============================================================${NC}"
 
-    # 1. Verifica se o serviço está ativo no Systemd
+    # 1. Verifica se o serviço está ativo
     if systemctl is-active --quiet dnsmasq; then
         echo -e " Status do Serviço : ${VERDE}● ATIVO (Rodando)${NC}"
     else
         echo -e " Status do Serviço : ${VERMELHO}○ INATIVO${NC}"
-        echo -e "${AMARELO}Tentando iniciar...${NC}"
-        systemctl start dnsmasq
+        systemctl start dnsmasq >/dev/null 2>&1
     fi
 
-    # 2. Verifica a Interface TUN (O que você precisava)
+    # 2. Interface VPN
     local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
     if [[ -n "$INT_VPN" ]]; then
         echo -e " Interface VPN     : ${VERDE}● DETECTADA ($INT_VPN)${NC}"
@@ -130,36 +129,34 @@ verificar_status_dnsmasq() {
         echo -e " Interface VPN     : ${VERMELHO}○ NÃO DETECTADA${NC}"
     fi
 
-    # 3. Verifica se o Dnsmasq está ouvindo na porta 53 (DNS)
-    if netstat -tuln | grep -q ":53 "; then
+    # 3. Porta 53 usando 'ss' (substituto do netstat)
+    if ss -tuln | grep -q ":53 "; then
         echo -e " Porta 53 (DNS)    : ${VERDE}● ABERTA${NC}"
     else
-        echo -e " Porta 53 (DNS)    : ${VERMELHO}○ FECHADA${NC}"
+        echo -e " Porta 53 (DNS)    : ${VERMELHO}○ FECHADA / BLOQUEADA${NC}"
+        echo -e "${AMARELO}Tentando liberar porta 53 do systemd-resolved...${NC}"
+        systemctl stop systemd-resolved >/dev/null 2>&1
+        systemctl disable systemd-resolved >/dev/null 2>&1
+        systemctl restart dnsmasq
     fi
 
-    # 4. Validação do arquivo de configuração
+    # 4. Validação da Configuração
     echo -e "${AZUL}----------------------- CONFIGURAÇÃO --------------------------${NC}"
     if [ -f "$DNS_CONF" ]; then
         echo -e " Arquivo vpn.conf  : ${VERDE}Encontrado${NC}"
-        
-        # Verifica se a interface está vinculada no arquivo
-        if grep -q "interface=$INT_VPN" "$DNS_CONF"; then
-            echo -e " Vínculo Interface : ${VERDE}Correto ($INT_VPN)${NC}"
-        else
-            echo -e " Vínculo Interface : ${VERMELHO}Incorreto ou Ausente${NC}"
-        fi
-        
-        # Verifica se o log está ativo
-        if grep -q "log-queries" "$DNS_CONF"; then
-            echo -e " Log de Consultas  : ${VERDE}Ativo${NC}"
-        fi
+        grep -q "interface=$INT_VPN" "$DNS_CONF" && echo -e " Vínculo Interface : ${VERDE}Correto ($INT_VPN)${NC}" || echo -e " Vínculo Interface : ${VERMELHO}Incorreto${NC}"
     else
-        echo -e " Arquivo vpn.conf  : ${VERMELHO}Não encontrado em /etc/dnsmasq.d/${NC}"
+        echo -e " Arquivo vpn.conf  : ${VERMELHO}Não encontrado${NC}"
     fi
 
     echo -e "${AZUL}--------------------------- LOGS ------------------------------${NC}"
     echo -e " Últimas 3 consultas processadas:"
-    tail -n 3 /var/log/dnsmasq.log 2>/dev/null || echo " (Sem logs recentes)"
+    # Tenta ler o log padrão ou o log do systemd se o arquivo estiver vazio
+    if [ -s "/var/log/dnsmasq.log" ]; then
+        tail -n 3 /var/log/dnsmasq.log
+    else
+        journalctl -u dnsmasq --no-pager -n 3
+    fi
 
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
