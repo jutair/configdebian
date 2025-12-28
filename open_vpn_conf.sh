@@ -480,6 +480,17 @@ remover_usuario() {
 
 # --- FUNÇÃO 5: BLOQUEIO DE SERVIÇOS E PERFIS ---
 bloq_servicos() {
+
+    # 🔎 VERIFICA DNSMASQ + VPN
+    if ! verificar_dnsmasq_vpn; then
+        clear
+        echo "⚠️ DNSMASQ não está ativo ou não está configurado para a VPN."
+        echo "👉 É necessário configurar o DNS antes de usar bloqueios."
+        echo
+        read -p "Pressione ENTER para abrir o menu DNSMASQ..."
+        menu_dnsmasq_vpn
+    fi
+
     BASE="/etc/vps_protecao"
     DIR_CAT="$BASE/categorias"
     DIR_PERF="$BASE/perfis"
@@ -560,6 +571,7 @@ EOF
         esac
     done
 }
+
 # --- FUNÇÃO 7: ENVIAR OVPN MANUAL PELO TELEGRAM ---
 enviar_ovpn_telegram_manual() {
     clear
