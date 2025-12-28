@@ -336,7 +336,7 @@ consumo_tun0d() {
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
 }
-consumo_tun0d() {
+consumo_tun0m() {
     clear
     # Busca a interface TUN ativa
     local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
