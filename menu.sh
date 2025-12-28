@@ -92,11 +92,32 @@ dashboard() {
     STATUS_LOG=${STATUS_LOG:-"/etc/openvpn/server/openvpn-status.log"}
 
     while true; do
-        # --- DETECÇÃO DINÂMICA (Sistema de Arquivos + IP Link) ---
-        # Procura qualquer tun ativa no Kernel
+        # --- DETECÇÃO DINÂMICA DA INTERFACE ---
         local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
         [ -z "$INT_VPN" ] && INT_VPN=$(ip link show up | grep -o 'tun[0-9]*' | head -n 1)
         
+        # --- BLOCO DE CORREÇÃO VNSTAT (O que funcionou) ---
+        if [[ -n "$INT_VPN" ]]; then
+            # Garante permissões na pasta do banco
+            chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null
+            
+            # Verifica se está no banco, se não, adiciona
+            if ! vnstat --iflist | grep -q "$INT_VPN"; then
+                vnstat --add -i "$INT_VPN" >/dev/null 2>&1
+                systemctl restart vnstat >/dev/null 2>&1
+            fi
+            
+            # FORÇA o descarregamento dos dados da memória para o banco
+            killall -HUP vnstatd >/dev/null 2>&1
+            
+            DISPLAY_TUN="$INT_VPN"
+            TRAF_TUN=$(vnstat -i "$INT_VPN" --oneline 2>/dev/null | cut -d';' -f11)
+            [ -z "$TRAF_TUN" ] && TRAF_TUN="Calculando..."
+        else
+            DISPLAY_TUN="Nenhuma"
+            TRAF_TUN="${VERMELHO}VPN OFF${NC}"
+        fi
+
         # --- Coleta de Hardware ---
         DATA_MANAUS=$(date +"%d/%m/%Y %H:%M:%S")
         UPTIME=$(uptime -p | sed 's/up //')
@@ -104,29 +125,12 @@ dashboard() {
         CPU_INT=${CPU_VAL%.*}
         MEM_PORC=$(free | awk '/Mem:/{printf("%d", $3/$2*100)}')
         
-        # --- Coleta de Tráfego ---
+        # --- Tráfego WEB ---
         IFACE_WEB=$(ip route | grep default | awk '{print $5}' | head -n1)
         TRAF_ETH=$(vnstat -i "$IFACE_WEB" --oneline 2>/dev/null | cut -d';' -f11)
         [ -z "$TRAF_ETH" ] && TRAF_ETH="Indisponível"
 
-        # Lógica de Detecção da TUN para o vnStat
-        if [[ -n "$INT_VPN" ]]; then
-            DISPLAY_TUN="$INT_VPN"
-            # Tenta pegar tráfego. Se vnstat der erro (interface não add), tenta adicionar na hora
-            TRAF_TUN=$(vnstat -i "$INT_VPN" --oneline 2>/dev/null | cut -d';' -f11)
-            
-            if [ -z "$TRAF_TUN" ]; then
-                TRAF_TUN="Iniciando..."
-                # Adiciona ao vnstat se for a primeira vez
-                vnstat --add -i "$INT_VPN" >/dev/null 2>&1
-                systemctl restart vnstat >/dev/null 2>&1
-            fi
-        else
-            DISPLAY_TUN="Nenhuma"
-            TRAF_TUN="${VERMELHO}VPN OFF${NC}"
-        fi
-
-        # --- Conexões e Logs ---
+        # --- Usuários Online ---
         VPN_ONLINE=$(grep -E "^CLIENT_LIST" "$STATUS_LOG" 2>/dev/null | grep -v "Common Name" | wc -l)
         SSH_ONLINE=$(who | wc -l)
         BANS=$(wc -l < /etc/vps_protecao/bans.log 2>/dev/null || echo "0")
