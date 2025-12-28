@@ -101,6 +101,69 @@ configurar_servidor_vpn() {
 
     echo -e "${VERDE}✅ Configuração do servidor OpenVPN finalizada.${NC}"
 }
+verificar_status_dnsmasq() {
+    clear
+    local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
+    local VERDE='\033[0;32m'
+    local AMARELO='\033[1;33m'
+    local VERMELHO='\033[0;31m'
+    local NC='\033[0m'
+
+    echo -e "${AZUL}===============================================================${NC}"
+    echo -e "             🔍 DIAGNÓSTICO DO DNSMASQ & VPN"
+    echo -e "${AZUL}===============================================================${NC}"
+
+    # 1. Verifica se o serviço está ativo no Systemd
+    if systemctl is-active --quiet dnsmasq; then
+        echo -e " Status do Serviço : ${VERDE}● ATIVO (Rodando)${NC}"
+    else
+        echo -e " Status do Serviço : ${VERMELHO}○ INATIVO${NC}"
+        echo -e "${AMARELO}Tentando iniciar...${NC}"
+        systemctl start dnsmasq
+    fi
+
+    # 2. Verifica a Interface TUN (O que você precisava)
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+    if [[ -n "$INT_VPN" ]]; then
+        echo -e " Interface VPN     : ${VERDE}● DETECTADA ($INT_VPN)${NC}"
+    else
+        echo -e " Interface VPN     : ${VERMELHO}○ NÃO DETECTADA${NC}"
+    fi
+
+    # 3. Verifica se o Dnsmasq está ouvindo na porta 53 (DNS)
+    if netstat -tuln | grep -q ":53 "; then
+        echo -e " Porta 53 (DNS)    : ${VERDE}● ABERTA${NC}"
+    else
+        echo -e " Porta 53 (DNS)    : ${VERMELHO}○ FECHADA${NC}"
+    fi
+
+    # 4. Validação do arquivo de configuração
+    echo -e "${AZUL}----------------------- CONFIGURAÇÃO --------------------------${NC}"
+    if [ -f "$DNS_CONF" ]; then
+        echo -e " Arquivo vpn.conf  : ${VERDE}Encontrado${NC}"
+        
+        # Verifica se a interface está vinculada no arquivo
+        if grep -q "interface=$INT_VPN" "$DNS_CONF"; then
+            echo -e " Vínculo Interface : ${VERDE}Correto ($INT_VPN)${NC}"
+        else
+            echo -e " Vínculo Interface : ${VERMELHO}Incorreto ou Ausente${NC}"
+        fi
+        
+        # Verifica se o log está ativo
+        if grep -q "log-queries" "$DNS_CONF"; then
+            echo -e " Log de Consultas  : ${VERDE}Ativo${NC}"
+        fi
+    else
+        echo -e " Arquivo vpn.conf  : ${VERMELHO}Não encontrado em /etc/dnsmasq.d/${NC}"
+    fi
+
+    echo -e "${AZUL}--------------------------- LOGS ------------------------------${NC}"
+    echo -e " Últimas 3 consultas processadas:"
+    tail -n 3 /var/log/dnsmasq.log 2>/dev/null || echo " (Sem logs recentes)"
+
+    echo -e "${AZUL}===============================================================${NC}"
+    read -p "Pressione ENTER para voltar..."
+}
 # ==========================================
 # FUNÇÃO: Ativar DNS da VPN com segurança
 # ==========================================
@@ -239,14 +302,7 @@ menu_dnsmasq_vpn() {
                 configurar_dnsmasq_vpn desativar
                 read -p "Enter para continuar..."
             ;;
-            3)
-                if verificar_dns_vpn; then
-                    echo "✅ DNS da VPN está ATIVO"
-                else
-                    echo "❌ DNS da VPN NÃO está ativo"
-                fi
-                read -p "Enter para continuar..."
-            ;;
+            3) verificar_status_dnsmasq ;;
             0)
                 break
             ;;
