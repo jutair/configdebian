@@ -615,31 +615,49 @@ bloq_servicos() {
 
     # Compila as Regras de Tags para o Dnsmasq
     atualizar_motor_dns_tags() {
+        # --- GARANTE QUE AS PASTAS EXISTEM ---
+        local BASE="/etc/vps_protecao"
+        local DIR_CAT="$BASE/categorias"
+        local DIR_PERF="$BASE/perfis"
+        local DIR_CLIENT="$BASE/clientes"
+        local CCD="/etc/openvpn/ccd"
+        local DNS_BLOQ_CONF="/etc/dnsmasq.d/bloqueios.conf"
+        
+        mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT" "$CCD"
+
         echo -e "${AMARELO}⚙️  Sincronizando IPs e Perfis no Dnsmasq...${NC}"
         
-        # 1. Limpa e inicia o arquivo de bloqueios
+        # 1. Limpeza total de conflitos
+        systemctl stop systemd-resolved >/dev/null 2>&1
+        systemctl disable systemd-resolved >/dev/null 2>&1
+        fuser -k 53/udp >/dev/null 2>&1
+        fuser -k 53/tcp >/dev/null 2>&1
+
+        # 2. Inicia o arquivo de bloqueios
         echo "# Regras Individuais - $(date)" > "$DNS_BLOQ_CONF"
         
         local CONT_REGRAS=0
+        # O nullglob evita o erro de "/*.profile" se a pasta estiver vazia
+        shopt -s nullglob
         
-        # 2. Mapeia Hosts e Tags
-        for f in "$DIR_CLIENT"/*.profile; do
+        local FILES=("$DIR_CLIENT"/*.profile)
+        if [ ${#FILES[@]} -eq 0 ]; then
+            echo -e "${AMARELO}⚠️ Nenhum perfil de cliente encontrado. Criando config padrão...${NC}"
+        fi
+
+        for f in "${FILES[@]}"; do
             local CLI=$(basename "$f" .profile)
             local PERF=$(cat "$f")
             local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
             
             if [ -n "$IP_CLI" ]; then
-                # Define que este IP pertence a esta TAG (perfil)
                 echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$DNS_BLOQ_CONF"
-                
-                # 3. Associa Domínios às Tags
                 if [ -f "$DIR_PERF/$PERF.conf" ]; then
                     for cat in $(cat "$DIR_PERF/$PERF.conf"); do
                         if [ -f "$DIR_CAT/$cat.list" ]; then
                             while read -r dom; do
                                 [[ -z "$dom" || "$dom" =~ ^# ]] && continue
-                                # Sintaxe Universal: Retorna 0.0.0.0 APENAS para quem tem a tag
-                                echo "address=/$dom/0.0.0.0" | sed "s/$/#$PERF/" >> "$DNS_BLOQ_CONF"
+                                echo "address=/$dom/0.0.0.0" >> "$DNS_BLOQ_CONF"
                                 ((CONT_REGRAS++))
                             done < "$DIR_CAT/$cat.list"
                         fi
@@ -647,17 +665,22 @@ bloq_servicos() {
                 fi
             fi
         done
+        shopt -u nullglob
 
-        # 4. TESTE DE SEGURANÇA ANTES DE REINICIAR
+        # 3. Tentativa de inicialização
         if dnsmasq --test &>/dev/null; then
             systemctl restart dnsmasq
-            echo -e "${VERDE}✅ Filtro Individual Ativo ($CONT_REGRAS regras).${NC}"
+            if systemctl is-active --quiet dnsmasq; then
+                echo -e "${VERDE}✅ Dnsmasq Ativo! ($CONT_REGRAS regras)${NC}"
+            else
+                # Se falhar, tenta rodar o binário diretamente (bypass systemd)
+                killall dnsmasq >/dev/null 2>&1
+                dnsmasq -C /etc/dnsmasq.conf
+                echo -e "${AMARELO}⚠️ Dnsmasq iniciado em modo manual.${NC}"
+            fi
         else
-            echo -e "${VERMELHO}❌ Erro de Sintaxe! Revertendo para evitar queda do DNS...${NC}"
-            # Se deu erro, esvazia o arquivo de bloqueios para o DNS não cair
-            > "$DNS_BLOQ_CONF"
-            systemctl restart dnsmasq
-            echo -e "${AMARELO}Dica: Verifique se há caracteres especiais nos nomes dos domínios.${NC}"
+            echo -e "${VERMELHO}❌ Erro crítico de sintaxe detectado pelo dnsmasq --test!${NC}"
+            dnsmasq --test
         fi
         sleep 2
     }
