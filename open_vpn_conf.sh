@@ -101,65 +101,137 @@ configurar_servidor_vpn() {
 
     echo -e "${VERDE}✅ Configuração do servidor OpenVPN finalizada.${NC}"
 }
-verificar_status_dnsmasq() {
-    clear
-    local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
+bloq_servicos() {
     local VERDE='\033[0;32m'
     local AMARELO='\033[1;33m'
     local VERMELHO='\033[0;31m'
+    local AZUL='\033[0;34m'
     local NC='\033[0m'
 
-    echo -e "${AZUL}===============================================================${NC}"
-    echo -e "             🔍 DIAGNÓSTICO DO DNSMASQ & VPN"
-    echo -e "${AZUL}===============================================================${NC}"
-
-    # 1. Verifica se o serviço está ativo
-    if systemctl is-active --quiet dnsmasq; then
-        echo -e " Status do Serviço : ${VERDE}● ATIVO (Rodando)${NC}"
-    else
-        echo -e " Status do Serviço : ${VERMELHO}○ INATIVO${NC}"
-        systemctl start dnsmasq >/dev/null 2>&1
-    fi
-
-    # 2. Interface VPN
+    # --- 1. INFRAESTRUTURA E REPARO ---
     local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
-    if [[ -n "$INT_VPN" ]]; then
-        echo -e " Interface VPN     : ${VERDE}● DETECTADA ($INT_VPN)${NC}"
-    else
-        echo -e " Interface VPN     : ${VERMELHO}○ NÃO DETECTADA${NC}"
+    if [[ -z "$INT_VPN" ]]; then
+        echo -e "${VERMELHO}⚠️ VPN Offline! A interface TUN não foi detectada.${NC}"
+        read -p "Pressione ENTER..." ; return 1
     fi
+    chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null
+    killall -HUP vnstatd >/dev/null 2>&1
 
-    # 3. Porta 53 usando 'ss' (substituto do netstat)
-    if ss -tuln | grep -q ":53 "; then
-        echo -e " Porta 53 (DNS)    : ${VERDE}● ABERTA${NC}"
-    else
-        echo -e " Porta 53 (DNS)    : ${VERMELHO}○ FECHADA / BLOQUEADA${NC}"
-        echo -e "${AMARELO}Tentando liberar porta 53 do systemd-resolved...${NC}"
-        systemctl stop systemd-resolved >/dev/null 2>&1
-        systemctl disable systemd-resolved >/dev/null 2>&1
+    # --- 2. DIRETÓRIOS ---
+    local BASE="/etc/vps_protecao"
+    local DIR_CAT="$BASE/categorias"
+    local DIR_PERF="$BASE/perfis"
+    local DIR_CLIENT="$BASE/clientes"
+    local CCD="/etc/openvpn/ccd"
+    local DNS_BLOQ_CONF="/etc/dnsmasq.d/bloqueios.conf"
+    mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT" "$CCD"
+
+    # --- 3. FUNÇÕES INTERNAS DO MOTOR ---
+    
+    # Gera um IP que não esteja em uso no CCD
+    gerar_ip_disponivel() {
+        for i in {10..250}; do
+            local IP="10.8.0.$i"
+            if ! grep -q "$IP" "$CCD"/* 2>/dev/null; then
+                echo "$IP" ; return
+            fi
+        done
+    }
+
+    # Compila as Regras de Tags para o Dnsmasq
+    atualizar_motor_dns_tags() {
+        echo -e "${AMARELO}⚙️  Sincronizando IPs e Perfis no Dnsmasq...${NC}"
+        echo "# Regras Individuais - $(date)" > "$DNS_BLOQ_CONF"
+        
+        local CONT_REGRAS=0
+        for f in "$DIR_CLIENT"/*.profile; do
+            local CLI=$(basename "$f" .profile)
+            local PERF=$(cat "$f")
+            
+            # Pega o IP fixo que o script criou no CCD
+            local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
+            
+            if [ -n "$IP_CLI" ]; then
+                # Define a TAG para este IP
+                echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$DNS_BLOQ_CONF"
+                
+                # Associa domínios à TAG
+                if [ -f "$DIR_PERF/$PERF.conf" ]; then
+                    for cat in $(cat "$DIR_PERF/$PERF.conf"); do
+                        if [ -f "$DIR_CAT/$cat.list" ]; then
+                            while read -r dom; do
+                                [[ -z "$dom" || "$dom" =~ ^# ]] && continue
+                                echo "address=/$dom/0.0.0.0#$PERF" >> "$DNS_BLOQ_CONF"
+                                ((CONT_REGRAS++))
+                            done < "$DIR_CAT/$cat.list"
+                        fi
+                    done
+                fi
+            fi
+        done
         systemctl restart dnsmasq
-    fi
+        echo -e "${VERDE}✅ Filtro Individual Ativo ($CONT_REGRAS regras).${NC}"
+        sleep 2
+    }
 
-    # 4. Validação da Configuração
-    echo -e "${AZUL}----------------------- CONFIGURAÇÃO --------------------------${NC}"
-    if [ -f "$DNS_CONF" ]; then
-        echo -e " Arquivo vpn.conf  : ${VERDE}Encontrado${NC}"
-        grep -q "interface=$INT_VPN" "$DNS_CONF" && echo -e " Vínculo Interface : ${VERDE}Correto ($INT_VPN)${NC}" || echo -e " Vínculo Interface : ${VERMELHO}Incorreto${NC}"
-    else
-        echo -e " Arquivo vpn.conf  : ${VERMELHO}Não encontrado${NC}"
-    fi
+    # --- 4. MENU PRINCIPAL ---
+    while true; do
+        clear
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "         🔒 BLOQUEIO POR PERFIL INDIVIDUAL (TAGS)"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo " 1) 📂 Categorias (Listas de Sites)"
+        echo " 2) ➕ Criar/Editar Categoria"
+        echo " 3) 👥 Perfis (Grupos de Bloqueio)"
+        echo " 4) ➕ Criar/Editar Perfil"
+        echo " 5) 🧍 Associar Cliente a Perfil (Gera IP Fixo)"
+        echo " 6) 📄 Ver Mapa de Clientes/IPs"
+        echo " 7) 🚀 APLICAR TODAS AS REGRAS"
+        echo " 0) ⬅️  Voltar"
+        echo -e "${AZUL}===============================================================${NC}"
+        read -p " Escolha: " OP
 
-    echo -e "${AZUL}--------------------------- LOGS ------------------------------${NC}"
-    echo -e " Últimas 3 consultas processadas:"
-    # Tenta ler o log padrão ou o log do systemd se o arquivo estiver vazio
-    if [ -s "/var/log/dnsmasq.log" ]; then
-        tail -n 3 /var/log/dnsmasq.log
-    else
-        journalctl -u dnsmasq --no-pager -n 3
-    fi
-
-    echo -e "${AZUL}===============================================================${NC}"
-    read -p "Pressione ENTER para voltar..."
+        case "$OP" in
+            1) ls "$DIR_CAT" | sed 's/.list//' ; read -p "ENTER..." ;;
+            2) read -p "Categoria: " CAT; nano "$DIR_CAT/$CAT.list" ;;
+            3) ls "$DIR_PERF" | sed 's/.conf//' ; read -p "ENTER..." ;;
+            4) read -p "Perfil: " PERF; echo "Dica: Escreva os nomes das categorias no arquivo."; sleep 1; nano "$DIR_PERF/$PERF.conf" ;;
+            5)
+                read -p "Nome do Cliente (Common Name): " CLI
+                [ -z "$CLI" ] && continue
+                echo "Perfis: $(ls "$DIR_PERF" | sed 's/.conf//' | xargs)"
+                read -p "Perfil para $CLI: " PERF
+                
+                if [ -f "$DIR_PERF/$PERF.conf" ]; then
+                    # Salva Perfil
+                    echo "$PERF" > "$DIR_CLIENT/$CLI.profile"
+                    # Garante IP Fixo
+                    if [ ! -f "$CCD/$CLI" ]; then
+                        local NOVO_IP=$(gerar_ip_disponivel)
+                        echo "ifconfig-push $NOVO_IP 255.255.255.0" > "$CCD/$CLI"
+                        echo -e "${VERDE}✔ IP $NOVO_IP reservado para $CLI${NC}"
+                    fi
+                    echo -e "${VERDE}✔ Cliente configurado!${NC}"
+                else
+                    echo -e "${VERMELHO}❌ Perfil não existe.${NC}"
+                fi
+                read -p "ENTER..."
+                ;;
+            6)
+                clear
+                echo -e "CLIENTE | IP FIXO | PERFIL ATIVO"
+                for f in "$DIR_CLIENT"/*.profile; do
+                    C=$(basename "$f" .profile)
+                    P=$(cat "$f")
+                    I=$(grep "ifconfig-push" "$CCD/$C" 2>/dev/null | awk '{print $2}')
+                    echo -e "👤 $C | 🌐 ${I:-Sem IP} | 🏷️ $P"
+                done
+                read -p "ENTER..."
+                ;;
+            7) atualizar_motor_dns_tags ;;
+            0) break ;;
+        esac
+    done
 }
 # ==========================================
 # FUNÇÃO: Ativar DNS da VPN com segurança
