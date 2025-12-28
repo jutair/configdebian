@@ -145,43 +145,31 @@ bloq_servicos() {
     local DIR_PERF="$BASE/perfis"
     local DIR_CLIENT="$BASE/clientes"
     local CCD="/etc/openvpn/ccd"
-    local DNS_DIR="/etc/dnsmasq.d"
-    local DNS_MAIN="/etc/dnsmasq.conf"
     
-    echo -e "${AMARELO}⚙️  Sincronizando Bloqueios por IP e Isolando Perfis...${NC}"
+    echo -e "${AMARELO}⚙️  Reconstruindo Motores Isolados (Sintaxe Limpa)...${NC}"
     
-    # 1. Limpeza total de processos e arquivos antigos
+    # 1. Limpeza total de processos e regras de firewall
     killall dnsmasq >/dev/null 2>&1
-    mkdir -p "$DNS_DIR"
-    rm -f "$DNS_DIR"/*
+    iptables -t nat -F PREROUTING 2>/dev/null
 
-    # 2. Configuração de Base (Essencial para VPN)
-    echo "interface=tun0" > "$DNS_DIR/00-base.conf"
-    echo "bind-dynamic" >> "$DNS_DIR/00-base.conf"
-    echo "domain-needed" >> "$DNS_DIR/00-base.conf"
-    echo "bogus-priv" >> "$DNS_DIR/00-base.conf"
-    # Permite que o dnsmasq use as tags para filtrar consultas
-    echo "localise-queries" >> "$DNS_DIR/00-base.conf"
-
-    # 3. Mapeamento de TAGs (Onde o IP ganha o Perfil)
-    for f in "$DIR_CLIENT"/*.profile; do
-        [ -e "$f" ] || continue
-        local CLI=$(basename "$f" .profile)
-        local PERF=$(cat "$f" | tr -d '\r' | xargs)
-        local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
-        
-        if [ -n "$IP_CLI" ]; then
-            # O SEGREDO: dhcp-range cria um contexto de tag para o IP vindo da VPN
-            echo "dhcp-range=set:$PERF,$IP_CLI,$IP_CLI,255.255.255.255,static" >> "$DNS_DIR/01-mapeamento.conf"
-        fi
-    done
-
-    # 4. Construção das Regras de Bloqueio Seletivo
-    local COUNT=0
-    for p_file in "$DIR_PERF"/*.conf; do
-        [ -e "$p_file" ] || continue
+    # 2. Loop para processar cada perfil disponível
+    local PORTA=5301
+    for p_file in $(ls "$DIR_PERF"/*.conf 2>/dev/null); do
+        [ -f "$p_file" ] || continue
         local PERF_NAME=$(basename "$p_file" .conf)
+        local CONF_PERF="/tmp/dns_$PERF_NAME.conf"
         
+        # Criando o arquivo de configuração do motor para este perfil
+        echo "port=$PORTA" > "$CONF_PERF"
+        echo "interface=tun0" >> "$CONF_PERF"
+        echo "bind-dynamic" >> "$CONF_PERF"
+        echo "domain-needed" >> "$CONF_PERF"
+        echo "bogus-priv" >> "$CONF_PERF"
+        echo "server=8.8.8.8" >> "$CONF_PERF"
+        echo "server=8.8.4.4" >> "$CONF_PERF"
+        echo "max-cache-ttl=300" >> "$CONF_PERF"
+        
+        # 3. Adicionando os bloqueios específicos do perfil
         while read -r cat_name; do
             cat_name=$(echo "$cat_name" | tr -d '\r' | xargs)
             [ -z "$cat_name" ] && continue
@@ -191,24 +179,37 @@ bloq_servicos() {
                 while read -r dom; do
                     dom=$(echo "$dom" | tr -d '\r' | xargs)
                     [[ -z "$dom" || "$dom" =~ ^# ]] && continue
-                    
-                    # Sintaxe: tag:perfil,address=/dominio/IP
-                    echo "tag:$PERF_NAME,address=/$dom/0.0.0.0" >> "$DNS_DIR/02-regras.conf"
-                    COUNT=$((COUNT + 1))
+                    # Bloqueio limpo que evita erro de SSL (0.0.0.0)
+                    echo "address=/$dom/0.0.0.0" >> "$CONF_PERF"
+                    echo "address=/www.$dom/0.0.0.0" >> "$CONF_PERF"
                 done < "$CAT_FILE"
             fi
         done < "$p_file"
+
+        # 4. Inicia o processo individual para este perfil
+        dnsmasq -C "$CONF_PERF"
+        
+        # 5. Redirecionamento de tráfego para os clientes deste perfil
+        for f in $(ls "$DIR_CLIENT"/*.profile 2>/dev/null); do
+            local PERF_CLI=$(cat "$f" | tr -d '\r' | xargs)
+            if [ "$PERF_CLI" == "$PERF_NAME" ]; then
+                local CLI_NAME=$(basename "$f" .profile)
+                local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI_NAME" 2>/dev/null | awk '{print $2}')
+                
+                if [ -n "$IP_CLI" ]; then
+                    # Força o DNS desse IP específico para a porta deste motor
+                    iptables -t nat -A PREROUTING -s "$IP_CLI" -p udp --dport 53 -j REDIRECT --to-ports "$PORTA"
+                    iptables -t nat -A PREROUTING -s "$IP_CLI" -p tcp --dport 53 -j REDIRECT --to-ports "$PORTA"
+                    echo -e "${AZUL}🔗 $CLI_NAME ($IP_CLI) -> Perfil: $PERF_NAME (Porta $PORTA)${NC}"
+                fi
+            fi
+        done
+        
+        # Incrementa a porta para o próximo perfil (5302, 5303...)
+        PORTA=$((PORTA + 1))
     done
 
-    # 5. Inicialização e Teste de Sintaxe
-    if dnsmasq --test -C "$DNS_MAIN" >/dev/null 2>&1; then
-        # Inicia o binário usando o arquivo de config principal que deve conter 'conf-dir=/etc/dnsmasq.d'
-        dnsmasq -C "$DNS_MAIN"
-        echo -e "${VERDE}✅ Motor Ativo! ($COUNT regras de perfil aplicadas)${NC}"
-    else
-        echo -e "${VERMELHO}❌ Erro de sintaxe no Dnsmasq! Verifique os arquivos em $DNS_DIR${NC}"
-        dnsmasq --test -C "$DNS_MAIN"
-    fi
+    echo -e "${VERDE}✅ Motores Independentes e Firewall Sincronizados!${NC}"
 }
     # --- 4. MENU PRINCIPAL ---
     while true; do
