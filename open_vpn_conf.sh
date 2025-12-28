@@ -616,27 +616,30 @@ bloq_servicos() {
     # Compila as Regras de Tags para o Dnsmasq
     atualizar_motor_dns_tags() {
         echo -e "${AMARELO}⚙️  Sincronizando IPs e Perfis no Dnsmasq...${NC}"
+        
+        # 1. Limpa e inicia o arquivo de bloqueios
         echo "# Regras Individuais - $(date)" > "$DNS_BLOQ_CONF"
         
         local CONT_REGRAS=0
+        
+        # 2. Mapeia Hosts e Tags
         for f in "$DIR_CLIENT"/*.profile; do
             local CLI=$(basename "$f" .profile)
             local PERF=$(cat "$f")
-            
-            # Pega o IP fixo que o script criou no CCD
             local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
             
             if [ -n "$IP_CLI" ]; then
-                # Define a TAG para este IP
+                # Define que este IP pertence a esta TAG (perfil)
                 echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$DNS_BLOQ_CONF"
                 
-                # Associa domínios à TAG
+                # 3. Associa Domínios às Tags
                 if [ -f "$DIR_PERF/$PERF.conf" ]; then
                     for cat in $(cat "$DIR_PERF/$PERF.conf"); do
                         if [ -f "$DIR_CAT/$cat.list" ]; then
                             while read -r dom; do
                                 [[ -z "$dom" || "$dom" =~ ^# ]] && continue
-                                echo "address=/$dom/0.0.0.0#$PERF" >> "$DNS_BLOQ_CONF"
+                                # Sintaxe Universal: Retorna 0.0.0.0 APENAS para quem tem a tag
+                                echo "address=/$dom/0.0.0.0" | sed "s/$/#$PERF/" >> "$DNS_BLOQ_CONF"
                                 ((CONT_REGRAS++))
                             done < "$DIR_CAT/$cat.list"
                         fi
@@ -644,11 +647,20 @@ bloq_servicos() {
                 fi
             fi
         done
-        systemctl restart dnsmasq
-        echo -e "${VERDE}✅ Filtro Individual Ativo ($CONT_REGRAS regras).${NC}"
+
+        # 4. TESTE DE SEGURANÇA ANTES DE REINICIAR
+        if dnsmasq --test &>/dev/null; then
+            systemctl restart dnsmasq
+            echo -e "${VERDE}✅ Filtro Individual Ativo ($CONT_REGRAS regras).${NC}"
+        else
+            echo -e "${VERMELHO}❌ Erro de Sintaxe! Revertendo para evitar queda do DNS...${NC}"
+            # Se deu erro, esvazia o arquivo de bloqueios para o DNS não cair
+            > "$DNS_BLOQ_CONF"
+            systemctl restart dnsmasq
+            echo -e "${AMARELO}Dica: Verifique se há caracteres especiais nos nomes dos domínios.${NC}"
+        fi
         sleep 2
     }
-
     # --- 4. MENU PRINCIPAL ---
     while true; do
         clear
