@@ -146,70 +146,59 @@ bloq_servicos() {
     local DIR_CLIENT="$BASE/clientes"
     local CCD="/etc/openvpn/ccd"
     local DNS_DIR="/etc/dnsmasq.d"
+    local DNS_MAIN="/etc/dnsmasq.conf"
     
-    echo -e "${AMARELO}⚙️  Limpando e Gerando Filtros de Alta Compatibilidade...${NC}"
+    echo -e "${AMARELO}⚙️  Sincronizando Bloqueios por IP (Sintaxe Corrigida)...${NC}"
     
-    # 1. Limpeza total
-    systemctl stop systemd-resolved >/dev/null 2>&1
-    fuser -k 53/udp >/dev/null 2>&1
-    rm -f $DNS_DIR/perfil_* rm -f $DNS_DIR/bloqueios.conf
+    # 1. Limpeza total de processos e arquivos antigos
+    killall dnsmasq >/dev/null 2>&1
+    mkdir -p "$DNS_DIR"
+    rm -f "$DNS_DIR"/*
 
-    # 2. Criar mapeamento de Tags (No arquivo principal)
-    # Isso associa o IP do cliente a uma "etiqueta" interna
-    touch $DNS_DIR/bloqueios.conf
-    for f in $(ls "$DIR_CLIENT"/*.profile 2>/dev/null); do
-        [ -f "$f" ] || continue
+    # 2. Configuração de Base
+    echo "interface=tun0" > "$DNS_DIR/00-base.conf"
+    echo "bind-dynamic" >> "$DNS_DIR/00-base.conf"
+    echo "domain-needed" >> "$DNS_DIR/00-base.conf"
+    echo "bogus-priv" >> "$DNS_DIR/00-base.conf"
+
+    # 3. Mapeamento de TAGs (IP -> Perfil)
+    for f in "$DIR_CLIENT"/*.profile; do
+        [ -e "$f" ] || continue
         local CLI=$(basename "$f" .profile)
         local PERF=$(cat "$f")
         local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
-        [ -n "$IP_CLI" ] && echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> $DNS_DIR/bloqueios.conf
+        
+        if [ -n "$IP_CLI" ]; then
+            # Define que este IP específico deve receber esta TAG
+            echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$DNS_DIR/01-mapeamento.conf"
+        fi
     done
 
-    # 3. Gerar Bloqueios Condicionais
-    # Usaremos a diretiva 'tag:NOME,server=/dominio/' que é mais estável que o address
-    for p_file in $(ls "$DIR_PERF"/*.conf 2>/dev/null); do
+    # 4. Construção das Regras de Bloqueio
+    local COUNT=0
+    for p_file in "$DIR_PERF"/*.conf; do
+        [ -e "$p_file" ] || continue
         local PERF_NAME=$(basename "$p_file" .conf)
-        local PERF_DEST="$DNS_DIR/perfil_$PERF_NAME.conf"
-        echo "# Filtros para $PERF_NAME" > "$PERF_DEST"
-
-        for cat_name in $(cat "$p_file"); do
-            if [ -f "$DIR_CAT/$cat_name.list" ]; then
+        
+        # Lendo as categorias do perfil
+        while read -r cat_name; do
+            [ -z "$cat_name" ] && continue
+            local CAT_FILE="$DIR_CAT/$cat_name.list"
+            
+            if [ -f "$CAT_FILE" ]; then
                 while read -r dom; do
+                    # Remove espaços e pula linhas vazias ou comentários
+                    dom=$(echo "$dom" | tr -d '\r' | xargs)
                     [[ -z "$dom" || "$dom" =~ ^# ]] && continue
-                    # Esta sintaxe diz: Se tiver a TAG tal, resolva esse domínio como 0.0.0.0
-                    echo "address=/$dom/0.0.0.0" >> "$PERF_DEST"
-                done < "$DIR_CAT/$cat_name.list"
+                    
+                    # Sintaxe: tag:nome,address=/dominio/0.0.0.0
+                    echo "tag:$PERF_NAME,address=/$dom/0.0.0.0" >> "$DNS_DIR/02-regras.conf"
+                    COUNT=$((COUNT + 1))
+                done < "$CAT_FILE"
             fi
-        done
-        # Aqui está o segredo: Só ativa esse arquivo de regras se a TAG coincidir
-        # Para isso, usamos a inclusão condicional (disponível em versões modernas)
-        # OU o método de servidores específicos.
+        done < "$p_file"
     done
 
-    # 4. Ajuste de rede OpenVPN
-    local CONF_VPN=$(ls /etc/openvpn/server/*.conf /etc/openvpn/*.conf 2>/dev/null | head -n1)
-    local IP_TUN=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
-    [[ -z "$IP_TUN" ]] && IP_TUN="10.8.0.1"
-
-    if [ -f "$CONF_VPN" ]; then
-        sed -i '/push "dhcp-option DNS/d;/push "block-outside-dns"/d' "$CONF_VPN"
-        echo "push \"dhcp-option DNS $IP_TUN\"" >> "$CONF_VPN"
-        echo "push \"block-outside-dns\"" >> "$CONF_VPN"
-        systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
-    fi
-
-    # 5. Tentativa de restart com Log de Erro Real
-    systemctl restart dnsmasq
-    if ! systemctl is-active --quiet dnsmasq; then
-        echo -e "${VERMELHO}❌ Falha Crítica. O Dnsmasq não aceita filtros múltiplos nesta versão.${NC}"
-        echo -e "${AMARELO}LOG DE ERRO:${NC}"
-        journalctl -u dnsmasq --no-pager | tail -n 3
-        # Reversão automática para não deixar o servidor sem DNS
-        rm -f $DNS_DIR/perfil_* systemctl restart dnsmasq
-    else
-        echo -e "${VERDE}✅ Filtros Aplicados com Sucesso!${NC}"
-    fi
-}
     # --- 4. MENU PRINCIPAL ---
     while true; do
         clear
