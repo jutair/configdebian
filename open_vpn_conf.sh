@@ -577,98 +577,137 @@ remover_usuario() {
 
 # --- FUNÇÃO 5: BLOQUEIO DE SERVIÇOS E PERFIS ---
 bloq_servicos() {
+    local VERDE='\033[0;32m'
+    local AMARELO='\033[1;33m'
+    local VERMELHO='\033[0;31m'
+    local AZUL='\033[0;34m'
+    local NC='\033[0m'
 
-    # 🔎 VERIFICA DNSMASQ + VPN
-    if ! verificar_dnsmasq_vpn; then
-        clear
-        echo "⚠️ DNSMASQ não está ativo ou não está configurado para a VPN."
-        echo "👉 É necessário configurar o DNS antes de usar bloqueios."
-        echo
-        read -p "Pressione ENTER para abrir o menu DNSMASQ..."
-        menu_dnsmasq_vpn
+    # --- 1. INFRAESTRUTURA E REPARO ---
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+    if [[ -z "$INT_VPN" ]]; then
+        echo -e "${VERMELHO}⚠️ VPN Offline! A interface TUN não foi detectada.${NC}"
+        read -p "Pressione ENTER..." ; return 1
     fi
+    chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null
+    killall -HUP vnstatd >/dev/null 2>&1
 
-    BASE="/etc/vps_protecao"
-    DIR_CAT="$BASE/categorias"
-    DIR_PERF="$BASE/perfis"
-    DIR_CLIENT="$BASE/clientes"
+    # --- 2. DIRETÓRIOS ---
+    local BASE="/etc/vps_protecao"
+    local DIR_CAT="$BASE/categorias"
+    local DIR_PERF="$BASE/perfis"
+    local DIR_CLIENT="$BASE/clientes"
+    local CCD="/etc/openvpn/ccd"
+    local DNS_BLOQ_CONF="/etc/dnsmasq.d/bloqueios.conf"
+    mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT" "$CCD"
 
-    mkdir -p "$DIR_CAT" "$DIR_PERF" "$DIR_CLIENT"
+    # --- 3. FUNÇÕES INTERNAS DO MOTOR ---
+    
+    # Gera um IP que não esteja em uso no CCD
+    gerar_ip_disponivel() {
+        for i in {10..250}; do
+            local IP="10.8.0.$i"
+            if ! grep -q "$IP" "$CCD"/* 2>/dev/null; then
+                echo "$IP" ; return
+            fi
+        done
+    }
 
-    [ ! -f "$DIR_CAT/adultos.list" ] && cat > "$DIR_CAT/adultos.list" <<EOF
-pornhub.com
-xvideos.com
-xnxx.com
-youporn.com
-redtube.com
-EOF
+    # Compila as Regras de Tags para o Dnsmasq
+    atualizar_motor_dns_tags() {
+        echo -e "${AMARELO}⚙️  Sincronizando IPs e Perfis no Dnsmasq...${NC}"
+        echo "# Regras Individuais - $(date)" > "$DNS_BLOQ_CONF"
+        
+        local CONT_REGRAS=0
+        for f in "$DIR_CLIENT"/*.profile; do
+            local CLI=$(basename "$f" .profile)
+            local PERF=$(cat "$f")
+            
+            # Pega o IP fixo que o script criou no CCD
+            local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
+            
+            if [ -n "$IP_CLI" ]; then
+                # Define a TAG para este IP
+                echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$DNS_BLOQ_CONF"
+                
+                # Associa domínios à TAG
+                if [ -f "$DIR_PERF/$PERF.conf" ]; then
+                    for cat in $(cat "$DIR_PERF/$PERF.conf"); do
+                        if [ -f "$DIR_CAT/$cat.list" ]; then
+                            while read -r dom; do
+                                [[ -z "$dom" || "$dom" =~ ^# ]] && continue
+                                echo "address=/$dom/0.0.0.0#$PERF" >> "$DNS_BLOQ_CONF"
+                                ((CONT_REGRAS++))
+                            done < "$DIR_CAT/$cat.list"
+                        fi
+                    done
+                fi
+            fi
+        done
+        systemctl restart dnsmasq
+        echo -e "${VERDE}✅ Filtro Individual Ativo ($CONT_REGRAS regras).${NC}"
+        sleep 2
+    }
 
-    [ ! -f "$DIR_CAT/bancos.list" ] && cat > "$DIR_CAT/bancos.list" <<EOF
-bb.com.br
-itau.com.br
-bradesco.com.br
-santander.com.br
-nubank.com.br
-caixa.gov.br
-inter.co
-EOF
-
-    [ ! -f "$DIR_PERF/criancas.conf" ] && echo "adultos" > "$DIR_PERF/criancas.conf"
-    [ ! -f "$DIR_PERF/idosos.conf" ] && echo "bancos" > "$DIR_PERF/idosos.conf"
-    [ ! -f "$DIR_PERF/livre.conf" ] && : > "$DIR_PERF/livre.conf"
-
+    # --- 4. MENU PRINCIPAL ---
     while true; do
         clear
-        echo "=========================================="
-        echo " 🔒 GERENCIAMENTO DE BLOQUEIOS (VPN)"
-        echo "=========================================="
-        echo "1) 📂 Listar categorias"
-        echo "2) ➕ Criar categoria"
-        echo "3) 📝 Editar categoria"
-        echo "4) 👥 Listar perfis"
-        echo "5) ➕ Criar perfil"
-        echo "6) 📝 Editar perfil"
-        echo "7) 🧍 Associar cliente a perfil"
-        echo "8) 📄 Listar clientes"
-        echo "9) ⬅️  Voltar"
-        echo "=========================================="
-        read -p "Escolha: " OP
+        echo -e "${AZUL}===============================================================${NC}"
+        echo -e "         🔒 BLOQUEIO POR PERFIL INDIVIDUAL (TAGS)"
+        echo -e "${AZUL}---------------------------------------------------------------${NC}"
+        echo " 1) 📂 Categorias (Listas de Sites)"
+        echo " 2) ➕ Criar/Editar Categoria"
+        echo " 3) 👥 Perfis (Grupos de Bloqueio)"
+        echo " 4) ➕ Criar/Editar Perfil"
+        echo " 5) 🧍 Associar Cliente a Perfil (Gera IP Fixo)"
+        echo " 6) 📄 Ver Mapa de Clientes/IPs"
+        echo " 7) 🚀 APLICAR TODAS AS REGRAS"
+        echo " 0) ⬅️  Voltar"
+        echo -e "${AZUL}===============================================================${NC}"
+        read -p " Escolha: " OP
 
         case "$OP" in
-        1) clear; echo "Categorias existentes:"; ls "$DIR_CAT" | sed 's/.list//'; read -p "ENTER..." ;;
-        2) read -p "Nome da nova categoria: " CAT; [ -z "$CAT" ] && continue; nano "$DIR_CAT/$CAT.list" ;;
-        3) read -p "Categoria para editar: " CAT; [ -f "$DIR_CAT/$CAT.list" ] && nano "$DIR_CAT/$CAT.list" ;;
-        4) clear; echo "Perfis existentes:"; ls "$DIR_PERF" | sed 's/.conf//'; read -p "ENTER..." ;;
-        5) read -p "Nome do novo perfil: " PERF; [ -z "$PERF" ] && continue; nano "$DIR_PERF/$PERF.conf" ;;
-        6) read -p "Perfil para editar: " PERF; [ -f "$DIR_PERF/$PERF.conf" ] && nano "$DIR_PERF/$PERF.conf" ;;
-        7)
-            read -p "Nome do cliente (Common Name): " CLI
-            read -p "Perfil (ex: criancas, idosos, livre): " PERF
-            if [ -f "$DIR_PERF/$PERF.conf" ]; then
-                echo "$PERF" > "$DIR_CLIENT/$CLI.profile"
-                echo "✔ Cliente $CLI associado ao perfil $PERF"
-            else
-                echo "❌ Perfil não existe"
-            fi
-            read -p "ENTER..."
-            ;;
-        8)
-            clear
-            shopt -s nullglob
-            for f in "$DIR_CLIENT"/*.profile; do
-                CLI=$(basename "$f" .profile)
-                PERF=$(cat "$f")
-                echo "👤 $CLI → $PERF"
-            done
-            shopt -u nullglob
-            read -p "ENTER..."
-            ;;
-        9) break ;;
-        *) echo "Opção inválida"; sleep 1 ;;
+            1) ls "$DIR_CAT" | sed 's/.list//' ; read -p "ENTER..." ;;
+            2) read -p "Categoria: " CAT; nano "$DIR_CAT/$CAT.list" ;;
+            3) ls "$DIR_PERF" | sed 's/.conf//' ; read -p "ENTER..." ;;
+            4) read -p "Perfil: " PERF; echo "Dica: Escreva os nomes das categorias no arquivo."; sleep 1; nano "$DIR_PERF/$PERF.conf" ;;
+            5)
+                read -p "Nome do Cliente (Common Name): " CLI
+                [ -z "$CLI" ] && continue
+                echo "Perfis: $(ls "$DIR_PERF" | sed 's/.conf//' | xargs)"
+                read -p "Perfil para $CLI: " PERF
+                
+                if [ -f "$DIR_PERF/$PERF.conf" ]; then
+                    # Salva Perfil
+                    echo "$PERF" > "$DIR_CLIENT/$CLI.profile"
+                    # Garante IP Fixo
+                    if [ ! -f "$CCD/$CLI" ]; then
+                        local NOVO_IP=$(gerar_ip_disponivel)
+                        echo "ifconfig-push $NOVO_IP 255.255.255.0" > "$CCD/$CLI"
+                        echo -e "${VERDE}✔ IP $NOVO_IP reservado para $CLI${NC}"
+                    fi
+                    echo -e "${VERDE}✔ Cliente configurado!${NC}"
+                else
+                    echo -e "${VERMELHO}❌ Perfil não existe.${NC}"
+                fi
+                read -p "ENTER..."
+                ;;
+            6)
+                clear
+                echo -e "CLIENTE | IP FIXO | PERFIL ATIVO"
+                for f in "$DIR_CLIENT"/*.profile; do
+                    C=$(basename "$f" .profile)
+                    P=$(cat "$f")
+                    I=$(grep "ifconfig-push" "$CCD/$C" 2>/dev/null | awk '{print $2}')
+                    echo -e "👤 $C | 🌐 ${I:-Sem IP} | 🏷️ $P"
+                done
+                read -p "ENTER..."
+                ;;
+            7) atualizar_motor_dns_tags ;;
+            0) break ;;
         esac
     done
 }
-
 # --- FUNÇÃO 7: ENVIAR OVPN MANUAL PELO TELEGRAM ---
 enviar_ovpn_telegram_manual() {
     clear
