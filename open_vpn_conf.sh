@@ -467,103 +467,74 @@ testa_velocidade() {
 }
 consumo_tun0d() {
     clear
-    # Busca a interface TUN ativa
+    # Busca qualquer interface que comece com 'tun'
     local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
 
     if [[ -z "$INT_VPN" ]]; then
-        echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA NO MOMENTO!${NC}"
+        echo -e "${VERMELHO}⚠️ VPN OFFLINE (Interface TUN não encontrada)${NC}"
+        echo -e "${AMARELO}Aguarde o serviço OpenVPN iniciar completamente...${NC}"
         read -p "Pressione ENTER..."
         return
     fi
 
-    # --- CORREÇÃO DE PERMISSÃO E ATUALIZAÇÃO FORÇADA ---
-    # Garante que o diretório do vnStat pertença ao usuário correto
-    chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null
-
-    # Verifica se a interface existe no banco. Se não, adiciona.
-    if ! vnstat --iflist | grep -q "$INT_VPN"; then
-        echo -e "${AMARELO}Configurando $INT_VPN no vnStat...${NC}"
-        vnstat --add -i "$INT_VPN"
-        systemctl restart vnstat
-        sleep 2
-    fi
-
-    # FORÇA a atualização do banco de dados agora mesmo
-    # Em versões novas do vnstat usa-se o daemon, em antigas o -u. Tentamos os dois.
+    # --- SINCRONIZAÇÃO FORÇADA ---
+    # Avisa o vnstat que a interface existe e força a leitura dos dados do Kernel
+    vnstat --add -i "$INT_VPN" >/dev/null 2>&1
     vnstat -u -i "$INT_VPN" >/dev/null 2>&1
-    killall -HUP vnstatd >/dev/null 2>&1 # Força o daemon a descarregar dados no disco
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "           📊 CONSUMO DIÁRIO - INTERFACE $INT_VPN"
+    echo -e "            📊 MONITORAMENTO DE TRÁFEGO: $INT_VPN"
     echo -e "${AZUL}===============================================================${NC}"
     
-    # Tenta exibir o tráfego. 
-    # Usamos 'grep [0-9]' para verificar se há qualquer número de tráfego (KB, MB, GB)
-    RESULTADO=$(vnstat -i "$INT_VPN" -d)
-    
-    if echo "$RESULTADO" | grep -qE "KiB|MiB|GiB|B"; then
-        echo "$RESULTADO"
+    # Tenta mostrar o mensal, se não tiver, mostra o tráfego ao vivo agora
+    if vnstat -i "$INT_VPN" -m | grep -q "No data"; then
+        echo -e "${AMARELO}⌛ Banco de dados recém-criado para $INT_VPN.${NC}"
+        echo -e "Mostrando tráfego em tempo real para validar (5s)..."
+        echo -e "---------------------------------------------------------------"
+        vnstat -i "$INT_VPN" -tr 5
     else
-        echo -e "${AMARELO}⚠️ INTERFACE DETECTADA, MAS SEM DADOS REGISTRADOS.${NC}"
-        echo -e "Causa Provável: O firewall pode estar bloqueando a leitura do vnStat"
-        echo -e "ou o tráfego ainda está em cache na memória."
-        echo -e "\n${AZUL}DICA:${NC} Tente rodar: ${VERDE}vnstat -l -i $INT_VPN${NC} para ver o tráfego ao vivo."
+        vnstat -i "$INT_VPN" -d
     fi
     
     echo -e "${AZUL}===============================================================${NC}"
+    echo -e "DICA: O histórico mensal aparecerá após 5-10 min de uso ativo."
     read -p "Pressione ENTER para voltar..."
 }
 consumo_tun0m() {
     clear
-    # 1. Identifica a interface TUN
+    # Busca qualquer interface que comece com 'tun'
     local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
 
     if [[ -z "$INT_VPN" ]]; then
-        echo -e "${VERMELHO}⚠️ NENHUMA INTERFACE TUN ATIVA NO MOMENTO!${NC}"
+        echo -e "${VERMELHO}⚠️ VPN OFFLINE (Interface TUN não encontrada)${NC}"
+        echo -e "${AMARELO}Aguarde o serviço OpenVPN iniciar completamente...${NC}"
         read -p "Pressione ENTER..."
         return
     fi
 
-    # 2. Garante que o vnStat conheça a interface e tenha permissão
-    chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null
-    
-    # Adiciona a interface se ela não existir no monitoramento
-    if ! vnstat --dbiflist | grep -q "$INT_VPN"; then
-        vnstat --add -i "$INT_VPN" >/dev/null 2>&1
-        systemctl restart vnstat
-        echo -e "${AMARELO}⚙️  Interface $INT_VPN adicionada ao banco de dados...${NC}"
-        sleep 1
-    fi
-
-    # 3. FORÇA a atualização (Truque para interfaces dinâmicas)
-    # Algumas versões do vnstat exigem o --update
+    # --- SINCRONIZAÇÃO FORÇADA ---
+    # Avisa o vnstat que a interface existe e força a leitura dos dados do Kernel
+    vnstat --add -i "$INT_VPN" >/dev/null 2>&1
     vnstat -u -i "$INT_VPN" >/dev/null 2>&1
-    # Envia sinal para o daemon escrever os dados do cache no disco AGORA
-    pkill -HUP vnstatd >/dev/null 2>&1
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "            📊 CONSUMO MENSAL - INTERFACE $INT_VPN"
+    echo -e "            📊 MONITORAMENTO DE TRÁFEGO: $INT_VPN"
     echo -e "${AZUL}===============================================================${NC}"
     
-    # 4. Tenta capturar os dados mensais
-    # O comando 'vnstat -m' exibe o resumo mensal
-    local DADOS=$(vnstat -i "$INT_VPN" -m 2>/dev/null)
-    
-    # Verifica se o resultado contém números (indicando que há tráfego)
-    if [[ "$DADOS" =~ [0-9] ]]; then
-        echo "$DADOS"
-    else
-        echo -e "${AMARELO}⌛ AGUARDANDO COLETA DE DADOS...${NC}"
-        echo -e "O vnStat precisa de pelo menos 1 a 5 minutos de tráfego"
-        echo -e "ativo na interface para gerar o primeiro relatório."
-        echo -e "\n${AZUL}TRÁFEGO ATUAL EM TEMPO REAL:${NC}"
-        # Mostra um pequeno resumo de 5 segundos do que está passando agora
+    # Tenta mostrar o mensal, se não tiver, mostra o tráfego ao vivo agora
+    if vnstat -i "$INT_VPN" -m | grep -q "No data"; then
+        echo -e "${AMARELO}⌛ Banco de dados recém-criado para $INT_VPN.${NC}"
+        echo -e "Mostrando tráfego em tempo real para validar (5s)..."
+        echo -e "---------------------------------------------------------------"
         vnstat -i "$INT_VPN" -tr 5
+    else
+        vnstat -i "$INT_VPN" -m
     fi
     
     echo -e "${AZUL}===============================================================${NC}"
+    echo -e "DICA: O histórico mensal aparecerá após 5-10 min de uso ativo."
     read -p "Pressione ENTER para voltar..."
 }
 listar_cadastros() {
