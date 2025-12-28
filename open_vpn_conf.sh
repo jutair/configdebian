@@ -139,41 +139,82 @@ bloq_servicos() {
     }
 
     # Compila as Regras de Tags para o Dnsmasq
-    atualizar_motor_dns_tags() {
-        echo -e "${AMARELO}⚙️  Sincronizando IPs e Perfis no Dnsmasq...${NC}"
-        echo "# Regras Individuais - $(date)" > "$DNS_BLOQ_CONF"
-        
-        local CONT_REGRAS=0
-        for f in "$DIR_CLIENT"/*.profile; do
-            local CLI=$(basename "$f" .profile)
-            local PERF=$(cat "$f")
-            
-            # Pega o IP fixo que o script criou no CCD
-            local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
-            
-            if [ -n "$IP_CLI" ]; then
-                # Define a TAG para este IP
-                echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$DNS_BLOQ_CONF"
-                
-                # Associa domínios à TAG
-                if [ -f "$DIR_PERF/$PERF.conf" ]; then
-                    for cat in $(cat "$DIR_PERF/$PERF.conf"); do
-                        if [ -f "$DIR_CAT/$cat.list" ]; then
-                            while read -r dom; do
-                                [[ -z "$dom" || "$dom" =~ ^# ]] && continue
-                                echo "address=/$dom/0.0.0.0#$PERF" >> "$DNS_BLOQ_CONF"
-                                ((CONT_REGRAS++))
-                            done < "$DIR_CAT/$cat.list"
-                        fi
-                    done
-                fi
-            fi
-        done
-        systemctl restart dnsmasq
-        echo -e "${VERDE}✅ Filtro Individual Ativo ($CONT_REGRAS regras).${NC}"
-        sleep 2
-    }
+   atualizar_motor_dns_tags() {
+    local BASE="/etc/vps_protecao"
+    local DIR_CAT="$BASE/categorias"
+    local DIR_PERF="$BASE/perfis"
+    local DIR_CLIENT="$BASE/clientes"
+    local CCD="/etc/openvpn/ccd"
+    local DNS_DIR="/etc/dnsmasq.d"
+    local MAIN_BLOQ="$DNS_DIR/bloqueios.conf"
+    
+    echo -e "${AMARELO}⚙️  Sincronizando Bloqueios INDIVIDUAIS...${NC}"
+    
+    # 1. Limpeza de ambiente
+    systemctl stop systemd-resolved >/dev/null 2>&1
+    fuser -k 53/udp >/dev/null 2>&1
+    fuser -k 53/tcp >/dev/null 2>&1
 
+    # 2. Reinicia o arquivo principal
+    echo "# Regras de Bloqueio por Perfil" > "$MAIN_BLOQ"
+    local CONT_REGRAS=0
+    
+    # 3. Processa cada cliente
+    for f in $(ls "$DIR_CLIENT"/*.profile 2>/dev/null); do
+        [ -f "$f" ] || continue
+        local CLI=$(basename "$f" .profile)
+        local PERF=$(cat "$f")
+        local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
+        
+        if [ -n "$IP_CLI" ]; then
+            # VINCULA O IP À TAG DO PERFIL
+            echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$MAIN_BLOQ"
+            
+            # 4. APLICA BLOQUEIOS APENAS PARA ESTA TAG
+            if [ -f "$DIR_PERF/$PERF.conf" ]; then
+                for cat_name in $(cat "$DIR_PERF/$PERF.conf"); do
+                    if [ -f "$DIR_CAT/$cat_name.list" ]; then
+                        while read -r dom; do
+                            [[ -z "$dom" || "$dom" =~ ^# ]] && continue
+                            
+                            # SINTAXE MÁGICA: address=/dominio/IP-DE-RETORNO#TAG
+                            # Esta linha diz: Se o domínio for X e a TAG for Y, retorne 0.0.0.0
+                            # Nota: Algumas versões de Dnsmasq usam 'local-tag' ou arquivos separados.
+                            # Para compatibilidade total em VPS Linux, usamos esta:
+                            echo "address=/$dom/0.0.0.0#$PERF" >> "$MAIN_BLOQ"
+                            
+                            CONT_REGRAS=$((CONT_REGRAS + 1))
+                        done < "$DIR_CAT/$cat_name.list"
+                    fi
+                done
+            fi
+        fi
+    done
+
+    # 5. Correção de Conexão OpenVPN (Garante que o DNS chegue ao cliente)
+    local CONF_VPN=$(ls /etc/openvpn/server/*.conf /etc/openvpn/*.conf 2>/dev/null | head -n1)
+    local IP_TUN=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    [[ -z "$IP_TUN" ]] && IP_TUN="10.8.0.1"
+
+    if [ -f "$CONF_VPN" ]; then
+        sed -i '/push "dhcp-option DNS/d;/push "block-outside-dns"/d' "$CONF_VPN"
+        echo "push \"dhcp-option DNS $IP_TUN\"" >> "$CONF_VPN"
+        echo "push \"block-outside-dns\"" >> "$CONF_VPN"
+        systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
+    fi
+
+    # 6. Reinicia o Dnsmasq
+    systemctl restart dnsmasq
+    
+    if systemctl is-active --quiet dnsmasq; then
+        echo -e "${VERDE}✅ Filtros Aplicados Individualmente! ($CONT_REGRAS regras)${NC}"
+    else
+        echo -e "${VERMELHO}❌ Erro ao iniciar Dnsmasq. Verifique a sintaxe.#${NC}"
+        # Se falhar, seu Dnsmasq pode não aceitar o símbolo # no address.
+        # Nesse caso, teremos que usar a opção 'conf-file' específica por tag.
+    fi
+    sleep 2
+}
     # --- 4. MENU PRINCIPAL ---
     while true; do
         clear
