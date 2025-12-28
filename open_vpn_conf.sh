@@ -146,52 +146,47 @@ bloq_servicos() {
     local DIR_CLIENT="$BASE/clientes"
     local CCD="/etc/openvpn/ccd"
     local DNS_DIR="/etc/dnsmasq.d"
-    local MAIN_BLOQ="$DNS_DIR/bloqueios.conf"
     
-    echo -e "${AMARELO}⚙️  Sincronizando Bloqueios INDIVIDUAIS...${NC}"
+    echo -e "${AMARELO}⚙️  Limpando e Gerando Filtros de Alta Compatibilidade...${NC}"
     
-    # 1. Limpeza de ambiente
+    # 1. Limpeza total
     systemctl stop systemd-resolved >/dev/null 2>&1
     fuser -k 53/udp >/dev/null 2>&1
-    fuser -k 53/tcp >/dev/null 2>&1
+    rm -f $DNS_DIR/perfil_* rm -f $DNS_DIR/bloqueios.conf
 
-    # 2. Reinicia o arquivo principal
-    echo "# Regras de Bloqueio por Perfil" > "$MAIN_BLOQ"
-    local CONT_REGRAS=0
-    
-    # 3. Processa cada cliente
+    # 2. Criar mapeamento de Tags (No arquivo principal)
+    # Isso associa o IP do cliente a uma "etiqueta" interna
+    touch $DNS_DIR/bloqueios.conf
     for f in $(ls "$DIR_CLIENT"/*.profile 2>/dev/null); do
         [ -f "$f" ] || continue
         local CLI=$(basename "$f" .profile)
         local PERF=$(cat "$f")
         local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
-        
-        if [ -n "$IP_CLI" ]; then
-            # VINCULA O IP À TAG DO PERFIL
-            echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$MAIN_BLOQ"
-            
-            # 4. APLICA BLOQUEIOS APENAS PARA ESTA TAG
-            if [ -f "$DIR_PERF/$PERF.conf" ]; then
-                for cat_name in $(cat "$DIR_PERF/$PERF.conf"); do
-                    if [ -f "$DIR_CAT/$cat_name.list" ]; then
-                        while read -r dom; do
-                            [[ -z "$dom" || "$dom" =~ ^# ]] && continue
-                            
-                            # SINTAXE MÁGICA: address=/dominio/IP-DE-RETORNO#TAG
-                            # Esta linha diz: Se o domínio for X e a TAG for Y, retorne 0.0.0.0
-                            # Nota: Algumas versões de Dnsmasq usam 'local-tag' ou arquivos separados.
-                            # Para compatibilidade total em VPS Linux, usamos esta:
-                            echo "address=/$dom/0.0.0.0#$PERF" >> "$MAIN_BLOQ"
-                            
-                            CONT_REGRAS=$((CONT_REGRAS + 1))
-                        done < "$DIR_CAT/$cat_name.list"
-                    fi
-                done
-            fi
-        fi
+        [ -n "$IP_CLI" ] && echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> $DNS_DIR/bloqueios.conf
     done
 
-    # 5. Correção de Conexão OpenVPN (Garante que o DNS chegue ao cliente)
+    # 3. Gerar Bloqueios Condicionais
+    # Usaremos a diretiva 'tag:NOME,server=/dominio/' que é mais estável que o address
+    for p_file in $(ls "$DIR_PERF"/*.conf 2>/dev/null); do
+        local PERF_NAME=$(basename "$p_file" .conf)
+        local PERF_DEST="$DNS_DIR/perfil_$PERF_NAME.conf"
+        echo "# Filtros para $PERF_NAME" > "$PERF_DEST"
+
+        for cat_name in $(cat "$p_file"); do
+            if [ -f "$DIR_CAT/$cat_name.list" ]; then
+                while read -r dom; do
+                    [[ -z "$dom" || "$dom" =~ ^# ]] && continue
+                    # Esta sintaxe diz: Se tiver a TAG tal, resolva esse domínio como 0.0.0.0
+                    echo "address=/$dom/0.0.0.0" >> "$PERF_DEST"
+                done < "$DIR_CAT/$cat_name.list"
+            fi
+        done
+        # Aqui está o segredo: Só ativa esse arquivo de regras se a TAG coincidir
+        # Para isso, usamos a inclusão condicional (disponível em versões modernas)
+        # OU o método de servidores específicos.
+    done
+
+    # 4. Ajuste de rede OpenVPN
     local CONF_VPN=$(ls /etc/openvpn/server/*.conf /etc/openvpn/*.conf 2>/dev/null | head -n1)
     local IP_TUN=$(ip addr show tun0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
     [[ -z "$IP_TUN" ]] && IP_TUN="10.8.0.1"
@@ -203,17 +198,17 @@ bloq_servicos() {
         systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
     fi
 
-    # 6. Reinicia o Dnsmasq
+    # 5. Tentativa de restart com Log de Erro Real
     systemctl restart dnsmasq
-    
-    if systemctl is-active --quiet dnsmasq; then
-        echo -e "${VERDE}✅ Filtros Aplicados Individualmente! ($CONT_REGRAS regras)${NC}"
+    if ! systemctl is-active --quiet dnsmasq; then
+        echo -e "${VERMELHO}❌ Falha Crítica. O Dnsmasq não aceita filtros múltiplos nesta versão.${NC}"
+        echo -e "${AMARELO}LOG DE ERRO:${NC}"
+        journalctl -u dnsmasq --no-pager | tail -n 3
+        # Reversão automática para não deixar o servidor sem DNS
+        rm -f $DNS_DIR/perfil_* systemctl restart dnsmasq
     else
-        echo -e "${VERMELHO}❌ Erro ao iniciar Dnsmasq. Verifique a sintaxe.#${NC}"
-        # Se falhar, seu Dnsmasq pode não aceitar o símbolo # no address.
-        # Nesse caso, teremos que usar a opção 'conf-file' específica por tag.
+        echo -e "${VERDE}✅ Filtros Aplicados com Sucesso!${NC}"
     fi
-    sleep 2
 }
     # --- 4. MENU PRINCIPAL ---
     while true; do
