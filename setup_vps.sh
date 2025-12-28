@@ -135,6 +135,11 @@ if ! grep -q "pam_limits.so" /etc/pam.d/common-session; then
     echo "session required pam_limits.so" >> /etc/pam.d/common-session
 fi
 
+# --- Habilita a tun0
+sed -i 's/MaxBandwidth 100/MaxBandwidth 1000/' /etc/vnstat.conf
+sed -i 's/UpdateInterval 30/UpdateInterval 5/' /etc/vnstat.conf
+sed -i 's/SaveInterval 5/SaveInterval 1/' /etc/vnstat.conf
+systemctl restart vnstat
 # --- 9. Adicionado tun0 ao monitoramento do vnstat ---
 if ip link show tun0 > /dev/null 2>&1; then
     vnstat -i tun0 --add
