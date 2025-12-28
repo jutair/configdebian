@@ -199,6 +199,16 @@ bloq_servicos() {
         done < "$p_file"
     done
 
+    # 5. Inicialização do Serviço
+    if dnsmasq --test -C "$DNS_MAIN" >/dev/null 2>&1; then
+        dnsmasq -C "$DNS_MAIN"
+        echo -e "${VERDE}✅ Motor Ativo! ($COUNT regras)${NC}"
+    else
+        echo -e "${VERMELHO}❌ Erro de sintaxe detectado pelo Dnsmasq.${NC}"
+        echo -e "${AMARELO}Verifique se há caracteres estranhos nas suas listas de domínios.${NC}"
+        dnsmasq --test -C "$DNS_MAIN" # Mostra o erro real no terminal
+    fi
+}
     # --- 4. MENU PRINCIPAL ---
     while true; do
         clear
