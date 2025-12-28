@@ -298,31 +298,45 @@ consumo_tun0d() {
         return
     fi
 
-    # Garante que a interface esteja no vnStat sem usar o parâmetro -u
-    if ! vnstat -i "$INT_VPN" >/dev/null 2>&1; then
-        echo -e "${AMARELO}Adicionando $INT_VPN ao monitoramento...${NC}"
+    # --- CORREÇÃO DE PERMISSÃO E ATUALIZAÇÃO FORÇADA ---
+    # Garante que o diretório do vnStat pertença ao usuário correto
+    chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null
+
+    # Verifica se a interface existe no banco. Se não, adiciona.
+    if ! vnstat --iflist | grep -q "$INT_VPN"; then
+        echo -e "${AMARELO}Configurando $INT_VPN no vnStat...${NC}"
         vnstat --add -i "$INT_VPN"
         systemctl restart vnstat
         sleep 2
     fi
+
+    # FORÇA a atualização do banco de dados agora mesmo
+    # Em versões novas do vnstat usa-se o daemon, em antigas o -u. Tentamos os dois.
+    vnstat -u -i "$INT_VPN" >/dev/null 2>&1
+    killall -HUP vnstatd >/dev/null 2>&1 # Força o daemon a descarregar dados no disco
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "           📊 CONSUMO DIÁRIO - INTERFACE $INT_VPN"
     echo -e "${AZUL}===============================================================${NC}"
     
-    # Tenta exibir. Se não houver dados, mostra mensagem amigável
-    if ! vnstat -i "$INT_VPN" -d | grep -q "bytes"; then
-        echo -e "${AMARELO}O banco de dados foi criado agora.${NC}"
-        echo -e "Aguarde alguns minutos de uso da VPN para ver os gráficos."
+    # Tenta exibir o tráfego. 
+    # Usamos 'grep [0-9]' para verificar se há qualquer número de tráfego (KB, MB, GB)
+    RESULTADO=$(vnstat -i "$INT_VPN" -d)
+    
+    if echo "$RESULTADO" | grep -qE "KiB|MiB|GiB|B"; then
+        echo "$RESULTADO"
     else
-        vnstat -i "$INT_VPN" -d
+        echo -e "${AMARELO}⚠️ INTERFACE DETECTADA, MAS SEM DADOS REGISTRADOS.${NC}"
+        echo -e "Causa Provável: O firewall pode estar bloqueando a leitura do vnStat"
+        echo -e "ou o tráfego ainda está em cache na memória."
+        echo -e "\n${AZUL}DICA:${NC} Tente rodar: ${VERDE}vnstat -l -i $INT_VPN${NC} para ver o tráfego ao vivo."
     fi
     
     echo -e "${AZUL}===============================================================${NC}"
     read -p "Pressione ENTER para voltar..."
 }
-consumo_tun0m() {
+consumo_tun0d() {
     clear
     # Busca a interface TUN ativa
     local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
@@ -333,25 +347,39 @@ consumo_tun0m() {
         return
     fi
 
-    # Garante que a interface esteja no vnStat sem usar o parâmetro -u
-    if ! vnstat -i "$INT_VPN" >/dev/null 2>&1; then
-        echo -e "${AMARELO}Adicionando $INT_VPN ao monitoramento...${NC}"
+    # --- CORREÇÃO DE PERMISSÃO E ATUALIZAÇÃO FORÇADA ---
+    # Garante que o diretório do vnStat pertença ao usuário correto
+    chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null
+
+    # Verifica se a interface existe no banco. Se não, adiciona.
+    if ! vnstat --iflist | grep -q "$INT_VPN"; then
+        echo -e "${AMARELO}Configurando $INT_VPN no vnStat...${NC}"
         vnstat --add -i "$INT_VPN"
         systemctl restart vnstat
         sleep 2
     fi
+
+    # FORÇA a atualização do banco de dados agora mesmo
+    # Em versões novas do vnstat usa-se o daemon, em antigas o -u. Tentamos os dois.
+    vnstat -u -i "$INT_VPN" >/dev/null 2>&1
+    killall -HUP vnstatd >/dev/null 2>&1 # Força o daemon a descarregar dados no disco
 
     clear
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "           📊 CONSUMO DIÁRIO - INTERFACE $INT_VPN"
     echo -e "${AZUL}===============================================================${NC}"
     
-    # Tenta exibir. Se não houver dados, mostra mensagem amigável
-    if ! vnstat -i "$INT_VPN" -d | grep -q "bytes"; then
-        echo -e "${AMARELO}O banco de dados foi criado agora.${NC}"
-        echo -e "Aguarde alguns minutos de uso da VPN para ver os gráficos."
+    # Tenta exibir o tráfego. 
+    # Usamos 'grep [0-9]' para verificar se há qualquer número de tráfego (KB, MB, GB)
+    RESULTADO=$(vnstat -i "$INT_VPN" -m)
+    
+    if echo "$RESULTADO" | grep -qE "KiB|MiB|GiB|B"; then
+        echo "$RESULTADO"
     else
-        vnstat -i "$INT_VPN" -m
+        echo -e "${AMARELO}⚠️ INTERFACE DETECTADA, MAS SEM DADOS REGISTRADOS.${NC}"
+        echo -e "Causa Provável: O firewall pode estar bloqueando a leitura do vnStat"
+        echo -e "ou o tráfego ainda está em cache na memória."
+        echo -e "\n${AZUL}DICA:${NC} Tente rodar: ${VERDE}vnstat -l -i $INT_VPN${NC} para ver o tráfego ao vivo."
     fi
     
     echo -e "${AZUL}===============================================================${NC}"
