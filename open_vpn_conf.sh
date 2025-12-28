@@ -109,9 +109,36 @@ configurar_dnsmasq_vpn() {
     local DNS_CONF="/etc/dnsmasq.d/vpn.conf"
     local LOCK="/var/run/vpn_dns_ativado.lock"
     local LOG="/var/log/dnsmasq.log"
+    local AMARELO='\033[1;33m'
+    local VERDE='\033[0;32m'
+    local VERMELHO='\033[0;31m'
+    local NC='\033[0m'
+
+    # --- ETAPA 1: DETECÇÃO AGRESSIVA DA INTERFACE ---
+    local INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n 1)
+    [ -z "$INT_VPN" ] && INT_VPN=$(ip link show up | grep -o 'tun[0-9]*' | head -n 1)
 
     case "$ACTION" in
         ativar)
+            # Bloqueio de segurança: Só inicia se a tun existir e for funcional
+            if [[ -z "$INT_VPN" ]]; then
+                echo -e "${VERMELHO}❌ ERRO: tun0 não detectada! O DNSMASQ não pode ser iniciado.${NC}"
+                echo -e "${AMARELO}Inicie o serviço OpenVPN primeiro.${NC}"
+                return 1
+            fi
+
+            # --- ETAPA 2: FORÇAR PERMISSÕES E VNSTAT (O que funcionou) ---
+            # Garante que o tráfego da interface detectada seja monitorado
+            chown -R vnstat:vnstat /var/lib/vnstat 2>/dev/null
+            if ! vnstat --iflist | grep -q "$INT_VPN"; then
+                vnstat --add -i "$INT_VPN" >/dev/null 2>&1
+                systemctl restart vnstat >/dev/null 2>&1
+                sleep 1
+            fi
+            # Força o descarregamento de dados para o banco
+            killall -HUP vnstatd >/dev/null 2>&1
+
+            # --- ETAPA 3: CONFIGURAÇÃO DO DNS ---
             # Cria config base se não existir
             if [ ! -f "$DNS_CONF" ]; then
                 cat > "$DNS_CONF" <<'EOF'
@@ -131,53 +158,42 @@ EOF
             touch "$LOG"
             chmod 644 "$LOG"
 
-            # Detecta interface VPN
-            local INT_VPN
-            INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
-
-            if [[ -z "$INT_VPN" ]]; then
-                echo "⚠️ VPN não ativa (tun não encontrado). DNSMASQ não aplicado."
-                return 1
-            fi
-
-            local IP_INT
-            IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+            # Pega o IP real da interface detectada
+            local IP_INT=$(ip -4 addr show "$INT_VPN" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
             IP_INT=${IP_INT:-"10.8.0.1"}
 
-            # Limpa entradas antigas
+            # Limpa entradas antigas e aplica a nova interface detectada
             sed -i '/^interface=/d;/^bind-interfaces/d;/^listen-address=/d' "$DNS_CONF"
-
-            # Aplica nova interface
             {
                 echo "interface=$INT_VPN"
                 echo "bind-interfaces"
                 echo "listen-address=$IP_INT"
             } >> "$DNS_CONF"
 
+            # Reinicia o serviço de DNS
             systemctl enable dnsmasq >/dev/null 2>&1
-            systemctl restart dnsmasq
-
-            touch "$LOCK"
-            chmod 600 "$LOCK"
-
-            echo "✅ DNSMASQ ativado para $INT_VPN ($IP_INT)"
+            if dnsmasq --test &>/dev/null; then
+                systemctl restart dnsmasq
+                touch "$LOCK"
+                chmod 600 "$LOCK"
+                echo -e "${VERDE}✅ DNSMASQ e VNSTAT sincronizados para $INT_VPN ($IP_INT)${NC}"
+            else
+                echo -e "${VERMELHO}❌ Erro na sintaxe do DNSMASQ. Configuração não aplicada.${NC}"
+                return 1
+            fi
         ;;
-            desativar)
-            # Remove lock
+
+        desativar)
             rm -f "$LOCK"
-        
-            # Se o arquivo existir, limpa apenas o vínculo VPN
             if [ -f "$DNS_CONF" ]; then
                 sed -i '/^interface=/d;/^listen-address=/d;/^bind-interfaces/d' "$DNS_CONF"
             fi
         
-            # Testa configuração antes de reiniciar
             if dnsmasq --test &>/dev/null; then
                 systemctl restart dnsmasq
-                echo "🟡 DNSMASQ desvinculado da VPN (modo global seguro)"
+                echo -e "${AMARELO}🟡 DNSMASQ desvinculado da VPN.${NC}"
             else
-                echo "⚠️ Configuração inválida detectada — dnsmasq NÃO reiniciado"
-                echo "🔧 Corrija /etc/dnsmasq.d/*.conf antes de continuar"
+                echo -e "${VERMELHO}⚠️ Configuração inválida detectada — Corrija manualmente.${NC}"
             fi
         ;;
 
