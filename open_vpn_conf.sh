@@ -140,60 +140,76 @@ bloq_servicos() {
 
     # Compila as Regras de Tags para o Dnsmasq
    atualizar_motor_dns_tags() {
-        echo -e "${AMARELO}⚙️  Sincronizando IPs e Perfis no Dnsmasq...${NC}"
-        
-        # 1. Limpeza de conflitos de porta (Garante que a 53 esteja livre)
-        systemctl stop systemd-resolved >/dev/null 2>&1
-        systemctl disable systemd-resolved >/dev/null 2>&1
+    local BASE="/etc/vps_protecao"
+    local DIR_CAT="$BASE/categorias"
+    local DIR_PERF="$BASE/perfis"
+    local DIR_CLIENT="$BASE/clientes"
+    local CCD="/etc/openvpn/ccd"
+    local DNS_DIR="/etc/dnsmasq.d"
+    local DNS_MAIN="/etc/dnsmasq.conf"
+    
+    echo -e "${AMARELO}⚙️  Sincronizando Bloqueios por IP e Isolando Perfis...${NC}"
+    
+    # 1. Limpeza total de processos e arquivos antigos
+    killall dnsmasq >/dev/null 2>&1
+    mkdir -p "$DNS_DIR"
+    rm -f "$DNS_DIR"/*
 
-        # 2. Inicia o arquivo de bloqueios do zero
-        echo "# Regras Individuais - $(date)" > "$DNS_BLOQ_CONF"
-        
-        local CONT_REGRAS=0
-        shopt -s nullglob
-        for f in "$DIR_CLIENT"/*.profile; do
-            local CLI=$(basename "$f" .profile)
-            local PERF=$(cat "$f")
-            local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
-            
-            if [ -n "$IP_CLI" ]; then
-                # Define a TAG para este IP
-                echo "dhcp-host=$CLI,$IP_CLI,set:$PERF" >> "$DNS_BLOQ_CONF"
-                
-                # 3. Associa Domínios às Tags usando sintaxe compatível
-                if [ -f "$DIR_PERF/$PERF.conf" ]; then
-                    for cat in $(cat "$DIR_PERF/$PERF.conf"); do
-                        if [ -f "$DIR_CAT/$cat.list" ]; then
-                            while read -r dom; do
-                                [[ -z "$dom" || "$dom" =~ ^# ]] && continue
-                                # Sintaxe: address=/dominio/IP#tag (algumas versões) 
-                                # ou o método seguro abaixo:
-                                echo "address=/$dom/0.0.0.0" >> "$DNS_BLOQ_CONF"
-                                # Nota: Se quiser bloqueio REALMENTE individual por TAG:
-                                # A maioria das versões exige que usemos arquivos de hosts diferentes ou tags no dhcp-option.
-                                # Para simplificar e funcionar agora:
-                                ((CONT_REGRAS++))
-                            done < "$DIR_CAT/$cat.list"
-                        fi
-                    done
-                fi
-            fi
-        done
+    # 2. Configuração de Base (Essencial para VPN)
+    echo "interface=tun0" > "$DNS_DIR/00-base.conf"
+    echo "bind-dynamic" >> "$DNS_DIR/00-base.conf"
+    echo "domain-needed" >> "$DNS_DIR/00-base.conf"
+    echo "bogus-priv" >> "$DNS_DIR/00-base.conf"
+    # Permite que o dnsmasq use as tags para filtrar consultas
+    echo "localise-queries" >> "$DNS_DIR/00-base.conf"
 
-        # 4. VALIDAÇÃO ANTES DE REINICIAR
-        if dnsmasq --test &>/dev/null; then
-            systemctl restart dnsmasq
-            echo -e "${VERDE}✅ Filtro Aplicado com Sucesso ($CONT_REGRAS regras).${NC}"
-        else
-            echo -e "${VERMELHO}❌ Erro detectado na configuração!${NC}"
-            echo -e "${AMARELO}O Dnsmasq reportou o seguinte erro:${NC}"
-            dnsmasq --test
-            # Backup de segurança: esvazia o arquivo problemático para não derrubar a internet dos outros
-            > "$DNS_BLOQ_CONF"
-            systemctl restart dnsmasq
+    # 3. Mapeamento de TAGs (Onde o IP ganha o Perfil)
+    for f in "$DIR_CLIENT"/*.profile; do
+        [ -e "$f" ] || continue
+        local CLI=$(basename "$f" .profile)
+        local PERF=$(cat "$f" | tr -d '\r' | xargs)
+        local IP_CLI=$(grep "ifconfig-push" "$CCD/$CLI" 2>/dev/null | awk '{print $2}')
+        
+        if [ -n "$IP_CLI" ]; then
+            # O SEGREDO: dhcp-range cria um contexto de tag para o IP vindo da VPN
+            echo "dhcp-range=set:$PERF,$IP_CLI,$IP_CLI,255.255.255.255,static" >> "$DNS_DIR/01-mapeamento.conf"
         fi
-        sleep 3
-    }
+    done
+
+    # 4. Construção das Regras de Bloqueio Seletivo
+    local COUNT=0
+    for p_file in "$DIR_PERF"/*.conf; do
+        [ -e "$p_file" ] || continue
+        local PERF_NAME=$(basename "$p_file" .conf)
+        
+        while read -r cat_name; do
+            cat_name=$(echo "$cat_name" | tr -d '\r' | xargs)
+            [ -z "$cat_name" ] && continue
+            
+            local CAT_FILE="$DIR_CAT/$cat_name.list"
+            if [ -f "$CAT_FILE" ]; then
+                while read -r dom; do
+                    dom=$(echo "$dom" | tr -d '\r' | xargs)
+                    [[ -z "$dom" || "$dom" =~ ^# ]] && continue
+                    
+                    # Sintaxe: tag:perfil,address=/dominio/IP
+                    echo "tag:$PERF_NAME,address=/$dom/0.0.0.0" >> "$DNS_DIR/02-regras.conf"
+                    COUNT=$((COUNT + 1))
+                done < "$CAT_FILE"
+            fi
+        done < "$p_file"
+    done
+
+    # 5. Inicialização e Teste de Sintaxe
+    if dnsmasq --test -C "$DNS_MAIN" >/dev/null 2>&1; then
+        # Inicia o binário usando o arquivo de config principal que deve conter 'conf-dir=/etc/dnsmasq.d'
+        dnsmasq -C "$DNS_MAIN"
+        echo -e "${VERDE}✅ Motor Ativo! ($COUNT regras de perfil aplicadas)${NC}"
+    else
+        echo -e "${VERMELHO}❌ Erro de sintaxe no Dnsmasq! Verifique os arquivos em $DNS_DIR${NC}"
+        dnsmasq --test -C "$DNS_MAIN"
+    fi
+}
     # --- 4. MENU PRINCIPAL ---
     while true; do
         clear
