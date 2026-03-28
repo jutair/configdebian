@@ -20,6 +20,9 @@ LIMITE_RAM=85
 DNS_CONF="/etc/dnsmasq.d/vpn.conf"
 DNS_LOCK="/var/run/vpn_dns_ativado.lock"
 
+PASTA_CONSUMO="/var/log/vpn_consumo"
+STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+
 # ---------------- CARREGA CONFIGS ----------------
 [ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
 [ -f "$CONFIG_CONF" ] && source "$CONFIG_CONF"
@@ -90,17 +93,12 @@ monitor_vpn() {
 # FUNÇÃO: RASTREAR CONSUMO POR CLIENTE VPN
 # =================================================
 rastrear_clientes_vpn() {
-    local STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
-    local PASTA_CONSUMO="/var/log/vpn_consumo"
     local MES_ATUAL=$(date +'%m-%Y')
-
     [ ! -f "$STATUS_LOG" ] && return
     [ ! -d "$PASTA_CONSUMO" ] && mkdir -p "$PASTA_CONSUMO"
 
-    # Filtra apenas as linhas que começam com CLIENT_LIST
+    # Processa o Formato 2 (CLIENT_LIST)
     grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME IP_REAL IP_VIRT IP_V6 BYTES_RECV BYTES_SENT RESTO; do
-        
-        # Pula se o nome estiver vazio ou for o cabeçalho
         [[ -z "$NOME" || "$NOME" == "Common Name" ]] && continue
 
         ARQ_HIST="$PASTA_CONSUMO/${NOME}_${MES_ATUAL}.log"
@@ -115,7 +113,6 @@ rastrear_clientes_vpn() {
         read -r ACC_RECV ACC_SENT < "$ARQ_HIST"
         read -r LAST_RECV LAST_SENT < "$ARQ_SESS"
 
-        # Lógica de Delta (Diferença para evitar erro em reconexão)
         if (( RECV < LAST_RECV )); then
             DIFF_RECV=$RECV
             DIFF_SENT=$SENT
@@ -124,9 +121,29 @@ rastrear_clientes_vpn() {
             DIFF_SENT=$((SENT - LAST_SENT))
         fi
 
-        # Salva os dados atualizados
         echo "$((ACC_RECV + DIFF_RECV)) $((ACC_SENT + DIFF_SENT))" > "$ARQ_HIST"
         echo "$RECV $SENT" > "$ARQ_SESS"
+    done
+}
+
+# --- FUNÇÃO 2: GERAR CSV EM MB ---
+gerar_relatorio_csv() {
+    local MES_ATUAL=$(date +'%m-%Y')
+    local ARQUIVO_CSV="$PASTA_CONSUMO/relatorio_consumo_${MES_ATUAL}.csv"
+    
+    # Cabeçalho
+    echo "Usuario,Recebido_MB,Enviado_MB,Data_Relatorio" > "$ARQUIVO_CSV"
+
+    for arq in "$PASTA_CONSUMO"/*_"${MES_ATUAL}".log; do
+        [ ! -f "$arq" ] && continue
+        USUARIO=$(basename "$arq" | sed "s/_${MES_ATUAL}.log//")
+        read -r BYTES_RECV BYTES_SENT < "$arq"
+
+        # Cálculo em MB via awk (mais rápido que bc para loops)
+        MB_RECV=$(awk "BEGIN {printf \"%.2f\", $BYTES_RECV/1048576}")
+        MB_SENT=$(awk "BEGIN {printf \"%.2f\", $BYTES_SENT/1048576}")
+
+        echo "${USUARIO},${MB_RECV},${MB_SENT},$(date +%Y-%m-%d)" >> "$ARQUIVO_CSV"
     done
 }
 # =================================================
