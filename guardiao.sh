@@ -14,7 +14,7 @@ ARQUIVO_ALERTA_RECURSOS="/tmp/alerta_recursos_enviado"
 ARQUIVO_ALERTA_DNS="/tmp/alerta_dns_enviado"
 
 LIMITE_GB=900
-LIMITE_CPU=85
+LIMITE_CPU=95
 LIMITE_RAM=85
 
 DNS_CONF="/etc/dnsmasq.d/vpn.conf"
