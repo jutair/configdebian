@@ -199,7 +199,7 @@ verificar_servicos() {
 # LOOP PRINCIPAL DO GUARDIÃO
 # =================================================
 while true; do
-    verificar_recursos_sistema
+    #verificar_recursos_sistema
     verificar_servicos
     rastrear_clientes_vpn
     gerar_relatorio_csv
