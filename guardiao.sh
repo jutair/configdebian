@@ -90,42 +90,32 @@ monitor_vpn() {
 # FUNÇÃO: RASTREAR CONSUMO POR CLIENTE VPN
 # =================================================
 rastrear_clientes_vpn() {
-    # Certifique-se que esta pasta existe e o usuário tem permissão!
-    local PASTA_CONSUMO="/var/log/vpn_consumo" 
     local STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
+    local PASTA_CONSUMO="/var/log/vpn_consumo"
     local MES_ATUAL=$(date +'%m-%Y')
 
-    # Cria a pasta se não existir
+    [ ! -f "$STATUS_LOG" ] && return
     [ ! -d "$PASTA_CONSUMO" ] && mkdir -p "$PASTA_CONSUMO"
 
-    if [ ! -f "$STATUS_LOG" ]; then
-        echo "Erro: Arquivo de status não encontrado em $STATUS_LOG"
-        return
-    fi
-
-    # O formato 2 usa vírgulas. O grep busca a lista de clientes.
-    grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME REAL_ADDR BYTES_RECV BYTES_SENT RESTO; do
-
-        # Pula o cabeçalho
-        [[ "$NOME" == "Common Name" ]] && continue
+    # No Formato 1, os clientes estão entre a linha "Common Name" e "ROUTING TABLE"
+    # Usamos sed para extrair apenas essa parte e processar linha por linha
+    sed -n '/Common Name,Real Address/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE 'Common Name|ROUTING TABLE' | while IFS=',' read -r NOME REAL_ADDR BYTES_RECV BYTES_SENT CON_SINCE; do
+        
         [[ -z "$NOME" ]] && continue
 
         ARQ_HIST="$PASTA_CONSUMO/${NOME}_${MES_ATUAL}.log"
         ARQ_SESS="/tmp/${NOME}_last_session.tmp"
 
-        # Garante que são números
         RECV=${BYTES_RECV:-0}
         SENT=${BYTES_SENT:-0}
 
-        # Inicializa arquivos se não existirem
         [ ! -f "$ARQ_HIST" ] && echo "0 0" > "$ARQ_HIST"
         [ ! -f "$ARQ_SESS" ] && echo "0 0" > "$ARQ_SESS"
 
-        # Lê valores anteriores
         read -r ACC_RECV ACC_SENT < "$ARQ_HIST"
         read -r LAST_RECV LAST_SENT < "$ARQ_SESS"
 
-        # Lógica para reset de contador (reconexão)
+        # Lógica de cálculo de diferença (Delta)
         if (( RECV < LAST_RECV )); then
             DIFF_RECV=$RECV
             DIFF_SENT=$SENT
@@ -134,7 +124,7 @@ rastrear_clientes_vpn() {
             DIFF_SENT=$((SENT - LAST_SENT))
         fi
 
-        # Atualiza os arquivos
+        # Atualiza o acumulado mensal e a última sessão
         echo "$((ACC_RECV + DIFF_RECV)) $((ACC_SENT + DIFF_SENT))" > "$ARQ_HIST"
         echo "$RECV $SENT" > "$ARQ_SESS"
     done
