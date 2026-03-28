@@ -97,11 +97,11 @@ rastrear_clientes_vpn() {
     [ ! -f "$STATUS_LOG" ] && return
     [ ! -d "$PASTA_CONSUMO" ] && mkdir -p "$PASTA_CONSUMO"
 
-    # No Formato 1, os clientes estão entre a linha "Common Name" e "ROUTING TABLE"
-    # Usamos sed para extrair apenas essa parte e processar linha por linha
-    sed -n '/Common Name,Real Address/,/ROUTING TABLE/p' "$STATUS_LOG" | grep -vE 'Common Name|ROUTING TABLE' | while IFS=',' read -r NOME REAL_ADDR BYTES_RECV BYTES_SENT CON_SINCE; do
+    # Filtra apenas as linhas que começam com CLIENT_LIST
+    grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME IP_REAL IP_VIRT IP_V6 BYTES_RECV BYTES_SENT RESTO; do
         
-        [[ -z "$NOME" ]] && continue
+        # Pula se o nome estiver vazio ou for o cabeçalho
+        [[ -z "$NOME" || "$NOME" == "Common Name" ]] && continue
 
         ARQ_HIST="$PASTA_CONSUMO/${NOME}_${MES_ATUAL}.log"
         ARQ_SESS="/tmp/${NOME}_last_session.tmp"
@@ -115,7 +115,7 @@ rastrear_clientes_vpn() {
         read -r ACC_RECV ACC_SENT < "$ARQ_HIST"
         read -r LAST_RECV LAST_SENT < "$ARQ_SESS"
 
-        # Lógica de cálculo de diferença (Delta)
+        # Lógica de Delta (Diferença para evitar erro em reconexão)
         if (( RECV < LAST_RECV )); then
             DIFF_RECV=$RECV
             DIFF_SENT=$SENT
@@ -124,12 +124,11 @@ rastrear_clientes_vpn() {
             DIFF_SENT=$((SENT - LAST_SENT))
         fi
 
-        # Atualiza o acumulado mensal e a última sessão
+        # Salva os dados atualizados
         echo "$((ACC_RECV + DIFF_RECV)) $((ACC_SENT + DIFF_SENT))" > "$ARQ_HIST"
         echo "$RECV $SENT" > "$ARQ_SESS"
     done
 }
-
 # =================================================
 # FUNÇÃO: COTA GLOBAL DA VPS
 # =================================================
