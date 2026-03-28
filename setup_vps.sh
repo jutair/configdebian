@@ -68,6 +68,10 @@ chmod 700 "$DIR_PROT"
 chmod 600 "$DIR_PROT/admin.conf"
 chmod 600 "$DIR_PROT/telegram.conf"
 
+# --- Adicionando as pastas ao grupo de usuários sudo ---
+sudo chown root:sudo /etc/vps_protecao/admin.conf
+sudo chmod 640 /etc/vps_protecao/admin.conf
+
 # --- 4. INSTALAÇÃO DE PACOTES ---
 echo -e "${AMARELO}🔧 Instalando pacotes necessários...${NC}"
 apt-get update -y && apt-get install -y vnstat ufw fail2ban openvpn sudo curl wget bc jq unzip procps speedtest-cli dnsmasq
