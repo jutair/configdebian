@@ -202,6 +202,7 @@ while true; do
     verificar_recursos_sistema
     verificar_servicos
     rastrear_clientes_vpn
+    gerar_relatorio_csv
     verificar_cota_vps
 
     ativa_dns
