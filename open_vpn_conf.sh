@@ -1012,11 +1012,11 @@ relatorio_consumo_acumulado() {
 
 relatorio_consumo_detalhado() {
     clear
-    PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
-    MES_ATUAL=$(date +'%m-%Y')
-    ARQUIVO_CSV="/tmp/consumo_${MES_ATUAL}.csv"
+    local PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
+    local MES_ATUAL=$(date +'%m-%Y')
+    local ARQUIVO_CSV="/tmp/consumo_${MES_ATUAL}.csv"
     
-    # Cores para o layout
+    # Cores
     local CYAN='\033[0;36m'
     local GOLD='\033[1;33m'
     local VERDE='\033[0;32m'
@@ -1024,11 +1024,13 @@ relatorio_consumo_detalhado() {
     local VERMELHO='\033[0;31m'
     local NC='\033[0m'
     
-    # Carrega configurações do Telegram
-    [ -f "/etc/vps_protecao/telegram.conf" ] && source "/etc/vps_protecao/telegram.conf"
+    # Tenta carregar as configurações do Telegram
+    if [ -f "/etc/vps_protecao/telegram.conf" ]; then
+        source "/etc/vps_protecao/telegram.conf"
+    fi
 
     echo -e "${CYAN}===============================================================${NC}"
-    echo -e "           ${GOLD}📊 RELATÓRIO DE CONSUMO (${MES_ATUAL})${NC}"
+    echo -e "            ${GOLD}📊 RELATÓRIO DE CONSUMO (${MES_ATUAL})${NC}"
     echo -e "${CYAN}===============================================================${NC}"
     printf "${GOLD}%-18s %-15s %-15s${NC}\n" "CLIENTE" "DOWNLOAD" "UPLOAD"
     echo -e "${CYAN}---------------------------------------------------------------${NC}"
@@ -1036,30 +1038,23 @@ relatorio_consumo_detalhado() {
     # Cabeçalho do CSV
     echo "Cliente,Download (Bytes),Upload (Bytes),Download (Formatado),Upload (Formatado)" > "$ARQUIVO_CSV"
 
-    # shopt evita erros se não houver arquivos .log na pasta
     shopt -s nullglob
     for arq in "$PASTA_CONSUMO"/*_${MES_ATUAL}.log; do
-        # Extrai o nome do cliente do nome do arquivo
+        # Extrai o nome do cliente (ex: jutair)
         NOME=$(basename "$arq" | cut -d'_' -f1)
         
-        # Lê os valores ACUMULADOS (Gerados pelo script Guardião)
-        # Formato esperado no arquivo: "RECEBIDOS ENVIADOS"
+        # Lê os valores: RECV (Upload Cliente) e SENT (Download Cliente)
         read -r BRECV BSENT < "$arq"
         
-        # Validação para garantir que são números e evitar erros no awk
+        # Validação numérica básica
         [[ ! "$BRECV" =~ ^[0-9]+$ ]] && BRECV=0
         [[ ! "$BSENT" =~ ^[0-9]+$ ]] && BSENT=0
 
-        # --- LÓGICA DE PERSPECTIVA DO CLIENTE ---
-        # SENT (Enviado pelo servidor) = DOWNLOAD do cliente
-        # RECV (Recebido pelo servidor) = UPLOAD do cliente
+        # Formatação Humanizada (MB ou GB)
         DOWNLOAD_H=$(awk "BEGIN { if ($BSENT >= 1073741824) printf \"%.2f GB\", $BSENT/1073741824; else printf \"%.2f MB\", $BSENT/1048576 }")
         UPLOAD_H=$(awk "BEGIN { if ($BRECV >= 1073741824) printf \"%.2f GB\", $BRECV/1073741824; else printf \"%.2f MB\", $BRECV/1048576 }")
         
-        # Exibição formatada no terminal
         printf "%-18s %-15s %-15s\n" "$NOME" "$DOWNLOAD_H" "$UPLOAD_H"
-        
-        # Alimenta o arquivo CSV (usando a mesma lógica de Download/Upload)
         echo "$NOME,$BSENT,$BRECV,$DOWNLOAD_H,$UPLOAD_H" >> "$ARQUIVO_CSV"
     done
     shopt -u nullglob
@@ -1078,13 +1073,25 @@ relatorio_consumo_detalhado() {
             ;;
         2)
             if [[ -n "$TOKEN" && -n "$ID_CHAT" ]]; then
-                echo -e "${AMARELO}Enviando relatório ao Telegram...${NC}"
-                curl -s -F chat_id="$ID_CHAT" -F document=@"$ARQUIVO_CSV" \
-                     -F caption="📊 Relatório VPN - Mês: $MES_ATUAL" \
-                     "https://api.telegram.org/bot$TOKEN/sendDocument" > /dev/null
-                echo -e "${VERDE}✅ Relatório enviado com sucesso!${NC}"
+                if [ -f "$ARQUIVO_CSV" ]; then
+                    echo -e "${AMARELO}Enviando relatório ao Telegram...${NC}"
+                    
+                    # Comando CURL corrigido para envio de documento
+                    RES=$(curl -s -F chat_id="$ID_CHAT" \
+                         -F document=@"$ARQUIVO_CSV" \
+                         -F caption="📊 Relatório de Consumo VPN - $MES_ATUAL" \
+                         "https://api.telegram.org/bot$TOKEN/sendDocument")
+                    
+                    if [[ $RES == *"\"ok\":true"* ]]; then
+                        echo -e "${VERDE}✅ Relatório enviado com sucesso!${NC}"
+                    else
+                        echo -e "${VERMELHO}❌ Erro na API do Telegram. Verifique o Token/ID.${NC}"
+                    fi
+                else
+                    echo -e "${VERMELHO}❌ Erro: Arquivo CSV não foi gerado.${NC}"
+                fi
             else
-                echo -e "${VERMELHO}❌ Erro: Token ou ID do Telegram não configurados.${NC}"
+                echo -e "${VERMELHO}❌ Erro: Configurações do Telegram ausentes em /etc/vps_protecao/telegram.conf${NC}"
             fi
             read -p "Pressione ENTER para continuar..."
             ;;
@@ -1093,7 +1100,6 @@ relatorio_consumo_detalhado() {
             ;;
     esac
 }
-
 gerenciar_banda() {
     clear
     # Detecta a interface de rede principal (ex: eth0 ou ens3)
