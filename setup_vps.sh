@@ -69,7 +69,9 @@ chmod 600 "$DIR_PROT/admin.conf"
 chmod 600 "$DIR_PROT/telegram.conf"
 
 # --- Adicionando as pastas ao grupo de usuários sudo ---
-sudo chown root:sudo /etc/vps_protecao/admin.conf
+# Muda o grupo do arquivo para 'sudo'
+sudo chgrp sudo /etc/vps_protecao/admin.conf
+# Dá permissão de leitura para o grupo
 sudo chmod 640 /etc/vps_protecao/admin.conf
 
 # --- 4. INSTALAÇÃO DE PACOTES ---
