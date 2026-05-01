@@ -1,212 +1,340 @@
 #!/bin/bash
-# =========================================================
-# GUARDIÃO - Monitoramento 24/7 de VPN, DNS, Banda e Recursos
-# =========================================================
 
-# ---------------- CONFIGURAÇÕES ----------------
-DIR_PROT="/etc/vps_protecao"
-TELEGRAM_CONF="$DIR_PROT/telegram.conf"
-CONFIG_CONF="$DIR_PROT/config.conf"
-PASTA_CONSUMO="$DIR_PROT/consumo_clientes"
+# ================= HARDENING =================
+set -u
+exec 9>/var/run/guardiao.lock
+flock -n 9 || exit 0
 
-ARQUIVO_ALERTA_BANDA="/tmp/alerta_banda_enviado"
-ARQUIVO_ALERTA_RECURSOS="/tmp/alerta_recursos_enviado"
-ARQUIVO_ALERTA_DNS="/tmp/alerta_dns_enviado"
+renice +10 $$ >/dev/null 2>&1
+ionice -c2 -n7 -p $$ >/dev/null 2>&1
 
-LIMITE_GB=900
-LIMITE_CPU=95
-LIMITE_RAM=85
+# ================= CONFIG =================
+DIR="/etc/vps_protecao"
+TELEGRAM_CONF="$DIR/telegram.conf"
+WHITELIST="$DIR/whitelist.conf"
 
-DNS_CONF="/etc/dnsmasq.d/vpn.conf"
-DNS_LOCK="/var/run/vpn_dns_ativado.lock"
+[ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
 
-PASTA_CONSUMO="/var/log/vpn_consumo"
+LOG="/var/log/guardiao.log"
 STATUS_LOG="/etc/openvpn/server/openvpn-status.log"
 
-# ---------------- CARREGA CONFIGS ----------------
-[ -f "$TELEGRAM_CONF" ] && source "$TELEGRAM_CONF"
-[ -f "$CONFIG_CONF" ] && source "$CONFIG_CONF"
+INTERFACE=$(ip route | awk '/default/ {print $5}')
+LIMITE_GB=900
 
-INTERFACE_PRIN=$(ip route | awk '/default/ {print $5}')
+FLAG_BANDA="/tmp/alerta_banda"
 
-# =================================================
-# FUNÇÃO: ALERTA TELEGRAM
-# =================================================
+# ================= LOG =================
+log() {
+    echo "$(date '+%F %T') | $1" >> "$LOG"
+}
+
+# ================= ALERTA =================
 enviar_alerta() {
     local MSG="$1"
-    [[ -z "$TOKEN" || -z "$ID_CHAT" ]] && return
-    curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+    local FLAG="${2:-}"
+
+    [[ -z "${TOKEN:-}" || -z "${ID_CHAT:-}" ]] && return
+    [[ -n "$FLAG" && -f "$FLAG" ]] && return
+
+    timeout 5 curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
         -d chat_id="$ID_CHAT" \
         -d text="$MSG" \
         -d parse_mode="HTML" >/dev/null
+
+    [[ -n "$FLAG" ]] && touch "$FLAG"
+    log "ALERTA: $MSG"
 }
 
-# =================================================
-# FUNÇÃO: VERIFICA SE DNS DA VPN ESTÁ OK
-# =================================================
-verificar_dns_vpn() {
-    local INT_VPN
-    INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
-
-    [[ -z "$INT_VPN" ]] && return 1
-    [[ ! -f "$DNS_LOCK" ]] && return 1
-    [[ ! -f "$DNS_CONF" ]] && return 1
-
-    grep -q "^interface=$INT_VPN" "$DNS_CONF"
+limpar_flag() {
+    [[ -f "$1" ]] && rm -f "$1"
 }
 
-# =================================================
-# FUNÇÃO: ATIVA DNS DA VPN (1x, SEM INTERFERIR)
-# =================================================
-ativa_dns() {
-    # Já ativado
-    [ -f "$DNS_LOCK" ] && return 0
-
-    # VPN ainda não existe
-    local INT_VPN
-    INT_VPN=$(ls /sys/class/net | grep '^tun' | head -n1)
-    [[ -z "$INT_VPN" ]] && return 0
-
-    # Função externa (menu/admin)
-    if command -v configurar_dnsmasq_vpn &>/dev/null; then
-        configurar_dnsmasq_vpn ativar >/dev/null 2>&1
-        logger "[GUARDIAO] Tentativa automática de ativação do DNS da VPN"
-    fi
-}
-
-# =================================================
-# FUNÇÃO: MONITORAMENTO VPN + DNS
-# =================================================
-monitor_vpn() {
-    if verificar_dns_vpn; then
-        [ -f "$ARQUIVO_ALERTA_DNS" ] && rm -f "$ARQUIVO_ALERTA_DNS"
-        logger "[GUARDIAO] VPN e DNS OK"
-    else
-        if [ ! -f "$ARQUIVO_ALERTA_DNS" ]; then
-            enviar_alerta "❌ <b>DNS da VPN NÃO está configurado corretamente</b>"
-            touch "$ARQUIVO_ALERTA_DNS"
+# ================= SERVIÇOS =================
+check_servicos() {
+    for S in openvpn sshd dnsmasq; do
+        if ! systemctl is-active --quiet "$S"; then
+            systemctl restart "$S"
+            enviar_alerta "🔁 Serviço reiniciado: <b>$S</b>"
         fi
-    fi
+    done
 }
 
-# =================================================
-# FUNÇÃO: RASTREAR CONSUMO POR CLIENTE VPN
-# =================================================
-rastrear_clientes_vpn() {
-    local MES_ATUAL=$(date +'%m-%Y')
-    [ ! -f "$STATUS_LOG" ] && return
-    [ ! -d "$PASTA_CONSUMO" ] && mkdir -p "$PASTA_CONSUMO"
+# ================= SSH LOGIN =================
+monitor_ssh_login() {
+    local TMP="/tmp/ssh_now"
+    local LAST="/tmp/ssh_last"
 
-    # Processa o Formato 2 (CLIENT_LIST)
-    grep "^CLIENT_LIST," "$STATUS_LOG" | while IFS=',' read -r TIPO NOME IP_REAL IP_VIRT IP_V6 BYTES_RECV BYTES_SENT RESTO; do
-        [[ -z "$NOME" || "$NOME" == "Common Name" ]] && continue
+    tail -n 20 /var/log/auth.log 2>/dev/null | grep "Accepted" > "$TMP"
 
-        ARQ_HIST="$PASTA_CONSUMO/${NOME}_${MES_ATUAL}.log"
-        ARQ_SESS="/tmp/${NOME}_last_session.tmp"
+    [[ -f "$LAST" ]] && NOVOS=$(comm -13 "$LAST" "$TMP") || NOVOS=$(cat "$TMP")
 
-        RECV=${BYTES_RECV:-0}
-        SENT=${BYTES_SENT:-0}
+    echo "$NOVOS" | while read -r linha; do
+        IP=$(echo "$linha" | awk '{for(i=1;i<=NF;i++) if($i=="from") print $(i+1)}')
+        USER=$(echo "$linha" | awk '{print $9}')
+        [[ -z "$USER" ]] && continue
 
-        [ ! -f "$ARQ_HIST" ] && echo "0 0" > "$ARQ_HIST"
-        [ ! -f "$ARQ_SESS" ] && echo "0 0" > "$ARQ_SESS"
+        enviar_alerta "🔐 <b>SSH LOGIN</b>%0A👤 $USER%0A🌐 $IP"
+        log "SSH LOGIN: $USER $IP"
+    done
 
-        read -r ACC_RECV ACC_SENT < "$ARQ_HIST"
-        read -r LAST_RECV LAST_SENT < "$ARQ_SESS"
+    cp "$TMP" "$LAST"
+}
 
-        if (( RECV < LAST_RECV )); then
-            DIFF_RECV=$RECV
-            DIFF_SENT=$SENT
+# ================= VPN SESSÕES =================
+monitor_vpn_sessoes() {
+
+    local TMP="/tmp/vpn_now"
+    local LAST="/tmp/vpn_last"
+
+    awk -F',' '/^CLIENT_LIST/ {
+        if ($2 != "Common Name")
+            print $2 "|" $3 "|" $8
+    }' "$STATUS_LOG" 2>/dev/null | sort > "$TMP"
+
+    # primeira execução
+    if [[ ! -f "$LAST" ]]; then
+        cp "$TMP" "$LAST"
+        return
+    fi
+
+    # LOGIN
+    comm -13 "$LAST" "$TMP" | while IFS='|' read -r USER IP CONN_TIME; do
+        [[ -z "$USER" ]] && continue
+
+        enviar_alerta "🟢 <b>VPN LOGIN</b>%0A👤 $USER%0A🌐 $IP"
+        log "VPN LOGIN: $USER $IP"
+    done
+
+    # LOGOUT
+    comm -23 "$LAST" "$TMP" | while IFS='|' read -r USER IP CONN_TIME; do
+        [[ -z "$USER" ]] && continue
+
+        NOW=$(date +%s)
+        TEMPO=$((NOW - CONN_TIME))
+        (( TEMPO < 0 )) && TEMPO=0
+
+        H=$((TEMPO / 3600))
+        M=$(((TEMPO % 3600) / 60))
+
+        enviar_alerta "🔴 <b>VPN LOGOUT</b>%0A👤 $USER%0A⏱ ${H}h ${M}m"
+        log "VPN LOGOUT: $USER ${H}h${M}m"
+    done
+
+    controlar_multi_login "$TMP"
+
+    cp "$TMP" "$LAST"
+}
+
+# ================= MULTI LOGIN =================
+controlar_multi_login() {
+
+    local TMP="$1"
+    local LIMITE=1
+
+    cut -d'|' -f1 "$TMP" | sort | uniq -c | while read -r COUNT USER; do
+
+        (( COUNT <= LIMITE )) && continue
+
+        enviar_alerta "⚠️ <b>MULTI LOGIN</b>%0A👤 $USER%0A🔢 $COUNT conexões"
+
+        IPS=$(grep "^$USER|" "$TMP" | cut -d'|' -f2)
+
+        i=0
+        for IP in $IPS; do
+            ((i++))
+
+            # ignora rede interna VPN
+            [[ "$IP" == 10.* ]] && continue
+
+            if (( i > LIMITE )); then
+
+                enviar_alerta "⛔ <b>SESSÃO ENCERRADA</b>%0A👤 $USER%0A🌐 $IP"
+
+                pkill -f "$IP"
+
+                log "DROP MULTI LOGIN: $USER $IP"
+
+                FLAG="/tmp/multi_$USER"
+
+                if [[ -f "$FLAG" ]]; then
+                    banir_ip_auto "$IP"
+                    enviar_alerta "🚫 <b>BLOQUEADO POR ABUSO</b>%0A👤 $USER%0A🌐 $IP"
+                else
+                    touch "$FLAG"
+                fi
+
+            fi
+        done
+    done
+}
+
+# ================= BANIMENTO =================
+banir_ip_auto() {
+    local IP="$1"
+
+    grep -q "^$IP$" "$WHITELIST" 2>/dev/null && return
+
+    bash /etc/vps_protecao/gerencia_rede.sh --ban "$IP"
+    log "BAN AUTO: $IP"
+}
+
+# ================= ABUSO =================
+detectar_abuso() {
+    local NOW=$(date +%s)
+
+    grep "^CLIENT_LIST," "$STATUS_LOG" 2>/dev/null | while IFS=',' read -r _ USER IP _ _ RX TX _; do
+
+        [[ "$USER" == "Common Name" ]] && continue
+
+        TOTAL=$((RX + TX))
+        FILE="/tmp/abuse_$USER"
+
+        if [[ -f "$FILE" ]]; then
+            read LAST_TIME LAST_TOTAL < "$FILE"
+
+            DT=$((NOW - LAST_TIME))
+            DB=$((TOTAL - LAST_TOTAL))
+
+            (( DT <= 0 )) && continue
+
+            RATE=$((DB / DT / 1024 / 1024 * 60))
+
+            if (( RATE > 300 )); then
+                enviar_alerta "🚨 <b>ABUSO</b>%0A👤 $USER%0A🌐 $IP%0A📊 ${RATE}MB/min"
+                banir_ip_auto "$IP"
+            fi
+        fi
+
+        echo "$NOW $TOTAL" > "$FILE"
+    done
+}
+
+# ================= CSV =================
+gerar_consumo_por_usuario() {
+
+    local PASTA="/var/log/vpn_consumo"
+    local MES=$(date +'%m-%Y')
+
+    mkdir -p "$PASTA"
+
+    grep "^CLIENT_LIST," "$STATUS_LOG" 2>/dev/null | \
+    while IFS=',' read -r _ USER _ _ _ RX TX _; do
+
+        [[ "$USER" == "Common Name" ]] && continue
+
+        ARQ="$PASTA/${USER}_${MES}.log"
+        TMP="/tmp/last_${USER}"
+
+        # valores atuais separados
+        CUR_RX=$RX
+        CUR_TX=$TX
+
+        if [[ -f "$TMP" ]]; then
+            read LAST_RX LAST_TX < "$TMP"
         else
-            DIFF_RECV=$((RECV - LAST_RECV))
-            DIFF_SENT=$((SENT - LAST_SENT))
+            LAST_RX=0
+            LAST_TX=0
         fi
 
-        echo "$((ACC_RECV + DIFF_RECV)) $((ACC_SENT + DIFF_SENT))" > "$ARQ_HIST"
-        echo "$RECV $SENT" > "$ARQ_SESS"
+        DIFF_RX=$((CUR_RX - LAST_RX))
+        DIFF_TX=$((CUR_TX - LAST_TX))
+
+        (( DIFF_RX < 0 )) && DIFF_RX=$CUR_RX
+        (( DIFF_TX < 0 )) && DIFF_TX=$CUR_TX
+
+        if [[ -f "$ARQ" ]]; then
+            read OLD_RX OLD_TX < "$ARQ"
+        else
+            OLD_RX=0
+            OLD_TX=0
+        fi
+
+        NEW_RX=$((OLD_RX + DIFF_RX))
+        NEW_TX=$((OLD_TX + DIFF_TX))
+
+        echo "$NEW_RX $NEW_TX" > "$ARQ"
+        echo "$CUR_RX $CUR_TX" > "$TMP"
+
     done
 }
 
-# --- FUNÇÃO 2: GERAR CSV EM MB ---
-gerar_relatorio_csv() {
-    local MES_ATUAL=$(date +'%m-%Y')
-    local ARQUIVO_CSV="$PASTA_CONSUMO/relatorio_consumo_${MES_ATUAL}.csv"
-    
-    # Cabeçalho
-    echo "Usuario,Recebido_MB,Enviado_MB,Data_Relatorio" > "$ARQUIVO_CSV"
+# ================= BANDA =================
+check_banda() {
+    TOTAL=$(vnstat -i "$INTERFACE" --oneline 2>/dev/null | cut -d';' -f11)
+    [[ -z "$TOTAL" ]] && return
 
-    for arq in "$PASTA_CONSUMO"/*_"${MES_ATUAL}".log; do
-        [ ! -f "$arq" ] && continue
-        USUARIO=$(basename "$arq" | sed "s/_${MES_ATUAL}.log//")
-        read -r BYTES_RECV BYTES_SENT < "$arq"
+    GB=$((TOTAL / 1024 / 1024))
 
-        # Cálculo em MB via awk (mais rápido que bc para loops)
-        MB_RECV=$(awk "BEGIN {printf \"%.2f\", $BYTES_RECV/1048576}")
-        MB_SENT=$(awk "BEGIN {printf \"%.2f\", $BYTES_SENT/1048576}")
-
-        echo "${USUARIO},${MB_RECV},${MB_SENT},$(date +%Y-%m-%d)" >> "$ARQUIVO_CSV"
-    done
-}
-# =================================================
-# FUNÇÃO: COTA GLOBAL DA VPS
-# =================================================
-verificar_cota_vps() {
-    command -v vnstat &>/dev/null || return
-    command -v jq &>/dev/null || return
-
-    DATA_JSON=$(vnstat --json m 2>/dev/null)
-    RX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRIN\") | .traffic.months[0].rx")
-    TX=$(echo "$DATA_JSON" | jq -r ".interfaces[] | select(.name==\"$INTERFACE_PRIN\") | .traffic.months[0].tx")
-
-    TOTAL_GB=$(echo "scale=2; ($RX+$TX)/1024/1024/1024" | bc -l)
-
-    if (( $(echo "$TOTAL_GB >= $LIMITE_GB" | bc -l) )); then
-        if [ ! -f "$ARQUIVO_ALERTA_BANDA" ]; then
-            enviar_alerta "🚨 <b>ALERTA DE CONSUMO VPS</b>%0A📊 <code>$TOTAL_GB GB</code>"
-            touch "$ARQUIVO_ALERTA_BANDA"
-        fi
+    if (( GB >= LIMITE_GB )); then
+        enviar_alerta "🚨 Consumo VPS: ${GB}GB" "$FLAG_BANDA"
     else
-        [ -f "$ARQUIVO_ALERTA_BANDA" ] && rm -f "$ARQUIVO_ALERTA_BANDA"
+        limpar_flag "$FLAG_BANDA"
     fi
 }
 
-# =================================================
-# FUNÇÃO: MONITORAR CPU E RAM
-# =================================================
-verificar_recursos_sistema() {
-    USO_CPU=$(top -bn1 | awk '/Cpu/ {print 100-$8}' | cut -d. -f1)
-    USO_RAM=$(free | awk '/Mem/ {printf "%.0f", $3/$2*100}')
+acumular_consumo_vpn() {
 
-    if (( USO_CPU > LIMITE_CPU || USO_RAM > LIMITE_RAM )); then
-        if [ ! -f "$ARQUIVO_ALERTA_RECURSOS" ]; then
-            enviar_alerta "⚠️ <b>SOBREUSO VPS</b>%0ACPU: $USO_CPU% | RAM: $USO_RAM%"
-            touch "$ARQUIVO_ALERTA_RECURSOS"
+    local DB="/var/log/vpn_consumo_total.log"
+    local TMP="/tmp/vpn_tmp_consumo"
+
+    touch "$DB"
+
+    grep "^CLIENT_LIST," "$STATUS_LOG" 2>/dev/null | \
+    awk -F',' '{
+        if($2!="Common Name"){
+            print $2, $6, $7
+        }
+    }' > "$TMP"
+
+    while read -r USER RX TX; do
+
+        # valores atuais
+        CUR_TOTAL=$((RX + TX))
+
+        # arquivo de sessão
+        FILE="/tmp/last_$USER"
+
+        if [[ -f "$FILE" ]]; then
+            LAST=$(cat "$FILE")
+        else
+            LAST=0
         fi
-    else
-        [ -f "$ARQUIVO_ALERTA_RECURSOS" ] && rm -f "$ARQUIVO_ALERTA_RECURSOS"
-    fi
+
+        DIFF=$((CUR_TOTAL - LAST))
+        (( DIFF < 0 )) && DIFF=$CUR_TOTAL
+
+        # atualizar DB
+        if grep -q "^$USER " "$DB"; then
+            OLD_RX=$(awk -v u="$USER" '$1==u{print $2}' "$DB")
+            OLD_TX=$(awk -v u="$USER" '$1==u{print $3}' "$DB")
+
+            NEW_TOTAL=$((OLD_RX + OLD_TX + DIFF))
+
+            sed -i "s/^$USER .*/$USER $NEW_TOTAL 0/" "$DB"
+        else
+            echo "$USER $DIFF 0" >> "$DB"
+        fi
+
+        echo "$CUR_TOTAL" > "$FILE"
+
+    done < "$TMP"
 }
 
-# =================================================
-# FUNÇÃO: SERVIÇOS ESSENCIAIS
-# =================================================
-verificar_servicos() {
-    for SERV in openvpn sshd vnstat dnsmasq; do
-        systemctl is-active --quiet "$SERV" || systemctl restart "$SERV"
-    done
-}
+# ================= LOOP =================
+tick=0
 
-# =================================================
-# LOOP PRINCIPAL DO GUARDIÃO
-# =================================================
 while true; do
-    #verificar_recursos_sistema
-    verificar_servicos
-    rastrear_clientes_vpn
-    gerar_relatorio_csv
-    verificar_cota_vps
 
-    ativa_dns
-    monitor_vpn
+    check_servicos
 
-    sleep 50
+    (( tick % 2 == 0 )) && monitor_ssh_login
+    (( tick % 2 == 0 )) && monitor_vpn_sessoes
+    (( tick % 2 == 0 )) && acumular_consumo_vpn
+    (( tick % 3 == 0 )) && detectar_abuso
+    (( tick % 5 == 0 )) && gerar_consumo_por_usuario
+    (( tick % 10 == 0 )) && check_banda
+
+    sleep 60
+    ((tick++))
+
 done
