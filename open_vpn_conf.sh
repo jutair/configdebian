@@ -1108,7 +1108,7 @@ gerenciar_banda() {
     [[ -z "$INTERFACE_PRINCIPAL" ]] && INTERFACE_PRINCIPAL="eth0"
     
     # Definições de caminhos
-    PASTA_CONSUMO="/etc/vps_protecao/consumo_clientes"
+    PASTA_CONSUMO="/var/log/vpn_consumo"
     MES_ATUAL=$(date +'%m-%Y')
     clear
     # Interface da VPN
