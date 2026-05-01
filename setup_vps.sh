@@ -229,3 +229,4 @@ echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
 echo -e "    Administrador: ${AMARELO}$ADM_USER${NC}"
 echo -e "    ${VERDE}Acesso SSH por senha: ATIVADO${NC}"
 echo -e "${AZUL}===============================================================${NC}"
+exit
