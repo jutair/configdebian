@@ -76,11 +76,54 @@ sudo chmod 640 /etc/vps_protecao/admin.conf
 
 # --- 4. INSTALAÇÃO DE PACOTES ---
 echo -e "${AMARELO}🔧 Instalando pacotes necessários...${NC}"
-apt-get update -y && apt-get install -y vnstat ufw fail2ban openvpn sudo curl wget bc jq unzip procps speedtest-cli dnsmasq
+apt-get update -y && apt-get install -y vnstat ufw fail2ban openvpn sudo curl wget bc jq unzip procps speedtest-cli dnsmasq zram-tools earlyoom
 
-# Define o fuso horário para Manaus
-timedatectl set-timezone America/Manaus
-timedatectl set-ntp true
+#Configura o fuso horário
+echo -e "${AMARELO}🔧 Configurando o fuso horário${NC}"
+TZ=$(curl -s --max-time 5 https://ipapi.co/timezone)
+
+# fallback
+[ -z "$TZ" ] && TZ="America/Sao_Paulo"
+
+echo "Fuso horário detectado: $TZ"
+echo ""
+echo "[1] Usar fuso detectado"
+echo "[2] Definir manualmente"
+echo "[0] Cancelar"
+echo ""
+
+read -n 1 -p "Escolha: " OP_FUSO; echo ""
+
+case "$OP_FUSO" in
+    1)
+        FINAL_TZ="$TZ"
+        ;;
+    2)
+        echo ""
+        read -p "Digite o fuso horário (ex: America/Sao_Paulo): " OP_HORA
+        FINAL_TZ="$OP_HORA"
+        ;;
+    0)
+        echo "Cancelado."
+        exit 0
+        ;;
+    *)
+        echo "Opção inválida."
+        exit 1
+        ;;
+esac
+
+# valida timezone antes de aplicar
+if timedatectl list-timezones | grep -qx "$FINAL_TZ"; then
+    timedatectl set-timezone "$FINAL_TZ"
+    timedatectl set-ntp true
+
+    echo ""
+    echo "Fuso horário aplicado com sucesso:"
+    timedatectl
+else
+    echo "Erro: fuso horário inválido!"
+fi
 
 # Inicia o vnstat
 systemctl enable vnstat
@@ -156,6 +199,30 @@ fi
 echo -e "${AMARELO}🚀 Ativando Guardião...${NC}"
 pkill -f "guardiao.sh" > /dev/null 2>&1 || true
 nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
+
+# --- 11. Defninindo as prioridades do sistema ---
+echo -e "${AMARELO}🔧 Configurando a protecao dos recuros do sistema...${NC}"
+
+#Impede de em caso de sobrecarga o Kernel derrubar os servicos enssenciais para o funcionamento da VPN
+earlyoom -m 10 -s 20 --avoid 'sshd'
+sudo bash -c '
+cat > /etc/sysctl.d/99-vps-tuning.conf <<EOF
+vm.swappiness=80
+vm.vfs_cache_pressure=200
+vm.min_free_kbytes=65536
+EOF
+sysctl --system
+echo "=== CONFIGURAÇÃO APLICADA ==="
+sysctl vm.swappiness
+sysctl vm.vfs_cache_pressure
+sysctl vm.min_free_kbytes
+'
+echo -e "${AMARELO}🔧 Configurando o SSH como recurso prioritário do sistema...${NC}"
+sudo mkdir -p /etc/systemd/system/ssh.service.d
+echo -e "[Service]\nOOMScoreAdjust=-1000" | \
+sudo tee /etc/systemd/system/ssh.service.d/override.conf
+sudo systemctl daemon-reexec
+sudo systemctl restart ssh
 
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
