@@ -98,7 +98,14 @@ configurar_servidor_vpn() {
             systemctl restart openvpn-server@server 2>/dev/null || systemctl restart openvpn
         } || echo -e "${VERDE}✅ Scripts do guardião já estavam configurados.${NC}"
     fi
-
+    #Adiciona o OpenVPN na lista de servicos prioritários ao Kernel
+    earlyoom -m 10 -s 20 --avoid 'openvpn'
+    sudo mkdir -p /etc/systemd/system/openvpn-server@.service.d
+    echo -e "[Service]\nOOMScoreAdjust=-1000" | \
+    sudo tee /etc/systemd/system/openvpn-server@.service.d/override.conf
+    echo -e "${AMARELO}🔧 Reiniciando o OpenVPN...${NC}"
+    sudo systemctl daemon-reexec
+    sudo systemctl restart openvpn-server@server
     echo -e "${VERDE}✅ Configuração do servidor OpenVPN finalizada.${NC}"
 }
 bloq_servicos() {
