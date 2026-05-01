@@ -204,24 +204,25 @@ nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
 # --- CONFIGURAÇÃO DO EARLYOOM (PROTEÇÃO DE MEMÓRIA) ---
 echo -e "${AMARELO}🛡️ Configurando proteção de memória (earlyoom)...${NC}"
 
-# garante que o arquivo existe
-[ -f /etc/default/earlyoom ] || touch /etc/default/earlyoom
+CONF="/etc/default/earlyoom"
 
-# aplica configuração segura
-sed -i 's|^EARLYOOM_ARGS=.*|EARLYOOM_ARGS="-m 10 -s 20 --avoid '\''sshd|openvpn'\''"|' /etc/default/earlyoom
+# garante arquivo
+touch "$CONF"
 
-# se não existir a linha, adiciona
-grep -q "^EARLYOOM_ARGS=" /etc/default/earlyoom || \
-echo 'EARLYOOM_ARGS="-m 10 -s 20 --avoid '\''sshd|openvpn'\''"' >> /etc/default/earlyoom
+# remove linha antiga (se existir)
+sed -i '/^EARLYOOM_ARGS=/d' "$CONF"
 
-# ativa e inicia serviço corretamente
+# adiciona nova configuração
+echo 'EARLYOOM_ARGS="-m 10 -s 20 --avoid sshd,openvpn"' >> "$CONF"
+
+# ativa serviço
 systemctl daemon-reexec
 systemctl enable earlyoom
 systemctl restart earlyoom
 
 # validação
 echo -e "${VERDE}✔ earlyoom ativo:${NC}"
-systemctl --no-pager status earlyoom | grep "Active"
+systemctl --no-pager status earlyoom | grep Active
 
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
