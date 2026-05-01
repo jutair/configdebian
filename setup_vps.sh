@@ -201,28 +201,27 @@ pkill -f "guardiao.sh" > /dev/null 2>&1 || true
 nohup /bin/bash "$DIR_CONFIG/guardiao.sh" > /dev/null 2>&1 &
 
 # --- 11. Defninindo as prioridades do sistema ---
-echo -e "${AMARELO}🔧 Configurando a protecao dos recuros do sistema...${NC}"
+# --- CONFIGURAÇÃO DO EARLYOOM (PROTEÇÃO DE MEMÓRIA) ---
+echo -e "${AMARELO}🛡️ Configurando proteção de memória (earlyoom)...${NC}"
 
-#Impede de em caso de sobrecarga o Kernel derrubar os servicos enssenciais para o funcionamento da VPN
-earlyoom -m 10 -s 20 --avoid 'sshd'
-sudo bash -c '
-cat > /etc/sysctl.d/99-vps-tuning.conf <<EOF
-vm.swappiness=80
-vm.vfs_cache_pressure=200
-vm.min_free_kbytes=65536
-EOF
-sysctl --system
-echo "=== CONFIGURAÇÃO APLICADA ==="
-sysctl vm.swappiness
-sysctl vm.vfs_cache_pressure
-sysctl vm.min_free_kbytes
-'
-echo -e "${AMARELO}🔧 Configurando o SSH como recurso prioritário do sistema...${NC}"
-sudo mkdir -p /etc/systemd/system/ssh.service.d
-echo -e "[Service]\nOOMScoreAdjust=-1000" | \
-sudo tee /etc/systemd/system/ssh.service.d/override.conf
-sudo systemctl daemon-reexec
-sudo systemctl restart ssh
+# garante que o arquivo existe
+[ -f /etc/default/earlyoom ] || touch /etc/default/earlyoom
+
+# aplica configuração segura
+sed -i 's|^EARLYOOM_ARGS=.*|EARLYOOM_ARGS="-m 10 -s 20 --avoid '\''sshd|openvpn'\''"|' /etc/default/earlyoom
+
+# se não existir a linha, adiciona
+grep -q "^EARLYOOM_ARGS=" /etc/default/earlyoom || \
+echo 'EARLYOOM_ARGS="-m 10 -s 20 --avoid '\''sshd|openvpn'\''"' >> /etc/default/earlyoom
+
+# ativa e inicia serviço corretamente
+systemctl daemon-reexec
+systemctl enable earlyoom
+systemctl restart earlyoom
+
+# validação
+echo -e "${VERDE}✔ earlyoom ativo:${NC}"
+systemctl --no-pager status earlyoom | grep "Active"
 
 echo -e "${AZUL}===============================================================${NC}"
 echo -e "    ${VERDE}✅ SISTEMA INSTALADO E LIBERADO!${NC}"
