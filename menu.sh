@@ -138,7 +138,7 @@ dashboard() {
 
         clear
         echo -e "${CYAN}===============================================================${NC}"
-        echo -e "      ${GOLD}💎 DASHBOARD VPS PREMIUM${NC} | ${DATA_MANAUS}"
+        echo -e "      ${GOLD}💎 DASHBOARD VPS${NC} | ${DATA_MANAUS}"
         echo -e "${CYAN}===============================================================${NC}"
         
         echo -e " 🌐 IP Servidor : ${AMARELO}${IP_SERVIDOR:-$(curl -s ifconfig.me)}${NC}"
@@ -177,7 +177,7 @@ dashboard() {
 while true; do
     clear
     echo -e "${AZUL}===============================================================${NC}"
-    echo -e "          ${VERDE}PAINEL DE GESTÃO VPS - DIGITAL OCEAN${NC}"
+    echo -e "          ${VERDE}PAINEL DE GESTÃO VPS${NC}"
     echo -e "${AZUL}===============================================================${NC}"
     echo -e "  ${AZUL}USUÁRIO:${NC} ${AMARELO}$USER_LOGADO${NC} | ${AZUL}ADMIN:${NC} ${VERDE}$ADM_USER${NC}"
     echo -e "${AZUL}===============================================================${NC}"
