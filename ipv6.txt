@@ -1,0 +1,19 @@
+sudo nano /etc/NetworkManager/dispatcher.d/90-vpn-ipv6
+
+#!/bin/bash
+
+# Aplicar somente à VPN
+[ "$CONNECTION_ID" = "nome_do_cliente_VPN" ] || exit 0
+
+case "$2" in
+    vpn-up)
+        sysctl -w net.ipv6.conf.all.disable_ipv6=1
+        ;;
+    vpn-pre-down|vpn-down)
+        sysctl -w net.ipv6.conf.all.disable_ipv6=0
+        ;;
+esac
+
+exit 0
+
+sudo chmod 755 /etc/NetworkManager/dispatcher.d/90-vpn-ipv6
